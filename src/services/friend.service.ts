@@ -1,213 +1,349 @@
-import { getIO } from "../config/socket";
 import Friend from "../models/Friend";
 import User from "../models/User";
 import notificationService from "./notification.service";
+import mongoose from "mongoose";
 
 class FriendService {
 
-    /* =====================================================
-       SEND FRIEND REQUEST
-    ===================================================== */
-
-    async sendRequest(userId: string, targetId: string) {
-
-        if (userId === targetId)
-            throw new Error("Invalid operation");
-
-        const user = await User.findById(userId);
-        const target = await User.findById(targetId);
-
-        if (!target) throw new Error("User not found");
-
-        if (user?.blockedUsers.includes(target._id))
-            throw new Error("You blocked this user");
-
-        if (target.blockedUsers.includes(user!._id))
-            throw new Error("You are blocked");
-
-        const existing = await Friend.findOne({
-            requester: { $in: [userId, targetId] },
-            recipient: { $in: [userId, targetId] }
-        });
-
-        if (existing)
-            throw new Error("Relation already exists");
-
-        const relation = await Friend.create({
-            requester: userId,
-            recipient: targetId,
-            status: "pending"
-        });
-
-        console.log("📤 Friend request created");
-
-        /* ==== Create Notification ==== */
-        const notification = await notificationService.create({
-            recipient: targetId,
-            sender: userId,
-            type: "friend_request",
-            body: "New friend request"
-        });
-
-        /* ==== Emit Realtime ==== */
-        const io = getIO();
-
-        io.to(targetId.toString())
-            .emit("notification:new", notification);
-
-        console.log("🔔 Notification emitted");
-
-        return relation;
-    }
-
-    /* =====================================================
-       ACCEPT REQUEST
-    ===================================================== */
-
-    async accept(userId: string, targetId: string) {
-
-        const relation = await Friend.findOneAndUpdate(
-            {
-                requester: { $in: [userId, targetId] },
-                recipient: { $in: [userId, targetId] },
-                status: "pending"
-            },
-            { status: "accepted" },
-            { new: true }
-        );
-
-        if (!relation)
-            throw new Error("Request not found");
-
-        console.log("✅ Friend request accepted");
-
-        const notification = await notificationService.create({
-            recipient: targetId,
-            sender: userId,
-            type: "friend_accepted",
-            body: "Friend request accepted"
-        });
-
-        const io = getIO();
-
-        io.to(targetId.toString())
-            .emit("notification:new", notification);
-
-        io.to(targetId.toString())
-            .emit("friend:accepted", { userId });
-
-        return relation;
-    }
-
-    /* =====================================================
-       REMOVE FRIEND
-    ===================================================== */
-
-    async remove(userId: string, targetId: string) {
-
-        await Friend.findOneAndDelete({
-            requester: { $in: [userId, targetId] },
-            recipient: { $in: [userId, targetId] },
-            status: "accepted"
-        });
-
-        console.log("🗑 Friend removed");
-
-        const io = getIO();
-
-        io.to(targetId.toString())
-            .emit("friend:removed", { userId });
-
-        return { success: true };
-    }
-
-    /* =====================================================
-       BLOCK USER
-    ===================================================== */
-
-    async block(userId: string, targetId: string) {
-
-        await User.findByIdAndUpdate(userId, {
-            $addToSet: { blockedUsers: targetId }
-        });
-
-        await Friend.findOneAndUpdate(
-            {
-                requester: { $in: [userId, targetId] },
-                recipient: { $in: [userId, targetId] }
-            },
-            { status: "blocked", blockedBy: userId }
-        );
-
-        console.log("⛔ User blocked");
-
-        const io = getIO();
-
-        io.to(targetId.toString())
-            .emit("friend:blocked", { userId });
-
-        return { success: true };
-    }
-
-    /* =====================================================
-       UNBLOCK USER
-    ===================================================== */
-
-    async unblock(userId: string, targetId: string) {
-
-        await User.findByIdAndUpdate(userId, {
-            $pull: { blockedUsers: targetId }
-        });
-
-        await Friend.findOneAndDelete({
-            requester: { $in: [userId, targetId] },
-            recipient: { $in: [userId, targetId] },
-            status: "blocked"
-        });
-
-        console.log("🔓 User unblocked");
-
-        return { success: true };
-    }
-
-    /* =====================================================
-     CANCEL FRIEND REQUEST
+  /* =====================================================
+     SEND FRIEND REQUEST
   ===================================================== */
 
-    async cancelRequest(userId: string, targetId: string) {
+ async sendRequest(userId: string, targetId: string) {
 
-        const relation = await Friend.findOneAndDelete({
-            requester: userId,         // مهم: فقط المرسل يستطيع الإلغاء
-            recipient: targetId,
-            status: "pending"
-        });
+  console.log("📌 [FriendService] sendRequest called");
+  console.log("👤 Sender:", userId);
+  console.log("🎯 Target:", targetId);
 
-        if (!relation)
-            throw new Error("Request not found or already handled");
+  if (userId === targetId)
+    throw new Error("Invalid operation");
 
-        console.log("❌ Friend request cancelled");
+  const user = await User.findById(userId);
+  const target = await User.findById(targetId);
 
-        const io = getIO();
+  if (!user) throw new Error("Sender not found");
+  if (!target) throw new Error("User not found");
 
-        io.to(targetId.toString())
-            .emit("friend:cancelled", { userId });
+  /* ================= BLOCK CHECK ================= */
 
-        return { success: true };
+  if (user.blockedUsers.includes(target._id))
+    throw new Error("You blocked this user");
+
+  if (target.blockedUsers.includes(user._id))
+    throw new Error("You are blocked");
+
+  /* ================= CHECK EXISTING RELATION ================= */
+
+  const existing = await Friend.findOne({
+    $or: [
+      { requester: userId, recipient: targetId },
+      { requester: targetId, recipient: userId }
+    ]
+  });
+
+  console.log("📦 Existing relation:", existing);
+
+  /* =====================================================
+     CASE 1: RELATION EXISTS
+  ===================================================== */
+
+  if (existing) {
+
+    /* ===== Already Friends ===== */
+    if (existing.status === "accepted")
+      throw new Error("Already friends");
+
+    /* ===== Already Pending ===== */
+    if (existing.status === "pending") {
+
+      if (existing.requester.toString() === userId) {
+        throw new Error("Request already sent");
+      }
+
+      // لو هو اللي كان باعت الطلب → نقبل بدلاً من إنشاء طلب جديد
+      existing.status = "accepted";
+      await existing.save();
+
+      console.log("✅ Auto-accepted reverse request");
+
+      await notificationService.create({
+        recipient: targetId,
+        sender: userId,
+        type: "friend_accepted",
+        body: "Friend request accepted"
+      });
+
+      return existing;
     }
 
-    /* =====================================================
-       GET FRIENDS
-    ===================================================== */
+    /* ===== If rejected / cancelled ===== */
+    if (["rejected", "cancelled"].includes(existing.status)) {
 
-    async getFriends(userId: string) {
+      existing.requester = new mongoose.Types.ObjectId(userId);
+      existing.recipient = new mongoose.Types.ObjectId(targetId);
+      existing.status = "pending";
 
-        return await Friend.find({
-            $or: [
-                { requester: userId, status: "accepted" },
-                { recipient: userId, status: "accepted" }
-            ]
-        }).populate("requester recipient", "username avatar isOnline");
+      await existing.save();
+
+      console.log("♻️ Reused old relation as pending");
+
+      await notificationService.create({
+        recipient: targetId,
+        sender: userId,
+        type: "friend_request",
+        body: "New friend request"
+      });
+
+      return existing;
     }
+
+    /* ===== If blocked ===== */
+    if (existing.status === "blocked")
+      throw new Error("Cannot send request");
+  }
+
+  /* =====================================================
+     CASE 2: NO RELATION EXISTS
+  ===================================================== */
+
+  const relation = await Friend.create({
+    requester: userId,
+    recipient: targetId,
+    status: "pending"
+  });
+
+  console.log("🔥 After create requester:", relation.requester.toString());
+console.log("🔥 After create recipient:", relation.recipient.toString());
+  console.log("✅ New relation created:", relation);
+
+  await notificationService.create({
+    recipient: targetId,
+    sender: userId,
+    type: "friend_request",
+    body: "New friend request"
+  });
+
+  return relation;
+}
+
+
+
+  /* =====================================================
+     ACCEPT REQUEST
+  ===================================================== */
+
+  async accept(userId: string, targetId: string) {
+
+    console.log("📌 [FriendService] accept called");
+    console.log("👤 Accepter:", userId);
+    console.log("🎯 Requester:", targetId);
+
+    const relation = await Friend.findOne({
+      requester: targetId,
+      recipient: userId,
+      status: "pending"
+    });
+
+    console.log("📦 Relation found:", relation);
+
+    if (!relation)
+      throw new Error("Request not found");
+
+    relation.status = "accepted";
+    await relation.save();
+
+    console.log("✅ Relation accepted");
+
+    await notificationService.create({
+      recipient: targetId,
+      sender: userId,
+      type: "friend_accepted",
+      body: "Friend request accepted"
+    });
+
+    console.log("🚀 Notification created for friend_accepted");
+
+    return relation;
+  }
+
+
+
+  /* =====================================================
+     REJECT REQUEST
+  ===================================================== */
+
+  async reject(userId: string, targetId: string) {
+
+    console.log("📌 [FriendService] reject called");
+    console.log("👤 Rejector:", userId);
+    console.log("🎯 Requester:", targetId);
+
+    const relation = await Friend.findOne({
+      requester: targetId,
+      recipient: userId,
+      status: "pending"
+    });
+
+    console.log("📦 Relation found:", relation);
+
+    if (!relation)
+      throw new Error("Request not found");
+
+    relation.status = "rejected";
+    await relation.save();
+
+    console.log("❌ Relation rejected");
+
+    await notificationService.create({
+      recipient: targetId,
+      sender: userId,
+      type: "system",
+      body: "Friend request rejected"
+    });
+
+    console.log("🚀 Notification created for rejection");
+
+    return { success: true };
+  }
+
+
+
+  /* =====================================================
+     CANCEL REQUEST
+  ===================================================== */
+
+  async cancelRequest(userId: string, targetId: string) {
+
+    console.log("📌 [FriendService] cancelRequest called");
+    console.log("👤 Sender:", userId);
+    console.log("🎯 Target:", targetId);
+
+    const relation = await Friend.findOne({
+      requester: userId,
+      recipient: targetId,
+      status: "pending"
+    });
+
+    console.log("📦 Relation found:", relation);
+
+    if (!relation)
+      throw new Error("Request not found");
+
+    relation.status = "cancelled";
+    await relation.save();
+
+    console.log("🚫 Request cancelled");
+
+    return { success: true };
+  }
+
+
+/* =====================================================
+   GET FRIENDS
+===================================================== */
+
+async getFriends(userId: string) {
+
+  console.log("📌 [FriendService] getFriends called");
+  console.log("👤 User ID:", userId);
+
+  const relations = await Friend.find({
+    status: "accepted",
+    $or: [
+      { requester: userId },
+      { recipient: userId }
+    ]
+  })
+    .populate("requester recipient", "username avatar isOnline lastSeen");
+
+  console.log("📦 Relations found:", relations);
+
+  const friends = relations.map((relation: any) => {
+    return relation.requester._id.toString() === userId
+      ? relation.recipient
+      : relation.requester;
+  });
+
+  console.log("👥 Final friends list:", friends);
+
+  return friends;
+}
+
+/* =====================================================
+   UNBLOCK USER
+===================================================== */
+
+async unblock(userId: string, targetId: string) {
+
+  console.log("📌 [FriendService] unblock called");
+  console.log("👤 User:", userId);
+  console.log("🎯 Target:", targetId);
+
+  await User.findByIdAndUpdate(userId, {
+    $pull: { blockedUsers: targetId }
+  });
+
+  console.log("✅ User removed from blockedUsers");
+
+  return { success: true };
+}
+
+/* =====================================================
+   BLOCK USER
+===================================================== */
+
+async block(userId: string, targetId: string) {
+
+  console.log("📌 [FriendService] block called");
+  console.log("👤 Blocker:", userId);
+  console.log("🎯 Target:", targetId);
+
+  if (userId === targetId)
+    throw new Error("Cannot block yourself");
+
+  // إضافة المستخدم إلى blockedUsers
+  await User.findByIdAndUpdate(userId, {
+    $addToSet: { blockedUsers: targetId }
+  });
+
+  console.log("🚫 User added to blockedUsers");
+
+  // حذف أي علاقة صداقة موجودة
+  await Friend.deleteMany({
+    $or: [
+      { requester: userId, recipient: targetId },
+      { requester: targetId, recipient: userId }
+    ]
+  });
+
+  console.log("🗑 Any existing friendship removed");
+
+  return { success: true };
+}
+
+  /* =====================================================
+     REMOVE FRIEND
+  ===================================================== */
+
+  async remove(userId: string, targetId: string) {
+
+    console.log("📌 [FriendService] remove called");
+
+    const relation = await Friend.findOneAndDelete({
+      $or: [
+        { requester: userId, recipient: targetId },
+        { requester: targetId, recipient: userId }
+      ],
+      status: "accepted"
+    });
+
+    console.log("🗑 Removed relation:", relation);
+
+    if (!relation)
+      throw new Error("Friend relation not found");
+
+    return { success: true };
+  }
 
 }
 

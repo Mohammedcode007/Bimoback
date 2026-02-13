@@ -45,33 +45,47 @@ const FriendSchema = new Schema<IFriend>(
   { timestamps: true }
 );
 
-/* ================= منع التكرار باتجاهين ================= */
+
+
+
+
+/* ======================================================
+   🔥 1) توحيد الاتجاه + منع self relation
+====================================================== */
 
 FriendSchema.pre("validate", function (this: IFriend) {
+
   if (!this.requester || !this.recipient) return;
 
-  const requesterStr = this.requester.toString();
-  const recipientStr = this.recipient.toString();
-
-  if (requesterStr > recipientStr) {
-    const temp = this.requester;
-    this.requester = this.recipient;
-    this.recipient = temp;
+  if (this.requester.equals(this.recipient)) {
+    throw new Error("Cannot create relation with yourself");
   }
 });
 
 
-/* ================= UNIQUE RELATION ================= */
+
+
+
+
+/* ======================================================
+   🔥 2) منع أي تكرار نهائيًا
+====================================================== */
 
 FriendSchema.index(
   { requester: 1, recipient: 1 },
   { unique: true }
 );
 
-/* ================= PERFORMANCE INDEXES ================= */
 
-FriendSchema.index({ recipient: 1, status: 1 });
+
+
+
+/* ======================================================
+   🔥 3) Indexes للأداء
+====================================================== */
+
 FriendSchema.index({ requester: 1, status: 1 });
+FriendSchema.index({ recipient: 1, status: 1 });
 FriendSchema.index({ status: 1 });
 
 export default mongoose.model<IFriend>("Friend", FriendSchema);

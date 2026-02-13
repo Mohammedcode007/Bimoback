@@ -8,6 +8,8 @@ import { notificationSocket } from "../sockets/notification.socket";
 import { roomsSocket } from "../sockets/rooms.socket";
 import { rateLimitSocket } from "../sockets/rateLimit.socket";
 
+import notificationGateway from "../services/notification.gateway";
+
 let io: Server;
 
 /* =====================================================
@@ -20,7 +22,9 @@ export const initSocket = (server: http.Server) => {
     cors: {
       origin: "*",
       methods: ["GET", "POST"]
-    }
+    },
+    pingTimeout: 60000,
+    pingInterval: 25000
   });
 
   /* =========================
@@ -33,31 +37,55 @@ export const initSocket = (server: http.Server) => {
      Connection Handler
   ========================= */
 
-  io.on("connection", (socket) => {
+  io.on("connection", async (socket) => {
 
-    const userId = socket.data.userId;
+    const userId: string = socket.data.userId;
 
     if (!userId) {
-      socket.disconnect();
+      socket.disconnect(true);
       return;
     }
 
     console.log(`🔌 User connected: ${userId}`);
 
-    /* Join personal room */
+    /* =========================
+       Join Personal Room
+    ========================= */
+
     socket.join(userId);
 
-    /* Attach feature modules */
+    /* =========================
+       Auto Sync Notifications
+    ========================= */
+
+    try {
+      await notificationGateway.syncUser(userId);
+    } catch (err) {
+      console.error("Notification sync error:", err);
+    }
+
+    /* =========================
+       Attach Feature Modules
+    ========================= */
+
     rateLimitSocket(socket);
     roomsSocket(socket);
     presenceSocket(io, socket);
     chatSocket(io, socket);
     notificationSocket(io, socket);
 
-    /* Disconnect */
-    socket.on("disconnect", () => {
-      console.log(`❌ User disconnected: ${userId}`);
+    /* =========================
+       Disconnect Handling
+    ========================= */
+
+    socket.on("disconnect", (reason) => {
+      console.log(`❌ User disconnected: ${userId} | Reason: ${reason}`);
     });
+
+    socket.on("error", (err) => {
+      console.error(`⚠ Socket error (${userId}):`, err);
+    });
+
   });
 
   return io;
@@ -68,8 +96,10 @@ export const initSocket = (server: http.Server) => {
 ===================================================== */
 
 export const getIO = (): Server => {
+
   if (!io) {
     throw new Error("Socket not initialized");
   }
+
   return io;
 };

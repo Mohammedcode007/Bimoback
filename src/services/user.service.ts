@@ -6,8 +6,12 @@ class UserService {
 
   async search(currentUserId: string, query: string) {
 
+    const currentObjectId = new mongoose.Types.ObjectId(currentUserId);
+
+    /* ================= FIND USERS ================= */
+
     const users = await User.find({
-      _id: { $ne: currentUserId },
+      _id: { $ne: currentObjectId },
       $or: [
         { username: { $regex: query, $options: "i" } },
         { atUsername: { $regex: query, $options: "i" } }
@@ -16,36 +20,79 @@ class UserService {
 
     const userIds = users.map(u => u._id);
 
+    /* ================= FIND RELATIONS ================= */
+
     const relations = await Friend.find({
       $or: [
-        { requester: currentUserId, recipient: { $in: userIds } },
-        { recipient: currentUserId, requester: { $in: userIds } }
+        { requester: currentObjectId, recipient: { $in: userIds } },
+        { recipient: currentObjectId, requester: { $in: userIds } }
       ]
     });
 
-    const currentUser = await User.findById(currentUserId);
+    const currentUser = await User.findById(currentObjectId);
 
-    const map = new Map();
+    /* ================= MAP RELATIONS ================= */
 
-    relations.forEach(r => {
-      const id =
-        r.requester.toString() === currentUserId
-          ? r.recipient.toString()
-          : r.requester.toString();
+    const relationMap = new Map<string, any>();
 
-      map.set(id, r);
+    relations.forEach(relation => {
+
+      const otherUserId =
+        relation.requester.toString() === currentUserId
+          ? relation.recipient.toString()
+          : relation.requester.toString();
+
+      relationMap.set(otherUserId, relation);
     });
+
+    /* ================= BUILD RESPONSE ================= */
 
     return users.map(user => {
 
-      let status = "none";
+      let status:
+        | "none"
+        | "pending_sent"
+        | "pending_received"
+        | "accepted"
+        | "blocked_by_me"
+        | "blocked_me" = "none";
 
-      if (currentUser?.blockedUsers.includes(user._id))
+      /* ===== BLOCK CHECK ===== */
+
+      if (currentUser?.blockedUsers.some(id => id.equals(user._id))) {
         status = "blocked_by_me";
-      else if (user.blockedUsers.includes(new mongoose.Types.ObjectId(currentUserId)))
+      }
+
+      else if (user.blockedUsers.some(id => id.equals(currentObjectId))) {
         status = "blocked_me";
-      else if (map.get(user._id.toString()))
-        status = map.get(user._id.toString()).status;
+      }
+
+      /* ===== RELATION CHECK ===== */
+
+      const relation = relationMap.get(user._id.toString());
+
+      if (relation) {
+
+        if (relation.status === "accepted") {
+          status = "accepted";
+        }
+
+        else if (relation.status === "pending") {
+
+          if (relation.requester.toString() === currentUserId)
+            status = "pending_sent";
+          else
+            status = "pending_received";
+        }
+
+        else if (relation.status === "blocked") {
+
+          if (relation.blockedBy?.toString() === currentUserId)
+            status = "blocked_by_me";
+          else
+            status = "blocked_me";
+        }
+      }
 
       return {
         _id: user._id,

@@ -5,7 +5,6 @@ import {
   getUserProfile,
   getFriends,
   getUnreadNotificationCount,
-  updateProfile,
   blockUser,
   unblockUser
 } from "../controllers/user.controller";
@@ -17,7 +16,6 @@ router.get("/profile/:userId", protect, getUserProfile);
 router.get("/friends", protect, getFriends);
 router.get("/notifications/unread-count", protect, getUnreadNotificationCount);
 
-router.put("/profile", protect, updateProfile);
 router.post("/block", protect, blockUser);
 router.post("/unblock", protect, unblockUser);
 
