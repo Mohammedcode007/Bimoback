@@ -1,4 +1,4 @@
-// Tweet.ts
+// models/Tweet.ts
 import mongoose, { Schema, Document, Types } from "mongoose";
 
 export type ReplyPermission =
@@ -8,7 +8,6 @@ export type ReplyPermission =
 
 export interface ITweet extends Document {
   author: Types.ObjectId;
-
   content?: string;
 
   media: {
@@ -20,24 +19,19 @@ export interface ITweet extends Document {
   hashtags: string[];
   mentions: Types.ObjectId[];
 
-  likes: Types.ObjectId[];
-  retweets: Types.ObjectId[];
-  bookmarks: Types.ObjectId[];
-
   repliesCount: number;
   retweetsCount: number;
   likesCount: number;
   viewsCount: number;
 
-  parentTweet?: Types.ObjectId; // Reply
-  quoteTweet?: Types.ObjectId;  // Quote
+  parentTweet?: Types.ObjectId;
+  quoteTweet?: Types.ObjectId;
 
   poll?: {
     question: string;
     options: {
       text: string;
       votes: number;
-      voters: Types.ObjectId[];
     }[];
     expiresAt: Date;
   };
@@ -77,86 +71,27 @@ const TweetSchema = new Schema<ITweet>(
       }
     ],
 
-    hashtags: [
-      {
-        type: String,
-        index: true
-      }
-    ],
+hashtags: [
+  {
+    type: String
+  }
+],
+    mentions: [{ type: Schema.Types.ObjectId, ref: "User" }],
 
-    mentions: [
-      {
-        type: Schema.Types.ObjectId,
-        ref: "User"
-      }
-    ],
+    repliesCount: { type: Number, default: 0 },
+    retweetsCount: { type: Number, default: 0 },
+    likesCount: { type: Number, default: 0 },
+    viewsCount: { type: Number, default: 0 },
 
-    likes: [
-      {
-        type: Schema.Types.ObjectId,
-        ref: "User"
-      }
-    ],
-
-    retweets: [
-      {
-        type: Schema.Types.ObjectId,
-        ref: "User"
-      }
-    ],
-
-    bookmarks: [
-      {
-        type: Schema.Types.ObjectId,
-        ref: "User"
-      }
-    ],
-
-    repliesCount: {
-      type: Number,
-      default: 0
-    },
-
-    retweetsCount: {
-      type: Number,
-      default: 0
-    },
-
-    likesCount: {
-      type: Number,
-      default: 0
-    },
-
-    viewsCount: {
-      type: Number,
-      default: 0
-    },
-
-    parentTweet: {
-      type: Schema.Types.ObjectId,
-      ref: "Tweet"
-    },
-
-    quoteTweet: {
-      type: Schema.Types.ObjectId,
-      ref: "Tweet"
-    },
+    parentTweet: { type: Schema.Types.ObjectId, ref: "Tweet" },
+    quoteTweet: { type: Schema.Types.ObjectId, ref: "Tweet" },
 
     poll: {
       question: String,
       options: [
         {
           text: String,
-          votes: {
-            type: Number,
-            default: 0
-          },
-          voters: [
-            {
-              type: Schema.Types.ObjectId,
-              ref: "User"
-            }
-          ]
+          votes: { type: Number, default: 0 }
         }
       ],
       expiresAt: Date
@@ -168,33 +103,15 @@ const TweetSchema = new Schema<ITweet>(
       default: "everyone"
     },
 
-    pinned: {
-      type: Boolean,
-      default: false
-    },
-
-    edited: {
-      type: Boolean,
-      default: false
-    },
-
-    deleted: {
-      type: Boolean,
-      default: false
-    }
+    pinned: { type: Boolean, default: false },
+    edited: { type: Boolean, default: false },
+    deleted: { type: Boolean, default: false }
   },
-  {
-    timestamps: true
-  }
+  { timestamps: true }
 );
-
-/* =========================
-   Performance Indexes
-========================= */
 
 TweetSchema.index({ author: 1, createdAt: -1 });
 TweetSchema.index({ hashtags: 1 });
 TweetSchema.index({ parentTweet: 1 });
-TweetSchema.index({ quoteTweet: 1 });
 
 export default mongoose.model<ITweet>("Tweet", TweetSchema);

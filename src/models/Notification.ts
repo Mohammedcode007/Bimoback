@@ -10,6 +10,8 @@ export type NotificationType =
   | "tweet_retweet"
   | "room_invite"
   | "badge_awarded"
+  | "follow"          // 🔥 أضف هذا
+
   | "system";
 
 export interface INotification extends Document {
@@ -63,6 +65,8 @@ const NotificationSchema = new Schema<INotification>(
         "tweet_retweet",
         "room_invite",
         "badge_awarded",
+        "follow",
+
         "system"
       ],
       required: true

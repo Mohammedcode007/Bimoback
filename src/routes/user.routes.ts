@@ -6,7 +6,8 @@ import {
   getFriends,
   getUnreadNotificationCount,
   blockUser,
-  unblockUser
+  unblockUser,
+  updateProfile
 } from "../controllers/user.controller";
 
 const router = Router();
@@ -18,5 +19,6 @@ router.get("/notifications/unread-count", protect, getUnreadNotificationCount);
 
 router.post("/block", protect, blockUser);
 router.post("/unblock", protect, unblockUser);
+router.patch("/update", protect, updateProfile);
 
 export default router;
