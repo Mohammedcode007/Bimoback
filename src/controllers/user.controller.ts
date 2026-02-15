@@ -312,3 +312,54 @@ export const updateProfile = async (req: Request, res: Response) => {
   }
 };
 
+
+/* ======================================================
+   GET BLOCKED USERS
+====================================================== */
+
+export const getBlockedUsers = async (req: Request, res: Response) => {
+  try {
+    const user = await User.findById(req.user.id)
+      .populate("blockedUsers", "username atUsername avatar");
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json(user.blockedUsers);
+
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch blocked users" });
+  }
+};
+
+/* ======================================================
+   UPDATE ONLINE STATUS
+====================================================== */
+
+export const updateOnlineStatus = async (req: Request, res: Response) => {
+  try {
+
+    const userId = req.user.id;
+    const { status } = req.body; // "online" | "offline"
+
+    if (!["online", "offline"].includes(status)) {
+      return res.status(400).json({ message: "Invalid status" });
+    }
+
+    const updateData: any = {
+      isOnline: status === "online"
+    };
+
+    if (status === "offline") {
+      updateData.lastSeen = new Date();
+    }
+
+    await User.findByIdAndUpdate(userId, updateData);
+
+    res.json({ success: true });
+
+  } catch (error) {
+    res.status(500).json({ message: "Failed to update status" });
+  }
+};
