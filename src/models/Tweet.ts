@@ -10,11 +10,13 @@ export interface ITweet extends Document {
   author: Types.ObjectId;
   content?: string;
 
-  media: {
-    url: string;
-    publicId?: string;
-    type: "image" | "video";
-  }[];
+media: [
+  {
+    url: { type: String, required: true },
+    type: { type: String, enum: ["image", "video"], required: true }
+  }
+],
+
 
   hashtags: string[];
   mentions: Types.ObjectId[];

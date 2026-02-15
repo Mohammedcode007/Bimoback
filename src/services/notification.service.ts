@@ -46,7 +46,8 @@ class NotificationService {
     const updated = await Notification.findOneAndUpdate(
       { _id: notificationId, recipient: userId },
       { isRead: true, readAt: new Date() },
-      { new: true }
+      {returnDocument: "after"
+ }
     );
 
     console.log("✅ Updated notification:", updated);

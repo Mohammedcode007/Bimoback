@@ -158,7 +158,8 @@ export const deleteNotification = async (
         recipient: req.user.id
       },
       { isDeleted: true },
-      { new: true }
+      { returnDocument: "after"
+ }
     );
 
     if (!deleted) {

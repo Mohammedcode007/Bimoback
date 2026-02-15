@@ -199,7 +199,7 @@ const UserSchema = new Schema<IUser>(
 
     bio: {
       type: String,
-      maxlength: 250
+      maxlength: 2000
     },
 
     avatar: String,

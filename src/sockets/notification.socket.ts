@@ -26,7 +26,8 @@ export const notificationSocket = (io: Server, socket: Socket) => {
           isRead: true,
           readAt: new Date()
         },
-        { new: true }
+        { returnDocument: "after"
+ }
       );
 
       if (!notification) return;

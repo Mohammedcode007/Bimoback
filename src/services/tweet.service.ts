@@ -10,51 +10,121 @@ import notificationService from "./notification.service";
 import { extractHashtags, extractMentions } from "../utils/mention.util";
 
 class TweetService {
+private extractPublicId(url: string): string | null {
+
+  try {
+    const parts = url.split("/");
+    const file = parts[parts.length - 1];
+    return file.split(".")[0];
+  } catch {
+    return null;
+  }
+}
 
   /* ======================================================
      CREATE TWEET
   ====================================================== */
 
+  // async create(userId: string, data: any) {
+
+  //   if (!data.content && !data.media?.length) {
+  //     throw new Error("Tweet must contain text or media");
+  //   }
+
+  //   const content = data.content?.trim() || "";
+
+  //   const mentionedUsernames = extractMentions(content);
+  //   const hashtags = extractHashtags(content);
+
+  //   const mentionedUsers = await User.find({
+  //     atUsername: { $in: mentionedUsernames }
+  //   }).select("_id");
+
+  //   const tweet = await Tweet.create({
+  //     author: userId,
+  //     content,
+  //     media: data.media || [],
+  //     hashtags,
+  //     mentions: mentionedUsers.map(u => u._id),
+  //     parentTweet: data.parentTweet,
+  //     quoteTweet: data.quoteTweet,
+  //     poll: data.poll
+  //   });
+
+  //   for (const user of mentionedUsers) {
+  //     if (user._id.toString() !== userId) {
+  //       await notificationService.create({
+  //         recipient: user._id,
+  //         sender: userId,
+  //         type: "mention",
+  //         relatedTweet: tweet._id,
+  //         body: "قام بذكرك في تويتة"
+  //       });
+  //     }
+  //   }
+
+  //   return tweet;
+  // }
+
   async create(userId: string, data: any) {
 
-    if (!data.content && !data.media?.length) {
-      throw new Error("Tweet must contain text or media");
-    }
-
-    const content = data.content?.trim() || "";
-
-    const mentionedUsernames = extractMentions(content);
-    const hashtags = extractHashtags(content);
-
-    const mentionedUsers = await User.find({
-      atUsername: { $in: mentionedUsernames }
-    }).select("_id");
-
-    const tweet = await Tweet.create({
-      author: userId,
-      content,
-      media: data.media || [],
-      hashtags,
-      mentions: mentionedUsers.map(u => u._id),
-      parentTweet: data.parentTweet,
-      quoteTweet: data.quoteTweet,
-      poll: data.poll
-    });
-
-    for (const user of mentionedUsers) {
-      if (user._id.toString() !== userId) {
-        await notificationService.create({
-          recipient: user._id,
-          sender: userId,
-          type: "mention",
-          relatedTweet: tweet._id,
-          body: "قام بذكرك في تويتة"
-        });
-      }
-    }
-
-    return tweet;
+  if (!data.content && !data.media?.length) {
+    throw new Error("Tweet must contain text or media");
   }
+
+  const content = data.content?.trim() || "";
+
+  /* ================= FORMAT MEDIA ================= */
+
+  const formattedMedia = (data.media || []).map((url: string) => {
+
+    const isVideo = url.includes("/video/");
+
+    return {
+      url,
+      type: isVideo ? "video" : "image",
+      publicId: this.extractPublicId(url)
+    };
+  });
+
+  /* ================= EXTRACT TAGS ================= */
+
+  const mentionedUsernames = extractMentions(content);
+  const hashtags = extractHashtags(content);
+
+  const mentionedUsers = await User.find({
+    atUsername: { $in: mentionedUsernames }
+  }).select("_id");
+
+  /* ================= CREATE ================= */
+
+  const tweet = await Tweet.create({
+    author: userId,
+    content,
+    media: formattedMedia,
+    hashtags,
+    mentions: mentionedUsers.map(u => u._id),
+    parentTweet: data.parentTweet,
+    quoteTweet: data.quoteTweet,
+    poll: data.poll
+  });
+
+  /* ================= NOTIFICATIONS ================= */
+
+  for (const user of mentionedUsers) {
+    if (user._id.toString() !== userId) {
+      await notificationService.create({
+        recipient: user._id,
+        sender: userId,
+        type: "mention",
+        relatedTweet: tweet._id,
+        body: "قام بذكرك في تويتة"
+      });
+    }
+  }
+
+  return tweet;
+}
 
   /* ======================================================
      TOGGLE LIKE
