@@ -1,4 +1,3 @@
-// Message.ts
 import mongoose, { Schema, Document, Types } from "mongoose";
 
 export type MessageType =
@@ -7,15 +6,16 @@ export type MessageType =
   | "video"
   | "audio"
   | "file"
-  | "system";
+  | "system"
+  | "date_separator";
 
 export interface IMessage extends Document {
+
   chat: Types.ObjectId;
-  sender: Types.ObjectId;
+  sender?: Types.ObjectId;
 
   type: MessageType;
-
-  content?: string;
+  content: string;
 
   media?: {
     url: string;
@@ -23,26 +23,56 @@ export interface IMessage extends Document {
     fileName?: string;
     fileSize?: number;
     mimeType?: string;
+    thumbnail?: string;
+    duration?: number;
   };
+
+  /* ================= REPLY ================= */
 
   replyTo?: Types.ObjectId;
 
+  replySnapshot?: {
+    content?: string;
+    type?: MessageType;
+    sender?: Types.ObjectId;
+  };
+
+  /* ================= FORWARD ================= */
+
   forwardedFrom?: Types.ObjectId;
+
+  /* ================= REACTIONS ================= */
 
   reactions: {
     user: Types.ObjectId;
     emoji: string;
+    createdAt: Date;
   }[];
 
-  readBy: Types.ObjectId[];
+  /* ================= DELIVERY ================= */
+
+  deliveryStatus: {
+    deliveredTo: Types.ObjectId[];
+    seenBy: Types.ObjectId[];
+    deliveredAt?: Date;
+    seenAt?: Date;
+  };
+
+  status: "sent" | "delivered" | "seen";
+
+  /* ================= DELETE ================= */
 
   deletedForEveryone: boolean;
   deletedFor: Types.ObjectId[];
 
+  /* ================= EDIT ================= */
+
   edited: boolean;
   editedAt?: Date;
 
-  pinned: boolean;
+  /* ================= SYSTEM ================= */
+
+  isSystemMessage: boolean;
 
   createdAt: Date;
   updatedAt: Date;
@@ -60,19 +90,29 @@ const MessageSchema = new Schema<IMessage>(
     sender: {
       type: Schema.Types.ObjectId,
       ref: "User",
-      required: true,
-      index: true
+      required: function (this: IMessage) {
+        return !this.isSystemMessage;
+      }
     },
 
     type: {
       type: String,
-      enum: ["text", "image", "video", "audio", "file", "system"],
+      enum: [
+        "text",
+        "image",
+        "video",
+        "audio",
+        "file",
+        "system",
+        "date_separator"
+      ],
       default: "text"
     },
 
     content: {
       type: String,
-      trim: true
+      trim: true,
+      default: ""
     },
 
     media: {
@@ -80,39 +120,97 @@ const MessageSchema = new Schema<IMessage>(
       publicId: String,
       fileName: String,
       fileSize: Number,
-      mimeType: String
+      mimeType: String,
+      thumbnail: String,
+      duration: Number
     },
+
+    /* ================= REPLY ================= */
 
     replyTo: {
       type: Schema.Types.ObjectId,
-      ref: "Message"
+      ref: "Message",
+      index: true
     },
+
+    replySnapshot: {
+      content: String,
+      type: {
+        type: String,
+        enum: [
+          "text",
+          "image",
+          "video",
+          "audio",
+          "file",
+          "system",
+          "date_separator"
+        ]
+      },
+      sender: {
+        type: Schema.Types.ObjectId,
+        ref: "User"
+      }
+    },
+
+    /* ================= FORWARD ================= */
 
     forwardedFrom: {
       type: Schema.Types.ObjectId,
       ref: "User"
     },
 
+    /* ================= REACTIONS ================= */
+
     reactions: [
       {
         user: {
           type: Schema.Types.ObjectId,
-          ref: "User"
+          ref: "User",
+          required: true
         },
-        emoji: String
+        emoji: {
+          type: String,
+          required: true
+        },
+        createdAt: {
+          type: Date,
+          default: Date.now
+        }
       }
     ],
 
-    readBy: [
-      {
-        type: Schema.Types.ObjectId,
-        ref: "User"
-      }
-    ],
+    /* ================= DELIVERY ================= */
+
+    deliveryStatus: {
+      deliveredTo: [
+        {
+          type: Schema.Types.ObjectId,
+          ref: "User"
+        }
+      ],
+      seenBy: [
+        {
+          type: Schema.Types.ObjectId,
+          ref: "User"
+        }
+      ],
+      deliveredAt: Date,
+      seenAt: Date
+    },
+
+    status: {
+      type: String,
+      enum: ["sent", "delivered", "seen"],
+      default: "sent"
+    },
+
+    /* ================= DELETE ================= */
 
     deletedForEveryone: {
       type: Boolean,
-      default: false
+      default: false,
+      index: true
     },
 
     deletedFor: [
@@ -122,6 +220,8 @@ const MessageSchema = new Schema<IMessage>(
       }
     ],
 
+    /* ================= EDIT ================= */
+
     edited: {
       type: Boolean,
       default: false
@@ -129,22 +229,36 @@ const MessageSchema = new Schema<IMessage>(
 
     editedAt: Date,
 
-    pinned: {
+    /* ================= SYSTEM ================= */
+
+    isSystemMessage: {
       type: Boolean,
       default: false
     }
   },
-  {
-    timestamps: true
-  }
+  { timestamps: true }
 );
 
-/* =========================
-   Indexes for Performance
-========================= */
+/* ================= PERFORMANCE INDEXES ================= */
 
+/* أسرع جلب رسائل المحادثة */
 MessageSchema.index({ chat: 1, createdAt: -1 });
-MessageSchema.index({ sender: 1 });
-MessageSchema.index({ replyTo: 1 });
+
+/* تسريع الردود */
+
+/* تسريع البحث */
+MessageSchema.index({ content: "text" });
+
+/* تسريع seen */
+MessageSchema.index({
+  chat: 1,
+  "deliveryStatus.seenBy": 1
+});
+
+/* فلترة الحذف */
+MessageSchema.index({
+  chat: 1,
+  deletedForEveryone: 1
+});
 
 export default mongoose.model<IMessage>("Message", MessageSchema);

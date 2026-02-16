@@ -1,20 +1,139 @@
+// import { Server, Socket } from "socket.io";
+// import Notification from "../models/Notification";
+// import notificationGateway from "../services/notification.gateway";
+
+// export const notificationSocket = (io: Server, socket: Socket) => {
+
+//   const userId: string = socket.data.userId;
+
+//   if (!userId) return;
+
+//   /* =====================================================
+//      MARK SINGLE NOTIFICATION AS READ
+//   ===================================================== */
+
+//   socket.on("notification:read", async (notificationId: string) => {
+
+//     try {
+
+//       const notification = await Notification.findOneAndUpdate(
+//         {
+//           _id: notificationId,
+//           recipient: userId,
+//           isDeleted: false
+//         },
+//         {
+//           isRead: true,
+//           readAt: new Date()
+//         },
+//         { returnDocument: "after"
+//  }
+//       );
+
+//       if (!notification) return;
+
+//       /* 🔥 إعادة مزامنة كاملة لضمان العداد الصحيح */
+//       await notificationGateway.syncUser(userId);
+
+//     } catch (error) {
+//       console.error("Notification read error:", error);
+//     }
+
+//   });
+
+
+//   /* =====================================================
+//      MARK ALL AS READ
+//   ===================================================== */
+
+//   socket.on("notification:readAll", async () => {
+
+//     try {
+
+//       await Notification.updateMany(
+//         {
+//           recipient: userId,
+//           isRead: false,
+//           isDeleted: false
+//         },
+//         {
+//           isRead: true,
+//           readAt: new Date()
+//         }
+//       );
+
+//       await notificationGateway.syncUser(userId);
+
+//     } catch (error) {
+//       console.error("Notification readAll error:", error);
+//     }
+
+//   });
+
+
+//   /* =====================================================
+//      MANUAL SYNC
+//   ===================================================== */
+
+//   socket.on("notification:sync", async () => {
+
+//     try {
+//       await notificationGateway.syncUser(userId);
+//     } catch (error) {
+//       console.error("Notification sync error:", error);
+//     }
+
+//   });
+
+
+//   /* =====================================================
+//      SOFT DELETE NOTIFICATION
+//   ===================================================== */
+
+//   socket.on("notification:delete", async (notificationId: string) => {
+
+//     try {
+
+//       await Notification.findOneAndUpdate(
+//         {
+//           _id: notificationId,
+//           recipient: userId
+//         },
+//         {
+//           isDeleted: true
+//         }
+//       );
+
+//       await notificationGateway.syncUser(userId);
+
+//     } catch (error) {
+//       console.error("Notification delete error:", error);
+//     }
+
+//   });
+
+// };
+
 import { Server, Socket } from "socket.io";
+import mongoose from "mongoose";
 import Notification from "../models/Notification";
 import notificationGateway from "../services/notification.gateway";
 
 export const notificationSocket = (io: Server, socket: Socket) => {
 
   const userId: string = socket.data.userId;
-
   if (!userId) return;
 
   /* =====================================================
-     MARK SINGLE NOTIFICATION AS READ
+     MARK SINGLE AS READ
   ===================================================== */
 
   socket.on("notification:read", async (notificationId: string) => {
 
     try {
+
+      if (!mongoose.Types.ObjectId.isValid(notificationId))
+        return;
 
       const notification = await Notification.findOneAndUpdate(
         {
@@ -26,21 +145,25 @@ export const notificationSocket = (io: Server, socket: Socket) => {
           isRead: true,
           readAt: new Date()
         },
-        { returnDocument: "after"
- }
+        { new: true }
       );
 
       if (!notification) return;
 
-      /* 🔥 إعادة مزامنة كاملة لضمان العداد الصحيح */
-      await notificationGateway.syncUser(userId);
+      /* تحديث عداد فقط بدل مزامنة كاملة */
+      const unreadCount = await Notification.countDocuments({
+        recipient: userId,
+        isRead: false,
+        isDeleted: false
+      });
+
+      io.to(userId).emit("notification:unreadCount", unreadCount);
 
     } catch (error) {
       console.error("Notification read error:", error);
     }
 
   });
-
 
   /* =====================================================
      MARK ALL AS READ
@@ -62,7 +185,7 @@ export const notificationSocket = (io: Server, socket: Socket) => {
         }
       );
 
-      await notificationGateway.syncUser(userId);
+      io.to(userId).emit("notification:unreadCount", 0);
 
     } catch (error) {
       console.error("Notification readAll error:", error);
@@ -70,9 +193,8 @@ export const notificationSocket = (io: Server, socket: Socket) => {
 
   });
 
-
   /* =====================================================
-     MANUAL SYNC
+     MANUAL SYNC (كاملة)
   ===================================================== */
 
   socket.on("notification:sync", async () => {
@@ -85,14 +207,16 @@ export const notificationSocket = (io: Server, socket: Socket) => {
 
   });
 
-
   /* =====================================================
-     SOFT DELETE NOTIFICATION
+     SOFT DELETE
   ===================================================== */
 
   socket.on("notification:delete", async (notificationId: string) => {
 
     try {
+
+      if (!mongoose.Types.ObjectId.isValid(notificationId))
+        return;
 
       await Notification.findOneAndUpdate(
         {
@@ -104,7 +228,13 @@ export const notificationSocket = (io: Server, socket: Socket) => {
         }
       );
 
-      await notificationGateway.syncUser(userId);
+      const unreadCount = await Notification.countDocuments({
+        recipient: userId,
+        isRead: false,
+        isDeleted: false
+      });
+
+      io.to(userId).emit("notification:unreadCount", unreadCount);
 
     } catch (error) {
       console.error("Notification delete error:", error);

@@ -10,6 +10,8 @@ import friendRoutes from "./routes/friend.routes";
 import notificationRoutes from "./routes/notification.routes";
 import tweetRoutes from "./routes/tweet.routes"; // ✅ تمت الإضافة
 import followRoutes from "./routes/follow.routes";
+import chatRoutes from "./routes/chat.routes";
+import messageRoutes from "./routes/message.routes";
 
 import { errorHandler } from "./middlewares/error.middleware";
 
@@ -32,7 +34,9 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/friends", friendRoutes);
 app.use("/api/tweets", tweetRoutes); // ✅ روت التويت
-
+/* 🔥 Chat & Messages */
+app.use("/api/chats", chatRoutes);
+app.use("/api/messages", messageRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/follow", followRoutes);
 
