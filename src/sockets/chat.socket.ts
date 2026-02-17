@@ -168,43 +168,6 @@ socket.on("chat:send", async (data) => {
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 });
 
-  // socket.on("chat:send", async (data) => {
-
-  //   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  //   console.log("📤 CHAT SEND REQUEST");
-  //   console.log("👤 Sender:", userId);
-  //   console.log("💬 Chat:", data?.chatId);
-  //   console.log("📝 Content:", data?.content);
-
-  //   try {
-
-  //     if (!data?.chatId || !data?.content) {
-  //       console.log("❌ Invalid send payload");
-  //       return;
-  //     }
-
-  //     await messageService.send(
-  //       data.chatId,
-  //       userId,
-  //       data.content,
-  //       data.type,
-  //       data.media,
-  //       data.replyTo
-  //     );
-
-  //     console.log("✅ messageService.send completed");
-
-  //     const roomSize =
-  //       io.sockets.adapter.rooms.get(`chat:${data.chatId}`)?.size || 0;
-
-  //     console.log("👥 Room socket count after send:", roomSize);
-
-  //   } catch (error) {
-  //     console.error("❌ chat:send error:", error);
-  //   }
-
-  //   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  // });
 
   /* =====================================================
      SEEN
@@ -246,38 +209,85 @@ socket.on("chat:send", async (data) => {
      TYPING
   ===================================================== */
 
-  socket.on("chat:typing", async ({ chatId }) => {
+/* =====================================================
+   TYPING (PRODUCTION READY)
+===================================================== */
 
-    console.log("⌨️ TYPING EVENT");
-    console.log("👤 User:", userId);
-    console.log("💬 Chat:", chatId);
+const typingMap = new Map<string, Set<string>>();
+// key = chatId
+// value = Set of userIds typing
 
-    try {
+socket.on("chat:typing", async ({ chatId, typing }) => {
 
-      if (!mongoose.Types.ObjectId.isValid(chatId))
-        return;
+  console.log("⌨️ TYPING EVENT");
+  console.log("👤 User:", userId);
+  console.log("💬 Chat:", chatId);
+  console.log("🟢 Typing:", typing);
 
-      const chat = await Chat.findOne({
-        _id: chatId,
-        participants: userId
-      });
+  try {
 
-      if (!chat) {
-        console.log("❌ Typing denied");
+    if (!mongoose.Types.ObjectId.isValid(chatId))
+      return;
+
+    const chat = await Chat.findOne({
+      _id: chatId,
+      participants: userId
+    });
+
+    if (!chat) {
+      console.log("❌ Typing denied");
+      return;
+    }
+
+    if (!typingMap.has(chatId)) {
+      typingMap.set(chatId, new Set());
+    }
+
+    const roomTyping = typingMap.get(chatId)!;
+
+    /* ===== START TYPING ===== */
+
+    if (typing === true) {
+
+      if (roomTyping.has(userId)) {
+        // لا نعيد الإرسال إذا كان بالفعل يكتب
         return;
       }
 
+      roomTyping.add(userId);
+
       socket.to(`chat:${chatId}`).emit("chat:typing", {
         chatId,
-        userId
+        userId,
+        typing: true
       });
 
-      console.log("📡 typing emitted to room");
-
-    } catch (error) {
-      console.error("❌ chat:typing error:", error);
+      console.log("📡 typing:true emitted");
     }
-  });
+
+    /* ===== STOP TYPING ===== */
+
+    if (typing === false) {
+
+      if (!roomTyping.has(userId)) return;
+
+      roomTyping.delete(userId);
+
+      socket.to(`chat:${chatId}`).emit("chat:typing", {
+        chatId,
+        userId,
+        typing: false
+      });
+
+      console.log("📡 typing:false emitted");
+    }
+
+  } catch (error) {
+    console.error("❌ chat:typing error:", error);
+  }
+
+});
+
 
   /* =====================================================
      REACTION
@@ -349,10 +359,32 @@ socket.on("chat:send", async (data) => {
      DISCONNECT
   ===================================================== */
 
-  socket.on("disconnect", (reason) => {
-    console.log("🔴 SOCKET DISCONNECTED");
-    console.log("👤 User:", userId);
-    console.log("📌 Reason:", reason);
+socket.on("disconnect", (reason) => {
+
+  console.log("🔴 SOCKET DISCONNECTED");
+  console.log("👤 User:", userId);
+  console.log("📌 Reason:", reason);
+
+  /* ================= CLEAN TYPING ================= */
+
+  typingMap.forEach((users, chatId) => {
+
+    if (users.has(userId)) {
+
+      users.delete(userId);
+
+      socket.to(`chat:${chatId}`).emit("chat:typing", {
+        chatId,
+        userId,
+        typing: false
+      });
+
+      console.log("🧹 Cleaned typing for:", chatId);
+    }
+
   });
+
+});
+
 
 };

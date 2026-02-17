@@ -22,6 +22,7 @@ export const rateLimitSocket = (socket: Socket) => {
   socket.use((packet, next) => {
 
     const event = packet[0];
+    const payload = packet[1];
     const now = Date.now();
 
     if (!userLimits.has(userId)) {
@@ -34,28 +35,42 @@ export const rateLimitSocket = (socket: Socket) => {
       userData[event] = [];
     }
 
-    /* تنظيف timestamps القديمة لهذا الحدث فقط */
+    /* تنظيف timestamps القديمة */
     userData[event] = userData[event].filter(
       ts => now - ts < LIMITS.WINDOW
     );
 
     let maxAllowed = Infinity;
 
+    /* ================= MESSAGE LIMIT ================= */
+
     if (event === "chat:send") {
       maxAllowed = LIMITS.MESSAGE_PER_5_SEC;
     }
 
+    /* ================= TYPING LIMIT ================= */
+
     if (event === "chat:typing") {
+
+      // لا نمنع typing:false
+      if (payload?.typing === false) {
+        return next();
+      }
+
       maxAllowed = LIMITS.TYPING_PER_5_SEC;
     }
 
+    /* ================= SAFE EVENTS ================= */
+
     if (
       event === "chat:join" ||
-      event === "notification:sync" ||
-      event === "chat:seen"
+      event === "chat:seen" ||
+      event === "notification:sync"
     ) {
       return next();
     }
+
+    /* ================= CHECK LIMIT ================= */
 
     if (userData[event].length >= maxAllowed) {
 
@@ -64,7 +79,8 @@ export const rateLimitSocket = (socket: Socket) => {
       console.log("Event:", event);
       console.log("Count:", userData[event].length);
 
-      return next(new Error("Rate limit exceeded"));
+      // لا نرمي Error حتى لا ينقطع الاتصال
+      return next();
     }
 
     userData[event].push(now);
