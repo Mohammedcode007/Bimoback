@@ -1,30 +1,10 @@
-// import { Socket } from "socket.io";
-
-// const messageTimestamps = new Map<string, number>();
-
-// export const rateLimitSocket = (socket: Socket) => {
-
-//   socket.use((packet, next) => {
-//     const now = Date.now();
-//     const last = messageTimestamps.get(socket.id) || 0;
-
-//     if (now - last < 300) {
-//       return next(new Error("Too many requests"));
-//     }
-
-//     messageTimestamps.set(socket.id, now);
-//     next();
-//   });
-
-// };
-
 import { Socket } from "socket.io";
 
-type RateData = {
-  timestamps: number[];
+type EventRateData = {
+  [event: string]: number[];
 };
 
-const userLimits = new Map<string, RateData>();
+const userLimits = new Map<string, EventRateData>();
 
 /* ================= CONFIG ================= */
 
@@ -37,7 +17,6 @@ const LIMITS = {
 export const rateLimitSocket = (socket: Socket) => {
 
   const userId = socket.data.userId;
-
   if (!userId) return;
 
   socket.use((packet, next) => {
@@ -46,17 +25,19 @@ export const rateLimitSocket = (socket: Socket) => {
     const now = Date.now();
 
     if (!userLimits.has(userId)) {
-      userLimits.set(userId, { timestamps: [] });
+      userLimits.set(userId, {});
     }
 
-    const data = userLimits.get(userId)!;
+    const userData = userLimits.get(userId)!;
 
-    /* تنظيف timestamps القديمة */
-    data.timestamps = data.timestamps.filter(
+    if (!userData[event]) {
+      userData[event] = [];
+    }
+
+    /* تنظيف timestamps القديمة لهذا الحدث فقط */
+    userData[event] = userData[event].filter(
       ts => now - ts < LIMITS.WINDOW
     );
-
-    /* 🔥 تحديد الحد حسب نوع الحدث */
 
     let maxAllowed = Infinity;
 
@@ -68,27 +49,30 @@ export const rateLimitSocket = (socket: Socket) => {
       maxAllowed = LIMITS.TYPING_PER_5_SEC;
     }
 
-    /* لا نقيّد join أو sync */
     if (
       event === "chat:join" ||
-      event === "notification:sync"
+      event === "notification:sync" ||
+      event === "chat:seen"
     ) {
       return next();
     }
 
-    if (data.timestamps.length >= maxAllowed) {
+    if (userData[event].length >= maxAllowed) {
+
+      console.log("🚫 RATE LIMIT BLOCKED");
+      console.log("User:", userId);
+      console.log("Event:", event);
+      console.log("Count:", userData[event].length);
+
       return next(new Error("Rate limit exceeded"));
     }
 
-    data.timestamps.push(now);
+    userData[event].push(now);
 
     next();
   });
 
-  /* تنظيف عند disconnect */
-
   socket.on("disconnect", () => {
     userLimits.delete(userId);
   });
-
 };

@@ -1,106 +1,39 @@
+// controllers/message.controller.ts
+
 import { Request, Response } from "express";
-import mongoose from "mongoose";
 import messageService from "../services/message.service";
-import chatService from "../services/chat.service";
+import Chat from "../models/Chats";
+import mongoose from "mongoose";
 
 class MessageController {
 
-  /* ================= SEND ================= */
+  /* =====================================================
+     GET MESSAGES (Pagination)
+  ===================================================== */
 
-  async send(
-    req: Request<{}, {}, {
-      chatId: string;
-      content?: string;
-      type: string;
-      media?: any;
-      replyTo?: string;
-    }>,
-    res: Response
-  ) {
+  async list(req: Request, res: Response) {
 
     try {
 
       const userId = req.user!.id;
-      const { chatId, content, type, media, replyTo } = req.body;
+      const chatIdParam = req.params.chatId;
 
-      if (!mongoose.Types.ObjectId.isValid(chatId)) {
-        return res.status(400).json({
-          message: "Valid Chat ID required"
-        });
-      }
-
-      if (!type) {
-        return res.status(400).json({
-          message: "Message type required"
-        });
-      }
-
-      const chat = await chatService.getChatById(chatId);
-
-      if (!chat) {
-        return res.status(404).json({
-          message: "Chat not found"
-        });
-      }
-
-      const isParticipant = chat.participants.some(
-        (p: any) => p._id.toString() === userId
-      );
-
-      if (!isParticipant) {
-        return res.status(403).json({
-          message: "Access denied"
-        });
-      }
-
-      const message = await messageService.sendMessage(
-        userId,
-        chatId,
-        content || "",
-        type,
-        media,
-        replyTo
-      );
-
-      res.json(message);
-
-    } catch (error: any) {
-      res.status(400).json({ message: error.message });
-    }
-  }
-
-  /* ================= LIST ================= */
-
-  async list(
-    req: Request<{ chatId: string }, {}, {}, { page?: string }>,
-    res: Response
-  ) {
-
-    try {
-
-      const userId = req.user!.id;
-      const { chatId } = req.params;
+      const chatId =
+        Array.isArray(chatIdParam)
+          ? chatIdParam[0]
+          : chatIdParam;
       const page = Number(req.query.page) || 1;
 
       if (!mongoose.Types.ObjectId.isValid(chatId)) {
-        return res.status(400).json({
-          message: "Valid Chat ID required"
-        });
+        return res.status(400).json({ message: "Invalid chat id" });
       }
 
-      const chat = await chatService.getChatById(chatId);
+      const chat = await Chat.findOne({
+        _id: chatId,
+        participants: userId
+      });
 
       if (!chat) {
-        return res.status(404).json({
-          message: "Chat not found"
-        });
-      }
-
-      const isParticipant = chat.participants.some(
-        (p: any) => p._id.toString() === userId
-      );
-
-      if (!isParticipant) {
         return res.status(403).json({
           message: "Access denied"
         });
@@ -112,133 +45,79 @@ class MessageController {
         page
       );
 
-      res.json(messages);
+      return res.json(messages);
 
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+
+      console.error("Message list error:", error);
+
+      return res.status(400).json({
+        message: error.message || "Failed to fetch messages"
+      });
     }
   }
 
-  /* ================= SEARCH ================= */
+  /* =====================================================
+     SEARCH INSIDE CHAT
+  ===================================================== */
 
-  async search(
-    req: Request<{ chatId: string }, {}, {}, { q?: string }>,
-    res: Response
-  ) {
+  async search(req: Request, res: Response) {
 
     try {
 
       const userId = req.user!.id;
-      const { chatId } = req.params;
-      const query = req.query.q;
+      const chatIdParam = req.params.chatId;
+
+      const chatId =
+        Array.isArray(chatIdParam)
+          ? chatIdParam[0]
+          : chatIdParam;
+      const { q } = req.query;
 
       if (!mongoose.Types.ObjectId.isValid(chatId)) {
-        return res.status(400).json({
-          message: "Valid Chat ID required"
-        });
+        return res.status(400).json({ message: "Invalid chat id" });
       }
 
-      if (!query) {
+      if (!q || String(q).trim().length < 1) {
         return res.status(400).json({
           message: "Search query required"
         });
       }
 
-      const chat = await chatService.getChatById(chatId);
+      const chat = await Chat.findOne({
+        _id: chatId,
+        participants: userId
+      });
 
       if (!chat) {
-        return res.status(404).json({
-          message: "Chat not found"
-        });
-      }
-
-      const isParticipant = chat.participants.some(
-        (p: any) => p._id.toString() === userId
-      );
-
-      if (!isParticipant) {
         return res.status(403).json({
           message: "Access denied"
         });
       }
 
-      const results = await messageService.searchMessages(
+      const results = await messageService.search(
         chatId,
         userId,
-        query
+        String(q)
       );
 
-      res.json(results);
+      return res.json(results);
 
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+
+      console.error("Message search error:", error);
+
+      return res.status(400).json({
+        message: error.message || "Search failed"
+      });
     }
   }
 
-  /* ================= MARK AS SEEN ================= */
+  /* =====================================================
+     DELETE MESSAGE
+  ===================================================== */
 
-  async markAsSeen(
-    req: Request<{}, {}, { chatId: string }>,
-    res: Response
-  ) {
-
-    try {
-
-      const userId = req.user!.id;
-      const { chatId } = req.body;
-
-      if (!mongoose.Types.ObjectId.isValid(chatId)) {
-        return res.status(400).json({
-          message: "Valid Chat ID required"
-        });
-      }
-
-      await messageService.markAsSeen(userId, chatId);
-
-      res.json({ success: true });
-
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  }
-
-  /* ================= REACTION ================= */
-
-  async toggleReaction(
-    req: Request<{}, {}, { messageId: string; emoji: string }>,
-    res: Response
-  ) {
-
-    try {
-
-      const userId = req.user!.id;
-      const { messageId, emoji } = req.body;
-
-      if (!mongoose.Types.ObjectId.isValid(messageId)) {
-        return res.status(400).json({
-          message: "Valid Message ID required"
-        });
-      }
-
-      const reactions = await messageService.toggleReaction(
-        userId,
-        messageId,
-        emoji
-      );
-
-      res.json({ reactions });
-
-    } catch (error: any) {
-      res.status(400).json({ message: error.message });
-    }
-  }
-
-  /* ================= DELETE ================= */
-
-  async delete(
-    req: Request<{}, {}, { messageId: string; type: "me" | "everyone" }>,
-    res: Response
-  ) {
+  async delete(req: Request, res: Response) {
 
     try {
 
@@ -247,53 +126,39 @@ class MessageController {
 
       if (!mongoose.Types.ObjectId.isValid(messageId)) {
         return res.status(400).json({
-          message: "Valid Message ID required"
+          message: "Invalid message id"
+        });
+      }
+
+      if (!["me", "everyone"].includes(type)) {
+        return res.status(400).json({
+          message: "Invalid delete type"
         });
       }
 
       if (type === "me") {
-        await messageService.deleteForMe(userId, messageId);
+        await messageService.deleteForMe(
+          messageId,
+          userId
+        );
       }
 
       if (type === "everyone") {
-        await messageService.deleteForEveryone(userId, messageId);
+        await messageService.deleteForEveryone(
+          messageId,
+          userId
+        );
       }
 
-      res.json({ success: true });
+      return res.json({ success: true });
 
     } catch (error: any) {
-      res.status(400).json({ message: error.message });
-    }
-  }
 
-  /* ================= EDIT ================= */
+      console.error("Message delete error:", error);
 
-  async edit(
-    req: Request<{}, {}, { messageId: string; content: string }>,
-    res: Response
-  ) {
-
-    try {
-
-      const userId = req.user!.id;
-      const { messageId, content } = req.body;
-
-      if (!mongoose.Types.ObjectId.isValid(messageId)) {
-        return res.status(400).json({
-          message: "Valid Message ID required"
-        });
-      }
-
-      const message = await messageService.editMessage(
-        userId,
-        messageId,
-        content
-      );
-
-      res.json(message);
-
-    } catch (error: any) {
-      res.status(400).json({ message: error.message });
+      return res.status(400).json({
+        message: error.message || "Delete failed"
+      });
     }
   }
 

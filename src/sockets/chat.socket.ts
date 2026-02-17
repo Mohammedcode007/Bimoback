@@ -1,238 +1,358 @@
 import { Server, Socket } from "socket.io";
+import Chat from "../models/Chats";
 import messageService from "../services/message.service";
+import { checkRelationship } from "../utils/relationship";
 import mongoose from "mongoose";
-import { activeChats, onlineUsers } from "./socketState";
-
-/* ================= SMART TYPING ================= */
-
-const typingUsers = new Map<string, NodeJS.Timeout>();
-const typingThrottle = new Map<string, number>();
-
-/* ================= RATE LIMIT ================= */
-
-const messageLimiter = new Map<string, number[]>();
-
-function checkRateLimit(userId: string) {
-
-  const now = Date.now();
-  const windowMs = 10000;
-  const limit = 25;
-
-  const timestamps = messageLimiter.get(userId) || [];
-  const recent = timestamps.filter(ts => now - ts < windowMs);
-
-  if (recent.length >= limit) {
-    throw new Error("Too many messages");
-  }
-
-  recent.push(now);
-  messageLimiter.set(userId, recent);
-}
-
-/* ================= SOCKET ================= */
 
 export const chatSocket = (io: Server, socket: Socket) => {
 
   const userId: string = socket.data.userId;
-  const avatar = socket.data.avatar;
 
-  if (!userId) return;
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("🟢 SOCKET CONNECTED");
+  console.log("🔌 Socket ID:", socket.id);
+  console.log("👤 User ID:", userId);
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
-  console.log("🟢 CONNECTED:", userId);
+  if (!userId) {
+    console.log("❌ No userId in socket.data");
+    return;
+  }
 
-  /* 🔥 personal room */
-  socket.join(userId);
+  /* =====================================================
+     IMPORTANT: PERSONAL ROOM
+  ===================================================== */
 
-  /* 🔥 presence */
-  onlineUsers.add(userId);
+  socket.join(userId); // 🔥 مهم جدا للإشعارات
+  console.log("🏠 Joined personal room:", userId);
 
-  io.emit("presence:update", {
-    userId,
-    isOnline: true
-  });
+  /* =====================================================
+     JOIN CHAT ROOM
+  ===================================================== */
 
-  /* ================= JOIN CHAT ================= */
+  socket.on("chat:join", async ({ chatId }) => {
 
-  socket.on("chat:join", ({ chatId }) => {
-
-    if (!mongoose.Types.ObjectId.isValid(chatId)) return;
-
-    socket.join(`chat:${chatId}`);
-
-    activeChats.set(userId, chatId);
-  });
-
-  /* ================= LEAVE CHAT ================= */
-
-  socket.on("chat:leave", ({ chatId }) => {
-
-    socket.leave(`chat:${chatId}`);
-    activeChats.delete(userId);
-  });
-
-  /* ================= SEND MESSAGE ================= */
-
-  socket.on("chat:send", async (data, callback?: Function) => {
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    console.log("📥 CHAT JOIN REQUEST");
+    console.log("👤 User:", userId);
+    console.log("💬 Chat ID:", chatId);
 
     try {
 
-      checkRateLimit(userId);
-
-      if (!mongoose.Types.ObjectId.isValid(data.chatId)) {
-        throw new Error("Invalid chat ID");
+      if (!mongoose.Types.ObjectId.isValid(chatId)) {
+        console.log("❌ Invalid chat id");
+        return;
       }
 
-      const message = await messageService.sendMessage(
-        userId,
-        data.chatId,
-        data.content,
-        data.type,
-        data.media,
-        data.replyTo
+      const chat = await Chat.findOne({
+        _id: chatId,
+        participants: userId
+      });
+
+      if (!chat) {
+        console.log("❌ Chat not found or access denied");
+        return;
+      }
+
+      socket.join(`chat:${chatId}`);
+
+      const roomSize =
+        io.sockets.adapter.rooms.get(`chat:${chatId}`)?.size || 0;
+
+      console.log("✅ Joined room:", `chat:${chatId}`);
+      console.log("👥 Room socket count:", roomSize);
+
+      await messageService.markAsDelivered(
+        chatId,
+        userId
       );
 
-      /* broadcast message */
-socket.to(`chat:${data.chatId}`).emit("chat:new", message);
+      console.log("📬 markAsDelivered executed");
 
-      /* optimistic ACK */
-      if (callback) {
-        callback({
-          status: "sent",
-          realId: message._id
-        });
-      }
-
-    } catch (error: any) {
-
-      if (callback) {
-        callback({ error: error.message });
-      }
-    }
-  });
-
-  /* ================= REACTION ================= */
-
-  socket.on("chat:reaction", async ({ messageId, emoji }) => {
-
-    if (!mongoose.Types.ObjectId.isValid(messageId)) return;
-
-    await messageService.toggleReaction(
-      userId,
-      messageId,
-      emoji
-    );
-  });
-
-  /* ================= DELETE ================= */
-
-  socket.on("chat:delete", async ({ messageId, type }) => {
-
-    if (!mongoose.Types.ObjectId.isValid(messageId)) return;
-
-    if (type === "me") {
-      await messageService.deleteForMe(userId, messageId);
+    } catch (error) {
+      console.error("❌ chat:join error:", error);
     }
 
-    if (type === "everyone") {
-      await messageService.deleteForEveryone(userId, messageId);
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  });
+
+/* =====================================================
+   SEND MESSAGE
+===================================================== */
+
+socket.on("chat:send", async (data) => {
+
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("📤 CHAT SEND REQUEST");
+  console.log("👤 Sender:", userId);
+  console.log("💬 Chat:", data?.chatId);
+  console.log("📝 Content:", data?.content);
+  console.log("🆔 ClientTempId:", data?.clientTempId);
+
+  try {
+
+    const {
+      chatId,
+      content,
+      type,
+      media,
+      replyTo,
+      clientTempId
+    } = data;
+
+    if (!chatId || !content) {
+      console.log("❌ Invalid send payload");
+      return;
     }
-  });
 
-  /* ================= EDIT ================= */
+    if (!mongoose.Types.ObjectId.isValid(chatId)) {
+      console.log("❌ Invalid chat id");
+      return;
+    }
 
-  socket.on("chat:edit", async ({ messageId, content }) => {
+    /* ==========================================
+       1) تأكد أن المستخدم مشارك في الشات
+    ========================================== */
 
-    if (!mongoose.Types.ObjectId.isValid(messageId)) return;
+    const chat = await Chat.findOne({
+      _id: chatId,
+      participants: userId
+    });
 
-    await messageService.editMessage(
+    if (!chat) {
+      console.log("❌ Access denied");
+      return;
+    }
+
+    /* ==========================================
+       2) حفظ الرسالة في DB
+    ========================================== */
+
+    const message = await messageService.send(
+      chatId,
       userId,
-      messageId,
-      content
+      content,
+      type,
+      media,
+      replyTo
     );
-  });
 
-  /* ================= DELIVERED ================= */
+    console.log("✅ Message saved in DB");
 
-  socket.on("chat:delivered", async ({ messageId }) => {
+    /* ==========================================
+       3) تحويل إلى كائن عادي + إضافة clientTempId
+    ========================================== */
 
-    if (!mongoose.Types.ObjectId.isValid(messageId)) return;
+    const messageObject = {
+      ...message.toObject(),
+      clientTempId // 🔥 مهم جداً
+    };
 
-    await messageService.markAsDelivered(
-      userId,
-      messageId
+    console.log("📡 Broadcasting message with clientTempId");
+
+    /* ==========================================
+       4) بث الرسالة لكل الغرفة
+    ========================================== */
+
+    io.to(`chat:${chatId}`).emit(
+      "chat:new",
+      messageObject
     );
-  });
 
-  /* ================= SEEN ================= */
+    console.log("👥 Broadcast complete");
+
+  } catch (error) {
+    console.error("❌ chat:send error:", error);
+  }
+
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+});
+
+  // socket.on("chat:send", async (data) => {
+
+  //   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  //   console.log("📤 CHAT SEND REQUEST");
+  //   console.log("👤 Sender:", userId);
+  //   console.log("💬 Chat:", data?.chatId);
+  //   console.log("📝 Content:", data?.content);
+
+  //   try {
+
+  //     if (!data?.chatId || !data?.content) {
+  //       console.log("❌ Invalid send payload");
+  //       return;
+  //     }
+
+  //     await messageService.send(
+  //       data.chatId,
+  //       userId,
+  //       data.content,
+  //       data.type,
+  //       data.media,
+  //       data.replyTo
+  //     );
+
+  //     console.log("✅ messageService.send completed");
+
+  //     const roomSize =
+  //       io.sockets.adapter.rooms.get(`chat:${data.chatId}`)?.size || 0;
+
+  //     console.log("👥 Room socket count after send:", roomSize);
+
+  //   } catch (error) {
+  //     console.error("❌ chat:send error:", error);
+  //   }
+
+  //   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  // });
+
+  /* =====================================================
+     SEEN
+  ===================================================== */
 
   socket.on("chat:seen", async ({ chatId }) => {
 
-    if (!mongoose.Types.ObjectId.isValid(chatId)) return;
+    console.log("👁️ SEEN EVENT");
+    console.log("👤 User:", userId);
+    console.log("💬 Chat:", chatId);
 
-    await messageService.markAsSeen(userId, chatId);
+    try {
 
-    io.to(`chat:${chatId}`).emit("message:seen", {
-      userId,
-      avatar
-    });
+      if (!mongoose.Types.ObjectId.isValid(chatId)) {
+        console.log("❌ Invalid chat id");
+        return;
+      }
+
+      const chat = await Chat.findOne({
+        _id: chatId,
+        participants: userId
+      });
+
+      if (!chat) {
+        console.log("❌ Seen denied");
+        return;
+      }
+
+      await messageService.markAsSeen(chatId, userId);
+
+      console.log("✅ markAsSeen executed");
+
+    } catch (error) {
+      console.error("❌ chat:seen error:", error);
+    }
   });
 
-  /* ================= SMART TYPING ================= */
+  /* =====================================================
+     TYPING
+  ===================================================== */
 
-  socket.on("chat:typing", ({ chatId }) => {
+  socket.on("chat:typing", async ({ chatId }) => {
 
-    if (!mongoose.Types.ObjectId.isValid(chatId)) return;
+    console.log("⌨️ TYPING EVENT");
+    console.log("👤 User:", userId);
+    console.log("💬 Chat:", chatId);
 
-    const key = `${chatId}-${userId}`;
-    const now = Date.now();
+    try {
 
-    const last = typingThrottle.get(key) || 0;
-    if (now - last < 1000) return;
+      if (!mongoose.Types.ObjectId.isValid(chatId))
+        return;
 
-    typingThrottle.set(key, now);
+      const chat = await Chat.findOne({
+        _id: chatId,
+        participants: userId
+      });
 
-    socket.to(`chat:${chatId}`).emit("chat:typing", {
-      userId
-    });
+      if (!chat) {
+        console.log("❌ Typing denied");
+        return;
+      }
 
-    if (typingUsers.has(key)) {
-      clearTimeout(typingUsers.get(key)!);
-    }
-
-    const timeout = setTimeout(() => {
-
-      socket.to(`chat:${chatId}`).emit("chat:stopTyping", {
+      socket.to(`chat:${chatId}`).emit("chat:typing", {
+        chatId,
         userId
       });
 
-      typingUsers.delete(key);
+      console.log("📡 typing emitted to room");
 
-    }, 2000);
-
-    typingUsers.set(key, timeout);
+    } catch (error) {
+      console.error("❌ chat:typing error:", error);
+    }
   });
 
-  /* ================= DISCONNECT ================= */
+  /* =====================================================
+     REACTION
+  ===================================================== */
 
-  socket.on("disconnect", () => {
+  socket.on("chat:reaction", async ({ messageId, emoji }) => {
 
-    console.log("🔴 DISCONNECTED:", userId);
+    console.log("❤️ REACTION EVENT");
+    console.log("👤 User:", userId);
+    console.log("📝 Message:", messageId);
+    console.log("😀 Emoji:", emoji);
 
-    activeChats.delete(userId);
-    onlineUsers.delete(userId);
+    try {
 
-    io.emit("presence:update", {
-      userId,
-      isOnline: false
-    });
+      if (!mongoose.Types.ObjectId.isValid(messageId))
+        return;
 
-    typingUsers.forEach((timeout, key) => {
-      if (key.includes(userId)) {
-        clearTimeout(timeout);
-        typingUsers.delete(key);
+      await messageService.toggleReaction(
+        messageId,
+        userId,
+        emoji
+      );
+
+      console.log("✅ Reaction processed");
+
+    } catch (error) {
+      console.error("❌ chat:reaction error:", error);
+    }
+  });
+
+  /* =====================================================
+     DELETE MESSAGE
+  ===================================================== */
+
+  socket.on("chat:delete", async ({ messageId, type }) => {
+
+    console.log("🗑️ DELETE EVENT");
+    console.log("👤 User:", userId);
+    console.log("📝 Message:", messageId);
+    console.log("📌 Type:", type);
+
+    try {
+
+      if (!mongoose.Types.ObjectId.isValid(messageId))
+        return;
+
+      if (type === "me") {
+        await messageService.deleteForMe(
+          messageId,
+          userId
+        );
       }
-    });
 
-    messageLimiter.delete(userId);
+      if (type === "everyone") {
+        await messageService.deleteForEveryone(
+          messageId,
+          userId
+        );
+      }
+
+      console.log("✅ Delete processed");
+
+    } catch (error) {
+      console.error("❌ chat:delete error:", error);
+    }
   });
+
+  /* =====================================================
+     DISCONNECT
+  ===================================================== */
+
+  socket.on("disconnect", (reason) => {
+    console.log("🔴 SOCKET DISCONNECTED");
+    console.log("👤 User:", userId);
+    console.log("📌 Reason:", reason);
+  });
+
 };

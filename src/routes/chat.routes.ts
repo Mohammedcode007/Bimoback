@@ -1,18 +1,46 @@
+// routes/chat.routes.ts
+
 import { Router } from "express";
 import chatController from "../controllers/chat.controller";
 import { protect } from "../middlewares/auth.middleware";
 
 const router = Router();
 
-router.use(protect);
+/* =====================================================
+   STATIC ROUTES FIRST
+===================================================== */
 
-/* 🔥 مهم جدًا: المسارات الثابتة أولًا */
+router.get(
+  "/unread/total",
+  protect,
+  chatController.totalUnread
+);
+router.post(
+  "/:chatId/seen",
+  protect,
+  chatController.markAsSeen
+);
 
-router.post("/create", chatController.create);
-router.post("/delete", chatController.deleteChat);
-router.get("/total-unread", chatController.totalUnread);
-router.get("/", chatController.list);
-router.get("/:chatId", chatController.getOne);
+/* =====================================================
+   CRUD ROUTES
+===================================================== */
 
+router.post(
+  "/",
+  protect,
+  chatController.create
+);
+
+router.get(
+  "/",
+  protect,
+  chatController.list
+);
+
+router.delete(
+  "/:chatId",
+  protect,
+  chatController.delete
+);
 
 export default router;
