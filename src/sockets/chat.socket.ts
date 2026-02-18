@@ -134,7 +134,9 @@ socket.on("chat:send", async (data) => {
       content,
       type,
       media,
-      replyTo
+      replyTo,
+        clientTempId   // 🔥 أضف هذا
+
     );
 
     console.log("✅ Message saved in DB");

@@ -242,6 +242,33 @@ console.log("🔥 After create recipient:", relation.recipient.toString());
    GET FRIENDS
 ===================================================== */
 
+// async getFriends(userId: string) {
+
+//   console.log("📌 [FriendService] getFriends called");
+//   console.log("👤 User ID:", userId);
+
+//   const relations = await Friend.find({
+//     status: "accepted",
+//     $or: [
+//       { requester: userId },
+//       { recipient: userId }
+//     ]
+//   })
+//     .populate("requester recipient", "username avatar isOnline lastSeen");
+
+//   console.log("📦 Relations found:", relations);
+
+//   const friends = relations.map((relation: any) => {
+//     return relation.requester._id.toString() === userId
+//       ? relation.recipient
+//       : relation.requester;
+//   });
+
+//   console.log("👥 Final friends list:", friends);
+
+//   return friends;
+// }
+
 async getFriends(userId: string) {
 
   console.log("📌 [FriendService] getFriends called");
@@ -254,17 +281,24 @@ async getFriends(userId: string) {
       { recipient: userId }
     ]
   })
-    .populate("requester recipient", "username avatar isOnline lastSeen");
+    // 🔥 إزالة تحديد الحقول لإرجاع كل بيانات اليوزر
+    .populate("requester")
+    .populate("recipient")
+    .lean();
 
-  console.log("📦 Relations found:", relations);
+  console.log("📦 Relations found:", JSON.stringify(relations, null, 2));
 
   const friends = relations.map((relation: any) => {
-    return relation.requester._id.toString() === userId
-      ? relation.recipient
-      : relation.requester;
+
+    const friend =
+      relation.requester._id.toString() === userId
+        ? relation.recipient
+        : relation.requester;
+
+    return friend;
   });
 
-  console.log("👥 Final friends list:", friends);
+  console.log("👥 Final friends list:", JSON.stringify(friends, null, 2));
 
   return friends;
 }

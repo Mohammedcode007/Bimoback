@@ -1,6 +1,8 @@
 import Chat from "../models/Chats";
 import mongoose from "mongoose";
 import Message from "../models/Message";
+import User from "../models/User";
+import { getIO } from "../config/socket";
 
 class ChatService {
 
@@ -143,14 +145,44 @@ async markAsSeen(chatId: string, userId: string) {
 
   try {
 
+    if (!mongoose.Types.ObjectId.isValid(chatId)) {
+      return { success: false };
+    }
+
     const userObjectId = new mongoose.Types.ObjectId(userId);
     const chatObjectId = new mongoose.Types.ObjectId(chatId);
 
     /* ==========================================
-       1) Check membership
+       0) CHECK USER
     ========================================== */
 
-    console.log("🔎 Checking chat existence & membership...");
+    const user = await User.findById(userObjectId)
+      .select("isInvisible");
+
+    if (!user) {
+      console.log("❌ User not found");
+      return { success: false };
+    }
+
+    /* ==========================================
+       1) INVISIBLE MODE
+    ========================================== */
+
+    if (user.isInvisible) {
+
+      console.log("🚫 User is invisible → Skip seen update");
+
+      await Chat.updateOne(
+        { _id: chatObjectId },
+        { $set: { [`unreadCounts.${userId}`]: 0 } }
+      );
+
+      return { success: true };
+    }
+
+    /* ==========================================
+       2) CHECK MEMBERSHIP
+    ========================================== */
 
     const chat = await Chat.findOne({
       _id: chatObjectId,
@@ -158,59 +190,65 @@ async markAsSeen(chatId: string, userId: string) {
     });
 
     if (!chat) {
-      console.log("❌ Chat not found or user not participant");
+      console.log("❌ Chat not found or access denied");
       throw new Error("Access denied");
     }
 
-    console.log("✅ Chat found");
-
     /* ==========================================
-       2) Reset unread count
+       3) GET MESSAGE IDS TO UPDATE
     ========================================== */
 
-  const unreadBefore =
-  chat.unreadCounts?.[userId] ?? 0;
+    const messagesToUpdate = await Message.find({
+      chat: chatObjectId,
+      sender: { $ne: userObjectId },       // ليس رسائلي
+      deletedForEveryone: false,
+      deletedFor: { $ne: userObjectId },   // غير محذوفة لي
+      "deliveryStatus.seenBy": { $ne: userObjectId }
+    }).select("_id");
 
+    const messageIds = messagesToUpdate.map(m => m._id);
 
-    console.log("Unread before:", unreadBefore);
+    /* ==========================================
+       4) UPDATE IF NEEDED
+    ========================================== */
 
-    const resetResult = await Chat.updateOne(
+    if (messageIds.length > 0) {
+
+      await Message.updateMany(
+        { _id: { $in: messageIds } },
+        {
+          $addToSet: {
+            "deliveryStatus.seenBy": userObjectId
+          },
+          $set: {
+            status: "seen",
+            "deliveryStatus.seenAt": new Date()
+          }
+        }
+      );
+
+      const io = getIO();
+
+      io.to(`chat:${chatId}`).emit(
+        "chat:seen:update",
+        {
+          chatId,
+          userId,
+          messageIds   // 🔥 مهم جداً للفرونت
+        }
+      );
+
+      console.log("Seen messages updated:", messageIds.length);
+    }
+
+    /* ==========================================
+       5) RESET UNREAD
+    ========================================== */
+
+    await Chat.updateOne(
       { _id: chatObjectId },
-      {
-        $set: {
-          [`unreadCounts.${userId}`]: 0
-        }
-      }
+      { $set: { [`unreadCounts.${userId}`]: 0 } }
     );
-
-    console.log("Unread reset result:", resetResult.modifiedCount);
-
-    /* ==========================================
-       3) Update messages as seen
-    ========================================== */
-
-    console.log("📨 Updating messages as seen...");
-
-    const messageResult = await Message.updateMany(
-      {
-        chat: chatObjectId,
-        sender: { $ne: userObjectId },
-        deletedForEveryone: false,
-        "deliveryStatus.seenBy": { $ne: userObjectId }
-      },
-      {
-        $addToSet: {
-          "deliveryStatus.seenBy": userObjectId
-        },
-        $set: {
-          status: "seen",
-          "deliveryStatus.seenAt": new Date()
-        }
-      }
-    );
-
-    console.log("Matched messages:", messageResult.matchedCount);
-    console.log("Modified messages:", messageResult.modifiedCount);
 
     console.log("👀 [markAsSeen] SUCCESS");
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -221,12 +259,12 @@ async markAsSeen(chatId: string, userId: string) {
 
     console.log("❌ [markAsSeen] ERROR");
     console.log(error.message);
-
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
     throw error;
   }
 }
+
 
 
 

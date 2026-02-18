@@ -4,6 +4,7 @@ import Notification from "../models/Notification";
 import { checkRelationship } from "../utils/relationship";
 import { getIO } from "../config/socket";
 import mongoose from "mongoose";
+import User from "../models/User";
 
 class MessageService {
 
@@ -11,76 +12,238 @@ class MessageService {
      SEND MESSAGE
   ===================================================== */
 
- async send(
+// async send(
+//   chatId: string,
+//   senderId: string,
+//   content: string,
+//   type: string = "text",
+//   media?: any,
+//   replyTo?: string,
+//   clientTempId?: string
+// ) {
+
+//   if (!mongoose.Types.ObjectId.isValid(chatId)) {
+//     throw new Error("Invalid chat id");
+//   }
+
+//   const chat = await Chat.findById(chatId);
+//   if (!chat) throw new Error("Chat not found");
+
+//   const targetId = chat.participants.find(
+//     id => id.toString() !== senderId
+//   )?.toString();
+
+//   if (!targetId) throw new Error("Target not found");
+
+//   const relation = await checkRelationship(senderId, targetId);
+//   if (relation.blocked) {
+//     throw new Error("You cannot send message");
+//   }
+
+//   /* ================= CREATE MESSAGE ================= */
+
+//  const message = await Message.create({
+//   chat: new mongoose.Types.ObjectId(chatId),
+
+//   sender: new mongoose.Types.ObjectId(senderId),
+
+//   type,
+//   content,
+
+//   clientTempId,
+
+//   media: media || undefined,
+
+//   replyTo: replyTo
+//     ? new mongoose.Types.ObjectId(replyTo)
+//     : undefined,
+
+//   reactions: [],
+
+//   deliveryStatus: {
+//     deliveredTo: [],
+//     seenBy: [],
+//     deliveredAt: undefined,
+//     seenAt: undefined
+//   },
+
+//   status: "sent",
+
+//   deletedForEveryone: false,
+//   deletedFor: [],
+
+//   edited: false,
+
+//   isSystemMessage: false
+// });
+
+
+//   const io = getIO();
+
+//   /* ================= DELIVERY CHECK ================= */
+
+// /* ================= DELIVERY CHECK ================= */
+
+// const targetUser = await User.findById(targetId)
+//   .select("isInvisible");
+
+// const targetSockets =
+//   io.sockets.adapter.rooms.get(targetId);
+
+// const isTargetOnline =
+//   !!targetSockets && targetSockets.size > 0;
+
+// if (
+//   relation.isFriend &&
+//   isTargetOnline &&
+//   !targetUser?.isInvisible
+// ) {
+
+//   message.deliveryStatus.deliveredTo.push(
+//     new mongoose.Types.ObjectId(targetId)
+//   );
+
+//   message.status = "delivered";
+//   message.deliveryStatus.deliveredAt = new Date();
+
+//   await message.save();
+// }
+
+
+//   /* ================= UPDATE CHAT ================= */
+
+//   chat.lastMessage = message._id;
+//   chat.lastMessagePreview = content;
+//   chat.lastMessageType = type;
+//   chat.updatedAt = new Date();
+
+//   const room = io.sockets.adapter.rooms.get(`chat:${chatId}`);
+
+//   let isTargetInRoom = false;
+
+//   if (room) {
+//     for (const socketId of room) {
+//       const s = io.sockets.sockets.get(socketId);
+//       if (s?.data.userId === targetId) {
+//         isTargetInRoom = true;
+//         break;
+//       }
+//     }
+//   }
+
+//   if (!isTargetInRoom) {
+
+//     const currentUnread =
+//       chat.unreadCounts?.[targetId] || 0;
+
+//     chat.unreadCounts[targetId] = currentUnread + 1;
+//   }
+
+//   await chat.save();
+
+//   /* ================= EMIT MESSAGE ================= */
+
+//   // 🔥 إرسال مرة واحدة فقط للغرفة
+//   io.to(`chat:${chatId}`).emit("chat:new", message);
+
+//   /* ================= OFFLINE NOTIFICATION ================= */
+
+//   if (!isTargetOnline) {
+
+//     await Notification.create({
+//       recipient: targetId,
+//       sender: senderId,
+//       type: "message",
+//       body: content,
+//       relatedChat: chatId
+//     });
+
+//     const chats = await Chat.find({
+//       participants: targetId,
+//       deletedFor: { $ne: targetId }
+//     }).lean();
+
+//     let totalUnread = 0;
+
+//     chats.forEach(c => {
+//       totalUnread += c.unreadCounts?.[targetId] || 0;
+//     });
+
+//     io.to(targetId).emit(
+//       "notification:unreadTotal",
+//       totalUnread
+//     );
+//   }
+
+//   return message;
+// }
+
+
+async send(
   chatId: string,
   senderId: string,
   content: string,
   type: string = "text",
   media?: any,
-  replyTo?: string
+  replyTo?: string,
+  clientTempId?: string
 ) {
 
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log("📤 SEND MESSAGE START");
-  console.log("💬 Chat:", chatId);
-  console.log("👤 Sender:", senderId);
-  console.log("📝 Content:", content);
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-
   if (!mongoose.Types.ObjectId.isValid(chatId)) {
-    console.log("❌ Invalid chat id");
     throw new Error("Invalid chat id");
   }
 
-  const chat = await Chat.findById(chatId);
-  if (!chat) {
-    console.log("❌ Chat not found");
-    throw new Error("Chat not found");
-  }
+  const chatObjectId = new mongoose.Types.ObjectId(chatId);
+  const senderObjectId = new mongoose.Types.ObjectId(senderId);
 
-  console.log("👥 Participants:", chat.participants);
+  const chat = await Chat.findById(chatObjectId);
+  if (!chat) throw new Error("Chat not found");
 
-  const targetId = chat.participants.find(
-    id => id.toString() !== senderId
-  )?.toString();
+  const targetId = chat.participants
+    .find(id => id.toString() !== senderId)
+    ?.toString();
 
-  if (!targetId) {
-    console.log("❌ Target not found");
-    throw new Error("Target not found");
-  }
-
-  console.log("🎯 Target:", targetId);
+  if (!targetId) throw new Error("Target not found");
 
   const relation = await checkRelationship(senderId, targetId);
-
-  console.log("🤝 Relationship:", relation);
-
   if (relation.blocked) {
-    console.log("🚫 Blocked");
     throw new Error("You cannot send message");
   }
 
   /* ================= CREATE MESSAGE ================= */
 
   const message = await Message.create({
-    chat: chatId,
-    sender: senderId,
-    content,
+    chat: chatObjectId,
+    sender: senderObjectId,
     type,
-    media,
-    replyTo,
+    content,
+    clientTempId,
+    media: media || undefined,
+    replyTo: replyTo
+      ? new mongoose.Types.ObjectId(replyTo)
+      : undefined,
+    reactions: [],
     deliveryStatus: {
       deliveredTo: [],
-      seenBy: []
+      seenBy: [],
+      deliveredAt: undefined,
+      seenAt: undefined
     },
-    status: "sent"
+    status: "sent",
+    deletedForEveryone: false,
+    deletedFor: [],
+    edited: false,
+    isSystemMessage: false
   });
-
-  console.log("✅ Message Created:", message._id);
 
   const io = getIO();
 
-  /* ================= DELIVERY CHECK ================= */
+  /* =====================================================
+     CHECK TARGET STATUS
+  ===================================================== */
+
+  const targetUser = await User.findById(targetId)
+    .select("isInvisible");
 
   const targetSockets =
     io.sockets.adapter.rooms.get(targetId);
@@ -88,39 +251,17 @@ class MessageService {
   const isTargetOnline =
     !!targetSockets && targetSockets.size > 0;
 
-  console.log("🟢 Target Online:", isTargetOnline);
-  console.log("🔌 Target Socket Count:", targetSockets?.size || 0);
-
-  if (relation.isFriend && isTargetOnline) {
-
-    message.deliveryStatus.deliveredTo.push(targetId as any);
-    message.status = "delivered";
-    message.deliveryStatus.deliveredAt = new Date();
-
-    await message.save();
-
-    console.log("📬 Marked as delivered");
-  }
-
-  /* ================= UPDATE CHAT ================= */
-
-  chat.lastMessage = message._id;
-  chat.lastMessagePreview = content;
-  chat.lastMessageType = type;
-  chat.updatedAt = new Date();
+  /* =====================================================
+     CHECK IF TARGET INSIDE CHAT ROOM
+  ===================================================== */
 
   const room = io.sockets.adapter.rooms.get(`chat:${chatId}`);
-
-  console.log("🏠 Room chat:", `chat:${chatId}`);
-  console.log("👥 Room socket count:", room?.size || 0);
 
   let isTargetInRoom = false;
 
   if (room) {
     for (const socketId of room) {
       const s = io.sockets.sockets.get(socketId);
-      console.log("🔎 Checking socket:", socketId, "User:", s?.data.userId);
-
       if (s?.data.userId === targetId) {
         isTargetInRoom = true;
         break;
@@ -128,39 +269,87 @@ class MessageService {
     }
   }
 
-  console.log("👀 Is target inside same room:", isTargetInRoom);
+  /* =====================================================
+     DELIVERY / SEEN LOGIC
+  ===================================================== */
+
+  if (!targetUser?.isInvisible) {
+
+    // الحالة 1: داخل الشات → Seen فوري
+    if (isTargetInRoom) {
+
+      message.deliveryStatus.deliveredTo.push(
+        new mongoose.Types.ObjectId(targetId)
+      );
+
+      message.deliveryStatus.seenBy.push(
+        new mongoose.Types.ObjectId(targetId)
+      );
+
+      message.status = "seen";
+      message.deliveryStatus.deliveredAt = new Date();
+      message.deliveryStatus.seenAt = new Date();
+
+      await message.save();
+
+    }
+
+    // الحالة 2: Online خارج الشات → Delivered فقط
+    else if (relation.isFriend && isTargetOnline) {
+
+      message.deliveryStatus.deliveredTo.push(
+        new mongoose.Types.ObjectId(targetId)
+      );
+
+      message.status = "delivered";
+      message.deliveryStatus.deliveredAt = new Date();
+
+      await message.save();
+    }
+  }
+
+  /* =====================================================
+     UPDATE CHAT META
+  ===================================================== */
+
+  chat.lastMessage = message._id;
+  chat.lastMessagePreview = content;
+  chat.lastMessageType = type;
+  chat.updatedAt = new Date();
 
   if (!isTargetInRoom) {
-
     const currentUnread =
       chat.unreadCounts?.[targetId] || 0;
 
     chat.unreadCounts[targetId] = currentUnread + 1;
-
-    console.log("🔢 Unread incremented:", chat.unreadCounts[targetId]);
   }
 
   await chat.save();
 
-  console.log("💾 Chat updated");
+  /* =====================================================
+     EMIT EVENTS
+  ===================================================== */
 
-  /* ================= EMIT MESSAGE ================= */
+  io.to(`chat:${chatId}`).emit("chat:new", message);
 
-  console.log("📡 Emitting chat:new to room:", `chat:${chatId}`);
+  // إذا تم تسجيل seen فورًا
+  if (isTargetInRoom && !targetUser?.isInvisible) {
 
-console.log("📡 Emitting to room:", `chat:${chatId}`);
-io.to(`chat:${chatId}`).emit("chat:new", message);
+    io.to(`chat:${chatId}`).emit(
+      "chat:seen:update",
+      {
+        chatId,
+        userId: targetId,
+        messageIds: [message._id]
+      }
+    );
+  }
 
-console.log("📡 Emitting directly to target:", targetId);
-io.to(targetId).emit("chat:new", message);
-
-  console.log("✅ Emit done");
-
-  /* ================= OFFLINE NOTIFICATION ================= */
+  /* =====================================================
+     OFFLINE NOTIFICATION
+  ===================================================== */
 
   if (!isTargetOnline) {
-
-    console.log("📴 Target offline → Creating notification");
 
     await Notification.create({
       recipient: targetId,
@@ -181,99 +370,157 @@ io.to(targetId).emit("chat:new", message);
       totalUnread += c.unreadCounts?.[targetId] || 0;
     });
 
-    console.log("🔔 Total unread for target:", totalUnread);
-
     io.to(targetId).emit(
       "notification:unreadTotal",
       totalUnread
     );
   }
 
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log("📤 SEND MESSAGE END");
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-
   return message;
 }
-
 
   /* =====================================================
      MARK AS DELIVERED (ON JOIN)
   ===================================================== */
 
-  async markAsDelivered(chatId: string, userId: string) {
+async markAsDelivered(chatId: string, userId: string) {
 
-    await Message.updateMany(
-      {
-        chat: chatId,
-        sender: { $ne: userId },
-        "deliveryStatus.deliveredTo": { $ne: userId }
-      },
-      {
-        $addToSet: { "deliveryStatus.deliveredTo": userId },
-        $set: {
-          status: "delivered",
-          "deliveryStatus.deliveredAt": new Date()
-        }
+  const messagesToUpdate = await Message.find({
+    chat: chatId,
+    sender: { $ne: userId },
+    "deliveryStatus.deliveredTo": { $ne: userId }
+  }).select("_id");
+
+  if (messagesToUpdate.length === 0) return;
+
+  const messageIds = messagesToUpdate.map(m => m._id);
+
+  await Message.updateMany(
+    { _id: { $in: messageIds } },
+    {
+      $addToSet: { "deliveryStatus.deliveredTo": userId },
+      $set: {
+        status: "delivered",
+        "deliveryStatus.deliveredAt": new Date()
       }
-    );
+    }
+  );
 
-    const io = getIO();
+  const io = getIO();
 
-    io.to(`chat:${chatId}`).emit(
-      "chat:delivery:update",
-      { chatId, userId }
-    );
-  }
+  io.to(`chat:${chatId}`).emit(
+    "chat:delivery:update",
+    { chatId, userId, messageIds }
+  );
+}
+
 
   /* =====================================================
      MARK AS SEEN
   ===================================================== */
 
-  async markAsSeen(chatId: string, userId: string) {
+async markAsSeen(chatId: string, userId: string) {
 
-    const chat = await Chat.findById(chatId);
-    if (!chat) return;
+  console.log("━━━━━━━━ MARK AS SEEN START ━━━━━━━━");
 
-    const targetId = chat.participants.find(
-      id => id.toString() !== userId
-    )?.toString();
+  if (!mongoose.Types.ObjectId.isValid(chatId))
+    return;
 
-    if (!targetId) return;
+  const userObjectId = new mongoose.Types.ObjectId(userId);
+  const chatObjectId = new mongoose.Types.ObjectId(chatId);
 
-    const relation = await checkRelationship(userId, targetId);
-    if (!relation.isFriend) return;
+  /* ================= CHECK USER ================= */
 
-    await Message.updateMany(
-      {
-        chat: chatId,
-        sender: { $ne: userId },
-        "deliveryStatus.seenBy": { $ne: userId }
-      },
-      {
-        $addToSet: { "deliveryStatus.seenBy": userId },
-        $set: {
-          status: "seen",
-          "deliveryStatus.seenAt": new Date()
-        }
-      }
+  const user = await User.findById(userObjectId)
+    .select("isInvisible");
+
+  if (!user) return;
+
+  /* ================= INVISIBLE MODE ================= */
+
+  if (user.isInvisible) {
+
+    console.log("🚫 User is invisible → skip seen");
+
+    // نصفر unread فقط بدون تعديل الرسائل
+    await Chat.updateOne(
+      { _id: chatObjectId },
+      { $set: { [`unreadCounts.${userId}`]: 0 } }
     );
 
-    chat.unreadCounts[userId] = 0;
-    await chat.save();
-
-    const io = getIO();
-
-    io.to(`chat:${chatId}`).emit(
-      "chat:seen:update",
-      { chatId, userId }
-    );
-
-    io.to(userId).emit(
-      "chat:unread:update",
-      { chatId, unreadCount: 0 }
-    );
+    return;
   }
+
+  /* ================= CHECK CHAT ================= */
+
+  const chat = await Chat.findOne({
+    _id: chatObjectId,
+    participants: userObjectId
+  });
+
+  if (!chat) return;
+
+  /* ================= GET MESSAGE IDS TO UPDATE ================= */
+
+  const messagesToUpdate = await Message.find({
+    chat: chatObjectId,
+    sender: { $ne: userObjectId },
+    deletedForEveryone: false,
+    deletedFor: { $ne: userObjectId },
+    "deliveryStatus.seenBy": { $ne: userObjectId }
+  }).select("_id");
+
+  if (messagesToUpdate.length === 0) {
+
+    await Chat.updateOne(
+      { _id: chatObjectId },
+      { $set: { [`unreadCounts.${userId}`]: 0 } }
+    );
+
+    return;
+  }
+
+  const messageIds = messagesToUpdate.map(m => m._id);
+
+  /* ================= UPDATE MESSAGES ================= */
+
+  await Message.updateMany(
+    { _id: { $in: messageIds } },
+    {
+      $addToSet: {
+        "deliveryStatus.seenBy": userObjectId
+      },
+      $set: {
+        status: "seen",
+        "deliveryStatus.seenAt": new Date()
+      }
+    }
+  );
+
+  /* ================= RESET UNREAD ================= */
+
+  await Chat.updateOne(
+    { _id: chatObjectId },
+    { $set: { [`unreadCounts.${userId}`]: 0 } }
+  );
+
+  /* ================= EMIT SOCKET ================= */
+
+  const io = getIO();
+
+  io.to(`chat:${chatId}`).emit(
+    "chat:seen:update",
+    {
+      chatId,
+      userId,
+      messageIds   // 🔥 مهم جدًا
+    }
+  );
+
+  console.log("Seen messages:", messageIds.length);
+  console.log("━━━━━━━━ MARK AS SEEN END ━━━━━━━━");
+}
+
 
   /* =====================================================
      REACTIONS

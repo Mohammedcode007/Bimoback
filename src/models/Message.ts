@@ -16,6 +16,7 @@ export interface IMessage extends Document {
 
   type: MessageType;
   content: string;
+clientTempId?: string;
 
   media?: {
     url: string;
@@ -132,6 +133,10 @@ const MessageSchema = new Schema<IMessage>(
       ref: "Message",
       index: true
     },
+clientTempId: {
+  type: String,
+  index: true
+},
 
     replySnapshot: {
       content: String,
