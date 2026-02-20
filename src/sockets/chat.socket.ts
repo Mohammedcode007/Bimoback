@@ -3,6 +3,9 @@ import Chat from "../models/Chats";
 import messageService from "../services/message.service";
 import { checkRelationship } from "../utils/relationship";
 import mongoose from "mongoose";
+import { activeChats } from "./socketState";
+// key = userId
+// value = chatId المفتوح حاليًا
 
 export const chatSocket = (io: Server, socket: Socket) => {
 
@@ -29,52 +32,124 @@ export const chatSocket = (io: Server, socket: Socket) => {
   /* =====================================================
      JOIN CHAT ROOM
   ===================================================== */
+socket.on("chat:join", async ({ chatId }) => {
 
-  socket.on("chat:join", async ({ chatId }) => {
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("📥 CHAT JOIN REQUEST");
+  console.log("👤 User:", userId);
+  console.log("💬 Chat ID:", chatId);
 
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    console.log("📥 CHAT JOIN REQUEST");
-    console.log("👤 User:", userId);
-    console.log("💬 Chat ID:", chatId);
+  try {
 
-    try {
-
-      if (!mongoose.Types.ObjectId.isValid(chatId)) {
-        console.log("❌ Invalid chat id");
-        return;
-      }
-
-      const chat = await Chat.findOne({
-        _id: chatId,
-        participants: userId
-      });
-
-      if (!chat) {
-        console.log("❌ Chat not found or access denied");
-        return;
-      }
-
-      socket.join(`chat:${chatId}`);
-
-      const roomSize =
-        io.sockets.adapter.rooms.get(`chat:${chatId}`)?.size || 0;
-
-      console.log("✅ Joined room:", `chat:${chatId}`);
-      console.log("👥 Room socket count:", roomSize);
-
-      await messageService.markAsDelivered(
-        chatId,
-        userId
-      );
-
-      console.log("📬 markAsDelivered executed");
-
-    } catch (error) {
-      console.error("❌ chat:join error:", error);
+    if (!mongoose.Types.ObjectId.isValid(chatId)) {
+      console.log("❌ Invalid chat id");
+      return;
     }
 
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  });
+    const chat = await Chat.findOne({
+      _id: chatId,
+      participants: userId
+    });
+
+    if (!chat) {
+      console.log("❌ Chat not found or access denied");
+      return;
+    }
+
+    /* =========================
+       🔥 إزالة الشات النشط السابق
+    ========================= */
+
+    activeChats.delete(userId);
+
+    /* =========================
+       🔥 تسجيل الشات الحالي كنشط
+    ========================= */
+
+activeChats.set(userId, chatId.toString());
+
+    /* =========================
+       Join Room
+    ========================= */
+
+    socket.join(`chat:${chatId}`);
+
+    console.log("✅ Joined room:", `chat:${chatId}`);
+
+    /* =========================
+       Delivery Only
+    ========================= */
+
+    await messageService.markAsDelivered(
+      chatId,
+      userId
+    );
+
+    console.log("📬 markAsDelivered executed");
+
+    /* =========================
+       🔥 Seen لأن المستخدم فعلاً فتح المحادثة
+    ========================= */
+
+    await messageService.markAsSeen(
+      chatId,
+      userId
+    );
+
+    console.log("👁 markAsSeen executed");
+
+  } catch (error) {
+    console.error("❌ chat:join error:", error);
+  }
+
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+});
+
+  // socket.on("chat:join", async ({ chatId }) => {
+
+  //   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  //   console.log("📥 CHAT JOIN REQUEST");
+  //   console.log("👤 User:", userId);
+  //   console.log("💬 Chat ID:", chatId);
+
+  //   try {
+
+  //     if (!mongoose.Types.ObjectId.isValid(chatId)) {
+  //       console.log("❌ Invalid chat id");
+  //       return;
+  //     }
+
+  //     const chat = await Chat.findOne({
+  //       _id: chatId,
+  //       participants: userId
+  //     });
+
+  //     if (!chat) {
+  //       console.log("❌ Chat not found or access denied");
+  //       return;
+  //     }
+
+  //     socket.join(`chat:${chatId}`);
+
+  //     const roomSize =
+  //       io.sockets.adapter.rooms.get(`chat:${chatId}`)?.size || 0;
+
+  //     console.log("✅ Joined room:", `chat:${chatId}`);
+  //     console.log("👥 Room socket count:", roomSize);
+
+  //     await messageService.markAsDelivered(
+  //       chatId,
+  //       userId
+  //     );
+
+  //     console.log("📬 markAsDelivered executed");
+
+  //   } catch (error) {
+  //     console.error("❌ chat:join error:", error);
+  //   }
+
+  //   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  // });
 
 /* =====================================================
    SEND MESSAGE
@@ -83,11 +158,9 @@ export const chatSocket = (io: Server, socket: Socket) => {
 socket.on("chat:send", async (data) => {
 
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log("📤 CHAT SEND REQUEST");
+  console.log("📤 CHAT SEND EVENT START");
   console.log("👤 Sender:", userId);
-  console.log("💬 Chat:", data?.chatId);
-  console.log("📝 Content:", data?.content);
-  console.log("🆔 ClientTempId:", data?.clientTempId);
+  console.log("📦 Payload:", data);
 
   try {
 
@@ -100,33 +173,21 @@ socket.on("chat:send", async (data) => {
       clientTempId
     } = data;
 
+    console.log("🔎 Parsed values:");
+    console.log("ChatId:", chatId);
+    console.log("Content:", content);
+    console.log("ClientTempId:", clientTempId);
+
     if (!chatId || !content) {
-      console.log("❌ Invalid send payload");
+      console.log("❌ Invalid payload");
       return;
     }
 
-    if (!mongoose.Types.ObjectId.isValid(chatId)) {
-      console.log("❌ Invalid chat id");
-      return;
-    }
+    /* =========================
+       1️⃣ حفظ الرسالة
+    ========================= */
 
-    /* ==========================================
-       1) تأكد أن المستخدم مشارك في الشات
-    ========================================== */
-
-    const chat = await Chat.findOne({
-      _id: chatId,
-      participants: userId
-    });
-
-    if (!chat) {
-      console.log("❌ Access denied");
-      return;
-    }
-
-    /* ==========================================
-       2) حفظ الرسالة في DB
-    ========================================== */
+    console.log("💾 Saving message to DB...");
 
     const message = await messageService.send(
       chatId,
@@ -135,41 +196,77 @@ socket.on("chat:send", async (data) => {
       type,
       media,
       replyTo,
-        clientTempId   // 🔥 أضف هذا
-
+      clientTempId
     );
 
-    console.log("✅ Message saved in DB");
+    console.log("✅ Message saved");
+    console.log("🆔 Message ID:", message._id);
+    console.log("🕒 CreatedAt:", message.createdAt);
 
-    /* ==========================================
-       3) تحويل إلى كائن عادي + إضافة clientTempId
-    ========================================== */
+    /* =========================
+       2️⃣ تحويل إلى Object
+    ========================= */
 
     const messageObject = {
       ...message.toObject(),
-      clientTempId // 🔥 مهم جداً
+      clientTempId
     };
 
-    console.log("📡 Broadcasting message with clientTempId");
+    console.log("📦 Message Object Prepared:");
+    console.log("ID:", messageObject._id);
+    console.log("Chat:", messageObject.chat);
+    console.log("UpdatedAt:", messageObject.updatedAt);
 
-    /* ==========================================
-       4) بث الرسالة لكل الغرفة
-    ========================================== */
+    /* =========================
+       3️⃣ فحص الغرفة
+    ========================= */
 
-    io.to(`chat:${chatId}`).emit(
-      "chat:new",
-      messageObject
-    );
+    const roomName = `chat:${chatId}`;
 
-    console.log("👥 Broadcast complete");
+    const room = io.sockets.adapter.rooms.get(roomName);
+
+    const roomSize = room ? room.size : 0;
+
+    console.log("🏠 Room:", roomName);
+    console.log("👥 Room socket count:", roomSize);
+
+    console.log("📋 Active Chats Map:");
+    console.log(activeChats);
+
+    /* =========================
+       4️⃣ البث
+    ========================= */
+
+    console.log("📡 Broadcasting chat:new ...");
+
+    io.to(roomName).emit("chat:new", messageObject);
+
+    console.log("✅ Broadcast completed");
 
   } catch (error) {
-    console.error("❌ chat:send error:", error);
+
+    console.error("❌ chat:send ERROR");
+    console.error(error);
+
   }
 
+  console.log("📤 CHAT SEND EVENT END");
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 });
 
+socket.on("chat:leave", ({ chatId }) => {
+
+  console.log("🚪 CHAT LEAVE");
+  console.log("User:", userId);
+  console.log("Chat:", chatId);
+
+  socket.leave(`chat:${chatId}`);
+
+  if (activeChats.get(userId) === chatId) {
+    activeChats.delete(userId);
+  }
+
+});
 
   /* =====================================================
      SEEN
@@ -368,6 +465,7 @@ socket.on("disconnect", (reason) => {
   console.log("📌 Reason:", reason);
 
   /* ================= CLEAN TYPING ================= */
+  activeChats.delete(userId);
 
   typingMap.forEach((users, chatId) => {
 

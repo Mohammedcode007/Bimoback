@@ -11,51 +11,79 @@ class MessageController {
      GET MESSAGES (Pagination)
   ===================================================== */
 
-  async list(req: Request, res: Response) {
+async list(req: Request, res: Response) {
+  const startTime = Date.now();
 
-    try {
+  try {
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    console.log("📥 MESSAGE LIST API CALLED");
 
-      const userId = req.user!.id;
-      const chatIdParam = req.params.chatId;
+    const userId = req.user!.id;
+    const chatIdParam = req.params.chatId;
 
-      const chatId =
-        Array.isArray(chatIdParam)
-          ? chatIdParam[0]
-          : chatIdParam;
-      const page = Number(req.query.page) || 1;
+    const chatId =
+      Array.isArray(chatIdParam)
+        ? chatIdParam[0]
+        : chatIdParam;
 
-      if (!mongoose.Types.ObjectId.isValid(chatId)) {
-        return res.status(400).json({ message: "Invalid chat id" });
-      }
+    const page = Number(req.query.page) || 1;
 
-      const chat = await Chat.findOne({
-        _id: chatId,
-        participants: userId
-      });
+    console.log("👤 User ID:", userId);
+    console.log("💬 Chat ID:", chatId);
+    console.log("📄 Page:", page);
 
-      if (!chat) {
-        return res.status(403).json({
-          message: "Access denied"
-        });
-      }
+    if (!mongoose.Types.ObjectId.isValid(chatId)) {
+      console.log("❌ Invalid Chat ID");
+      return res.status(400).json({ message: "Invalid chat id" });
+    }
 
-      const messages = await messageService.getMessages(
-        chatId,
-        userId,
-        page
-      );
+    const chat = await Chat.findOne({
+      _id: chatId,
+      participants: userId
+    });
 
-      return res.json(messages);
-
-    } catch (error: any) {
-
-      console.error("Message list error:", error);
-
-      return res.status(400).json({
-        message: error.message || "Failed to fetch messages"
+    if (!chat) {
+      console.log("⛔ Access Denied - User not participant");
+      return res.status(403).json({
+        message: "Access denied"
       });
     }
+
+    console.log("✅ Chat found");
+
+    const messages = await messageService.getMessages(
+      chatId,
+      userId,
+      page
+    );
+
+    console.log("📦 Messages count:", messages.length);
+
+    if (messages.length > 0) {
+      console.log("🕒 First message createdAt:", messages[0].createdAt);
+      console.log(
+        "🕒 Last message createdAt:",
+        messages[messages.length - 1].createdAt
+      );
+    }
+
+    console.log(
+      "⏱ Execution time:",
+      `${Date.now() - startTime}ms`
+    );
+
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
+    return res.json(messages);
+
+  } catch (error: any) {
+    console.error("❌ Message list error:", error);
+
+    return res.status(400).json({
+      message: error.message || "Failed to fetch messages"
+    });
   }
+}
 
   /* =====================================================
      SEARCH INSIDE CHAT

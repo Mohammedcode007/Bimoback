@@ -43,11 +43,10 @@ const ChatSchema = new Schema<IChat>(
       default: "text"
     },
 
-    unreadCounts: {
-      type: Map,
-      of: Number,
-      default: {}
-    },
+ unreadCounts: {
+  type: Object,
+  default: {}
+},
 
     deletedFor: [
       {
