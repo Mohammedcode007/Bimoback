@@ -1,180 +1,198 @@
-// Room.ts
-import mongoose, { Schema, Document, Types } from "mongoose";
+import mongoose, { Schema, Document, Types, Query } from "mongoose";
+import RoomMessage from "./RoomMessage";
 
-export type RoomType = "public" | "private";
-export type MessagePermission =
-  | "everyone"
-  | "admins"
-  | "moderators";
+/* =====================================================
+   ENUMS
+===================================================== */
+
+export enum RoomType {
+  PUBLIC = "public",
+  PRIVATE = "private",
+  PROTECTED = "protected",
+  SUBSCRIPTION = "subscription"
+}
+
+export enum RoomPremiumLevel {
+  FREE = 0,
+  SILVER = 1,
+  GOLD = 2,
+  PLATINUM = 3,
+  ELITE = 4
+}
+
+/* =====================================================
+   INTERFACE
+===================================================== */
 
 export interface IRoom extends Document {
   name: string;
   description?: string;
 
-  type: RoomType;
-
   avatar?: string;
-  coverImage?: string;
+  cover?: string;
 
-  owner: Types.ObjectId;
-
+  creator: Types.ObjectId;
+  type: RoomType;
+  maxUsers: number;
+  password?: string;
+  subscriptionPrice?: number;
+  owners: Types.ObjectId[];
   admins: Types.ObjectId[];
-  moderators: Types.ObjectId[];
   members: Types.ObjectId[];
+  blockeds: Types.ObjectId[];
+activeUsers: Types.ObjectId[];
+  mutedUsers: {
+    user: Types.ObjectId;
+    until: Date;
+  }[];
 
-  pendingRequests: Types.ObjectId[];
-  bannedUsers: Types.ObjectId[];
-  mutedUsers: Types.ObjectId[];
+  vipUsers: {
+    user: Types.ObjectId;
+    expiresAt: Date;
+  }[];
 
-  pinnedMessages: Types.ObjectId[];
+  /* Voice */
+  maxVoiceSeats: number;
+  voiceQueue: Types.ObjectId[];
+  raisedHands: Types.ObjectId[];
 
-  category?: string;
+  /* Anti Spam */
+  antiSpamEnabled: boolean;
+  maxMessagesPerMinute: number;
 
-  inviteLink?: string;
-  joinApprovalRequired: boolean;
+  /* Poll */
+  activePoll?: {
+    question: string;
+    options: {
+      text: string;
+      votes: number;
+    }[];
+    expiresAt: Date;
+  };
 
-  messagePermission: MessagePermission;
+  /* Level System */
+  level: number;
+  xp: number;
 
-  membersCount: number;
+  /* Boost */
+  boostLevel: number;
+  boostExpiresAt?: Date;
+
+  /* Stats */
+  usersCount: number;
   messagesCount: number;
 
-  lastActivity?: Date;
+  /* Revenue */
+  totalRevenue: number;
 
-  isArchived: boolean;
+  premiumLevel: RoomPremiumLevel;
 
   createdAt: Date;
   updatedAt: Date;
 }
 
+/* =====================================================
+   SCHEMA
+===================================================== */
+
 const RoomSchema = new Schema<IRoom>(
   {
-    name: {
-      type: String,
-      required: true,
-      trim: true
-    },
-
-    description: {
-      type: String,
-      maxlength: 500
-    },
-
-    type: {
-      type: String,
-      enum: ["public", "private"],
-      default: "public"
-    },
+    name: { type: String, required: true },
+    description: String,
 
     avatar: String,
-    coverImage: String,
+    cover: String,
 
-    owner: {
+    creator: {
       type: Schema.Types.ObjectId,
       ref: "User",
       required: true
     },
 
-    admins: [
-      {
-        type: Schema.Types.ObjectId,
-        ref: "User"
-      }
-    ],
+    type: {
+      type: String,
+      enum: Object.values(RoomType),
+      default: RoomType.PUBLIC
+    },
 
-    moderators: [
-      {
-        type: Schema.Types.ObjectId,
-        ref: "User"
-      }
-    ],
-
-    members: [
-      {
-        type: Schema.Types.ObjectId,
-        ref: "User"
-      }
-    ],
-
-    pendingRequests: [
-      {
-        type: Schema.Types.ObjectId,
-        ref: "User"
-      }
-    ],
-
-    bannedUsers: [
-      {
-        type: Schema.Types.ObjectId,
-        ref: "User"
-      }
-    ],
+    owners: [{ type: Schema.Types.ObjectId, ref: "User" }],
+    admins: [{ type: Schema.Types.ObjectId, ref: "User" }],
+    members: [{ type: Schema.Types.ObjectId, ref: "User" }],
+    blockeds: [{ type: Schema.Types.ObjectId, ref: "User" }],
 
     mutedUsers: [
       {
-        type: Schema.Types.ObjectId,
-        ref: "User"
+        user: { type: Schema.Types.ObjectId, ref: "User" },
+        until: Date
       }
     ],
+    maxUsers: { type: Number, default: 50 },
+    password: { type: String }, // للغرف Protected
 
-    pinnedMessages: [
+    subscriptionPrice: { type: Number, default: 0 },
+    vipUsers: [
       {
-        type: Schema.Types.ObjectId,
-        ref: "Message"
+        user: { type: Schema.Types.ObjectId, ref: "User" },
+        expiresAt: Date
       }
     ],
+activeUsers: [{ type: Schema.Types.ObjectId, ref: "User" }],
+    maxVoiceSeats: { type: Number, default: 4 },
+    voiceQueue: [{ type: Schema.Types.ObjectId, ref: "User" }],
+    raisedHands: [{ type: Schema.Types.ObjectId, ref: "User" }],
 
-    category: {
-      type: String,
-      index: true
+    antiSpamEnabled: { type: Boolean, default: false },
+    maxMessagesPerMinute: { type: Number, default: 10 },
+
+    activePoll: {
+      question: String,
+      options: [
+        {
+          text: String,
+          votes: { type: Number, default: 0 }
+        }
+      ],
+      expiresAt: Date
     },
 
-    inviteLink: {
-      type: String,
-      unique: true,
-      sparse: true
-    },
+    level: { type: Number, default: 1 },
+    xp: { type: Number, default: 0 },
 
-    joinApprovalRequired: {
-      type: Boolean,
-      default: false
-    },
+    boostLevel: { type: Number, default: 0 },
+    boostExpiresAt: Date,
 
-    messagePermission: {
-      type: String,
-      enum: ["everyone", "admins", "moderators"],
-      default: "everyone"
-    },
+    usersCount: { type: Number, default: 0 },
+    messagesCount: { type: Number, default: 0 },
 
-    membersCount: {
+    totalRevenue: { type: Number, default: 0 },
+
+    premiumLevel: {
       type: Number,
-      default: 0
-    },
-
-    messagesCount: {
-      type: Number,
-      default: 0
-    },
-
-    lastActivity: Date,
-
-    isArchived: {
-      type: Boolean,
-      default: false
+      default: RoomPremiumLevel.FREE
     }
   },
-  {
-    timestamps: true
-  }
+  { timestamps: true }
 );
 
-/* =========================
-   Performance Indexes
-========================= */
+/* =====================================================
+   INDEXES
+===================================================== */
 
-RoomSchema.index({ name: 1 });
-RoomSchema.index({ type: 1 });
-RoomSchema.index({ category: 1 });
-RoomSchema.index({ membersCount: -1 });
-RoomSchema.index({ lastActivity: -1 });
+RoomSchema.index({ usersCount: -1 });
+RoomSchema.index({ level: -1 });
+RoomSchema.index({ boostLevel: -1 });
+
+/* =====================================================
+   CASCADE DELETE
+===================================================== */
+
+RoomSchema.pre(
+  "findOneAndDelete",
+  async function (this: Query<any, IRoom>) {
+    const room = await this.model.findOne(this.getFilter());
+    if (!room) return;
+    await RoomMessage.deleteMany({ room: room._id });
+  }
+);
 
 export default mongoose.model<IRoom>("Room", RoomSchema);
