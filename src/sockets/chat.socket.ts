@@ -11,14 +11,9 @@ export const chatSocket = (io: Server, socket: Socket) => {
 
   const userId: string = socket.data.userId;
 
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log("🟢 SOCKET CONNECTED");
-  console.log("🔌 Socket ID:", socket.id);
-  console.log("👤 User ID:", userId);
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
 
   if (!userId) {
-    console.log("❌ No userId in socket.data");
     return;
   }
 
@@ -27,22 +22,17 @@ export const chatSocket = (io: Server, socket: Socket) => {
   ===================================================== */
 
   socket.join(userId); // 🔥 مهم جدا للإشعارات
-  console.log("🏠 Joined personal room:", userId);
 
   /* =====================================================
      JOIN CHAT ROOM
   ===================================================== */
 socket.on("chat:join", async ({ chatId }) => {
 
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log("📥 CHAT JOIN REQUEST");
-  console.log("👤 User:", userId);
-  console.log("💬 Chat ID:", chatId);
+ 
 
   try {
 
     if (!mongoose.Types.ObjectId.isValid(chatId)) {
-      console.log("❌ Invalid chat id");
       return;
     }
 
@@ -52,7 +42,6 @@ socket.on("chat:join", async ({ chatId }) => {
     });
 
     if (!chat) {
-      console.log("❌ Chat not found or access denied");
       return;
     }
 
@@ -74,7 +63,6 @@ activeChats.set(userId, chatId.toString());
 
     socket.join(`chat:${chatId}`);
 
-    console.log("✅ Joined room:", `chat:${chatId}`);
 
     /* =========================
        Delivery Only
@@ -85,7 +73,6 @@ activeChats.set(userId, chatId.toString());
       userId
     );
 
-    console.log("📬 markAsDelivered executed");
 
     /* =========================
        🔥 Seen لأن المستخدم فعلاً فتح المحادثة
@@ -96,60 +83,14 @@ activeChats.set(userId, chatId.toString());
       userId
     );
 
-    console.log("👁 markAsSeen executed");
 
   } catch (error) {
     console.error("❌ chat:join error:", error);
   }
 
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 });
 
-  // socket.on("chat:join", async ({ chatId }) => {
 
-  //   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  //   console.log("📥 CHAT JOIN REQUEST");
-  //   console.log("👤 User:", userId);
-  //   console.log("💬 Chat ID:", chatId);
-
-  //   try {
-
-  //     if (!mongoose.Types.ObjectId.isValid(chatId)) {
-  //       console.log("❌ Invalid chat id");
-  //       return;
-  //     }
-
-  //     const chat = await Chat.findOne({
-  //       _id: chatId,
-  //       participants: userId
-  //     });
-
-  //     if (!chat) {
-  //       console.log("❌ Chat not found or access denied");
-  //       return;
-  //     }
-
-  //     socket.join(`chat:${chatId}`);
-
-  //     const roomSize =
-  //       io.sockets.adapter.rooms.get(`chat:${chatId}`)?.size || 0;
-
-  //     console.log("✅ Joined room:", `chat:${chatId}`);
-  //     console.log("👥 Room socket count:", roomSize);
-
-  //     await messageService.markAsDelivered(
-  //       chatId,
-  //       userId
-  //     );
-
-  //     console.log("📬 markAsDelivered executed");
-
-  //   } catch (error) {
-  //     console.error("❌ chat:join error:", error);
-  //   }
-
-  //   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  // });
 
 /* =====================================================
    SEND MESSAGE
@@ -157,10 +98,7 @@ activeChats.set(userId, chatId.toString());
 
 socket.on("chat:send", async (data) => {
 
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log("📤 CHAT SEND EVENT START");
-  console.log("👤 Sender:", userId);
-  console.log("📦 Payload:", data);
+  
 
   try {
 
@@ -173,13 +111,9 @@ socket.on("chat:send", async (data) => {
       clientTempId
     } = data;
 
-    console.log("🔎 Parsed values:");
-    console.log("ChatId:", chatId);
-    console.log("Content:", content);
-    console.log("ClientTempId:", clientTempId);
+   
 
     if (!chatId || !content) {
-      console.log("❌ Invalid payload");
       return;
     }
 
@@ -187,7 +121,6 @@ socket.on("chat:send", async (data) => {
        1️⃣ حفظ الرسالة
     ========================= */
 
-    console.log("💾 Saving message to DB...");
 
     const message = await messageService.send(
       chatId,
@@ -199,9 +132,7 @@ socket.on("chat:send", async (data) => {
       clientTempId
     );
 
-    console.log("✅ Message saved");
-    console.log("🆔 Message ID:", message._id);
-    console.log("🕒 CreatedAt:", message.createdAt);
+
 
     /* =========================
        2️⃣ تحويل إلى Object
@@ -212,10 +143,7 @@ socket.on("chat:send", async (data) => {
       clientTempId
     };
 
-    console.log("📦 Message Object Prepared:");
-    console.log("ID:", messageObject._id);
-    console.log("Chat:", messageObject.chat);
-    console.log("UpdatedAt:", messageObject.updatedAt);
+ 
 
     /* =========================
        3️⃣ فحص الغرفة
@@ -227,21 +155,14 @@ socket.on("chat:send", async (data) => {
 
     const roomSize = room ? room.size : 0;
 
-    console.log("🏠 Room:", roomName);
-    console.log("👥 Room socket count:", roomSize);
-
-    console.log("📋 Active Chats Map:");
-    console.log(activeChats);
 
     /* =========================
        4️⃣ البث
     ========================= */
 
-    console.log("📡 Broadcasting chat:new ...");
 
     io.to(roomName).emit("chat:new", messageObject);
 
-    console.log("✅ Broadcast completed");
 
   } catch (error) {
 
@@ -250,15 +171,12 @@ socket.on("chat:send", async (data) => {
 
   }
 
-  console.log("📤 CHAT SEND EVENT END");
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+ 
 });
 
 socket.on("chat:leave", ({ chatId }) => {
 
-  console.log("🚪 CHAT LEAVE");
-  console.log("User:", userId);
-  console.log("Chat:", chatId);
+ 
 
   socket.leave(`chat:${chatId}`);
 
@@ -274,14 +192,11 @@ socket.on("chat:leave", ({ chatId }) => {
 
   socket.on("chat:seen", async ({ chatId }) => {
 
-    console.log("👁️ SEEN EVENT");
-    console.log("👤 User:", userId);
-    console.log("💬 Chat:", chatId);
+
 
     try {
 
       if (!mongoose.Types.ObjectId.isValid(chatId)) {
-        console.log("❌ Invalid chat id");
         return;
       }
 
@@ -291,13 +206,11 @@ socket.on("chat:leave", ({ chatId }) => {
       });
 
       if (!chat) {
-        console.log("❌ Seen denied");
         return;
       }
 
       await messageService.markAsSeen(chatId, userId);
 
-      console.log("✅ markAsSeen executed");
 
     } catch (error) {
       console.error("❌ chat:seen error:", error);
@@ -318,10 +231,7 @@ const typingMap = new Map<string, Set<string>>();
 
 socket.on("chat:typing", async ({ chatId, typing }) => {
 
-  console.log("⌨️ TYPING EVENT");
-  console.log("👤 User:", userId);
-  console.log("💬 Chat:", chatId);
-  console.log("🟢 Typing:", typing);
+
 
   try {
 
@@ -334,7 +244,6 @@ socket.on("chat:typing", async ({ chatId, typing }) => {
     });
 
     if (!chat) {
-      console.log("❌ Typing denied");
       return;
     }
 
@@ -361,7 +270,6 @@ socket.on("chat:typing", async ({ chatId, typing }) => {
         typing: true
       });
 
-      console.log("📡 typing:true emitted");
     }
 
     /* ===== STOP TYPING ===== */
@@ -378,7 +286,6 @@ socket.on("chat:typing", async ({ chatId, typing }) => {
         typing: false
       });
 
-      console.log("📡 typing:false emitted");
     }
 
   } catch (error) {
@@ -394,10 +301,7 @@ socket.on("chat:typing", async ({ chatId, typing }) => {
 
   socket.on("chat:reaction", async ({ messageId, emoji }) => {
 
-    console.log("❤️ REACTION EVENT");
-    console.log("👤 User:", userId);
-    console.log("📝 Message:", messageId);
-    console.log("😀 Emoji:", emoji);
+   
 
     try {
 
@@ -410,7 +314,6 @@ socket.on("chat:typing", async ({ chatId, typing }) => {
         emoji
       );
 
-      console.log("✅ Reaction processed");
 
     } catch (error) {
       console.error("❌ chat:reaction error:", error);
@@ -423,10 +326,7 @@ socket.on("chat:typing", async ({ chatId, typing }) => {
 
   socket.on("chat:delete", async ({ messageId, type }) => {
 
-    console.log("🗑️ DELETE EVENT");
-    console.log("👤 User:", userId);
-    console.log("📝 Message:", messageId);
-    console.log("📌 Type:", type);
+   
 
     try {
 
@@ -447,7 +347,6 @@ socket.on("chat:typing", async ({ chatId, typing }) => {
         );
       }
 
-      console.log("✅ Delete processed");
 
     } catch (error) {
       console.error("❌ chat:delete error:", error);
@@ -460,9 +359,7 @@ socket.on("chat:typing", async ({ chatId, typing }) => {
 
 socket.on("disconnect", (reason) => {
 
-  console.log("🔴 SOCKET DISCONNECTED");
-  console.log("👤 User:", userId);
-  console.log("📌 Reason:", reason);
+
 
   /* ================= CLEAN TYPING ================= */
   activeChats.delete(userId);
@@ -479,7 +376,6 @@ socket.on("disconnect", (reason) => {
         typing: false
       });
 
-      console.log("🧹 Cleaned typing for:", chatId);
     }
 
   });

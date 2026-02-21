@@ -11,13 +11,10 @@ interface TweetParams {
 
 export const createTweet = async (req: Request, res: Response) => {
   try {
-    console.log("📝 CREATE TWEET");
-    console.log("User:", req.user?.id);
-    console.log("Body:", req.body);
+   
 
     const tweet = await tweetService.create(req.user!.id, req.body);
 
-    console.log("✅ Tweet created:", tweet._id);
 
     res.json(tweet);
   } catch (error: any) {
@@ -35,16 +32,13 @@ export const likeTweet = async (
   res: Response
 ) => {
   try {
-    console.log("❤️ LIKE TWEET");
-    console.log("User:", req.user?.id);
-    console.log("Tweet:", req.params.id);
+   
 
     const result = await tweetService.toggleLike(
       req.user!.id,
       req.params.id
     );
 
-    console.log("✅ Like result:", result);
 
     res.json(result);
   } catch (error: any) {
@@ -62,16 +56,13 @@ export const retweet = async (
   res: Response
 ) => {
   try {
-    console.log("🔁 RETWEET");
-    console.log("User:", req.user?.id);
-    console.log("Tweet:", req.params.id);
+  
 
     const result = await tweetService.toggleRetweet(
       req.user!.id,
       req.params.id
     );
 
-    console.log("✅ Retweet result:", result);
 
     res.json(result);
   } catch (error: any) {
@@ -89,18 +80,13 @@ export const comment = async (
   res: Response
 ) => {
   try {
-    console.log("💬 COMMENT");
-    console.log("User:", req.user?.id);
-    console.log("Tweet:", req.params.id);
-    console.log("Content:", req.body.content);
-
+   
     const result = await tweetService.comment(
       req.user!.id,
       req.params.id,
       req.body.content
     );
 
-    console.log("✅ Comment created:", result._id);
 
     res.json(result);
   } catch (error: any) {
@@ -118,16 +104,13 @@ export const bookmark = async (
   res: Response
 ) => {
   try {
-    console.log("🔖 BOOKMARK");
-    console.log("User:", req.user?.id);
-    console.log("Tweet:", req.params.id);
+   
 
     const result = await tweetService.toggleBookmark(
       req.user!.id,
       req.params.id
     );
 
-    console.log("✅ Bookmark result:", result);
 
     res.json(result);
   } catch (error: any) {
@@ -152,10 +135,7 @@ export const getForYouFeed = async (
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
 
-    console.log("🌍 FOR YOU FEED");
-    console.log("User:", req.user?.id);
-    console.log("Page:", page);
-    console.log("Limit:", limit);
+  
 
     const tweets = await tweetService.getForYouFeed(
       req.user!.id,
@@ -163,7 +143,6 @@ export const getForYouFeed = async (
       limit
     );
 
-    console.log("✅ ForYou Tweets returned:", tweets.length);
 
     res.json(tweets);
   } catch (error: any) {
@@ -185,10 +164,7 @@ export const getFollowingFeed = async (
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
 
-    console.log("👥 FOLLOWING FEED");
-    console.log("User:", req.user?.id);
-    console.log("Page:", page);
-    console.log("Limit:", limit);
+   
 
     const tweets = await tweetService.getFollowingFeed(
       req.user!.id,
@@ -196,7 +172,6 @@ export const getFollowingFeed = async (
       limit
     );
 
-    console.log("✅ Following Tweets returned:", tweets.length);
 
     res.json(tweets);
   } catch (error: any) {
@@ -238,16 +213,13 @@ export const deleteTweet = async (
   res: Response
 ) => {
   try {
-    console.log("🗑 DELETE TWEET");
-    console.log("User:", req.user?.id);
-    console.log("Tweet:", req.params.id);
+ 
 
     await tweetService.deleteTweet(
       req.user!.id,
       req.params.id
     );
 
-    console.log("✅ Tweet deleted (soft)");
 
     res.json({ success: true });
   } catch (error: any) {
@@ -268,10 +240,6 @@ export const getTweetComments = async (
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
 
-    console.log("💬 GET COMMENTS");
-    console.log("Tweet:", req.params.id);
-    console.log("Page:", page);
-    console.log("Limit:", limit);
 
     const comments = await tweetService.getTweetComments(
       req.params.id,
@@ -279,7 +247,6 @@ export const getTweetComments = async (
       limit
     );
 
-    console.log("✅ Comments returned:", comments.length);
 
     res.json(comments);
   } catch (error: any) {

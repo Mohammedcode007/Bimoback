@@ -138,10 +138,7 @@ async deleteForMe(chatId: string, userId: string) {
 
 async markAsSeen(chatId: string, userId: string) {
 
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log("👀 [markAsSeen] START");
-  console.log("ChatId:", chatId);
-  console.log("UserId:", userId);
+
 
   try {
 
@@ -160,7 +157,6 @@ async markAsSeen(chatId: string, userId: string) {
       .select("isInvisible");
 
     if (!user) {
-      console.log("❌ User not found");
       return { success: false };
     }
 
@@ -170,7 +166,6 @@ async markAsSeen(chatId: string, userId: string) {
 
     if (user.isInvisible) {
 
-      console.log("🚫 User is invisible → Skip seen update");
 
       await Chat.updateOne(
         { _id: chatObjectId },
@@ -190,7 +185,6 @@ async markAsSeen(chatId: string, userId: string) {
     });
 
     if (!chat) {
-      console.log("❌ Chat not found or access denied");
       throw new Error("Access denied");
     }
 
@@ -238,7 +232,6 @@ async markAsSeen(chatId: string, userId: string) {
         }
       );
 
-      console.log("Seen messages updated:", messageIds.length);
     }
 
     /* ==========================================
@@ -250,16 +243,12 @@ async markAsSeen(chatId: string, userId: string) {
       { $set: { [`unreadCounts.${userId}`]: 0 } }
     );
 
-    console.log("👀 [markAsSeen] SUCCESS");
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+   
 
     return { success: true };
 
   } catch (error: any) {
 
-    console.log("❌ [markAsSeen] ERROR");
-    console.log(error.message);
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
     throw error;
   }

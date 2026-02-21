@@ -15,8 +15,6 @@ async list(req: Request, res: Response) {
   const startTime = Date.now();
 
   try {
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    console.log("📥 MESSAGE LIST API CALLED");
 
     const userId = req.user!.id;
     const chatIdParam = req.params.chatId;
@@ -28,12 +26,9 @@ async list(req: Request, res: Response) {
 
     const page = Number(req.query.page) || 1;
 
-    console.log("👤 User ID:", userId);
-    console.log("💬 Chat ID:", chatId);
-    console.log("📄 Page:", page);
+  
 
     if (!mongoose.Types.ObjectId.isValid(chatId)) {
-      console.log("❌ Invalid Chat ID");
       return res.status(400).json({ message: "Invalid chat id" });
     }
 
@@ -43,13 +38,11 @@ async list(req: Request, res: Response) {
     });
 
     if (!chat) {
-      console.log("⛔ Access Denied - User not participant");
       return res.status(403).json({
         message: "Access denied"
       });
     }
 
-    console.log("✅ Chat found");
 
     const messages = await messageService.getMessages(
       chatId,
@@ -57,22 +50,12 @@ async list(req: Request, res: Response) {
       page
     );
 
-    console.log("📦 Messages count:", messages.length);
 
     if (messages.length > 0) {
-      console.log("🕒 First message createdAt:", messages[0].createdAt);
-      console.log(
-        "🕒 Last message createdAt:",
-        messages[messages.length - 1].createdAt
-      );
+
     }
 
-    console.log(
-      "⏱ Execution time:",
-      `${Date.now() - startTime}ms`
-    );
-
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+ 
 
     return res.json(messages);
 

@@ -16,7 +16,6 @@ export const getUserNotifications = async (
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    console.log("📥 Get notifications for:", req.user.id);
 
     const notifications =
       await notificationService.getUserNotifications(req.user.id);
@@ -44,7 +43,6 @@ export const getUnreadCount = async (
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    console.log("🔢 Count unread for:", req.user.id);
 
     const count = await Notification.countDocuments({
       recipient: req.user.id,
@@ -77,7 +75,6 @@ export const markAsRead = async (
 
     const notificationId = req.params.id;
 
-    console.log("📌 Mark as read:", notificationId);
 
     const updated = await notificationService.markAsRead(
       req.user.id,
@@ -111,7 +108,6 @@ export const markAllAsRead = async (
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    console.log("📌 Mark all as read");
 
     await Notification.updateMany(
       {
@@ -150,7 +146,6 @@ export const deleteNotification = async (
 
     const notificationId = req.params.id;
 
-    console.log("🗑 Delete notification:", notificationId);
 
     const deleted = await Notification.findOneAndUpdate(
       {

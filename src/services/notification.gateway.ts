@@ -9,8 +9,7 @@ class NotificationGateway {
 
   async send(userId: string, notification: any) {
 
-    console.log("🚀 [Gateway] Sending notification to:", userId);
-    console.log("📦 [Gateway] Notification payload:", notification);
+  
 
     const io = getIO();
 
@@ -22,11 +21,9 @@ class NotificationGateway {
       isDeleted: false
     });
 
-    console.log("🔢 [Gateway] Unread count:", unreadCount);
 
     io.to(userId).emit("notification:count", unreadCount);
 
-    console.log("✅ [Gateway] Notification + Count emitted");
   }
 
 
@@ -37,7 +34,6 @@ class NotificationGateway {
 
   async syncUser(userId: string) {
 
-    console.log("🔄 [Gateway] Syncing notifications for user:", userId);
 
     const io = getIO();
 
@@ -49,7 +45,6 @@ class NotificationGateway {
       .sort({ createdAt: -1 })
       .limit(20);
 
-    console.log("📦 [Gateway] Notifications from DB:", notifications);
 
     const unreadCount = await Notification.countDocuments({
       recipient: userId,
@@ -57,14 +52,12 @@ class NotificationGateway {
       isDeleted: false
     });
 
-    console.log("🔢 [Gateway] Sync unread count:", unreadCount);
 
     io.to(userId).emit("notification:sync", {
       notifications,
       unreadCount
     });
 
-    console.log("✅ [Gateway] Sync emitted successfully");
   }
 }
 

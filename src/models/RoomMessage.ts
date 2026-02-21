@@ -18,6 +18,15 @@ export type RoomMessageType =
   | "ban"
   | "gift";
 
+export type RoomRole = "creator" | "owner" | "admin" | "member";
+export type RoomSystemAction =
+  | "role:set"
+  | "role:transferCreator"
+  | "user:ban"
+  | "user:unban"
+  | "room:announcement"
+  | ""; // للتوافق
+
 /* =====================================================
    INTERFACE
 ===================================================== */
@@ -28,6 +37,26 @@ export interface IRoomMessage extends Document {
 
   type: RoomMessageType;
   content: string;
+
+  // ✅ System meta (للترقيات والأحداث)
+  action?: RoomSystemAction;
+
+  actorId?: Types.ObjectId;
+  targetId?: Types.ObjectId;
+
+  actorName?: string;
+  targetName?: string;
+
+  role?: RoomRole | ""; // في رسائل promotion/role:set
+
+  meta?: {
+    action?: RoomSystemAction;
+    actorId?: string;
+    actorName?: string;
+    targetId?: string;
+    targetName?: string;
+    role?: RoomRole | "";
+  };
 
   replyTo?: Types.ObjectId;
   mentions: Types.ObjectId[];
@@ -94,6 +123,22 @@ const ReactionSchema = new Schema(
   { _id: false }
 );
 
+// ✅ Meta schema لرسائل النظام/الترقيات
+const SystemMetaSchema = new Schema(
+  {
+    action: { type: String, default: "", trim: true },
+
+    actorId: { type: String, default: "", trim: true },
+    actorName: { type: String, default: "", trim: true },
+
+    targetId: { type: String, default: "", trim: true },
+    targetName: { type: String, default: "", trim: true },
+
+    role: { type: String, default: "", trim: true } // creator|owner|admin|member
+  },
+  { _id: false }
+);
+
 /* =====================================================
    SCHEMA
 ===================================================== */
@@ -140,6 +185,60 @@ const RoomMessageSchema = new Schema<IRoomMessage>(
       trim: true
     },
 
+    /* ============================
+       ✅ System / Promotion fields
+       (حل مشكلة ضياع actor/target/role في strict mode)
+    ============================ */
+
+    action: {
+      type: String,
+      default: "",
+      trim: true,
+      index: true
+    },
+
+    actorId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      index: true,
+      default: undefined
+    },
+
+    targetId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      index: true,
+      default: undefined
+    },
+
+    actorName: {
+      type: String,
+      default: "",
+      trim: true
+    },
+
+    targetName: {
+      type: String,
+      default: "",
+      trim: true
+    },
+
+    role: {
+      type: String,
+      default: "",
+      trim: true,
+      index: true
+    },
+
+    meta: {
+      type: SystemMetaSchema,
+      default: undefined
+    },
+
+    /* ============================
+       Reply / Mentions
+    ============================ */
+
     replyTo: {
       type: Schema.Types.ObjectId,
       ref: "RoomMessage",
@@ -154,6 +253,10 @@ const RoomMessageSchema = new Schema<IRoomMessage>(
       }
     ],
 
+    /* ============================
+       Media / Gift
+    ============================ */
+
     media: {
       type: MediaSchema,
       default: undefined
@@ -163,6 +266,10 @@ const RoomMessageSchema = new Schema<IRoomMessage>(
       type: GiftSchema,
       default: undefined
     },
+
+    /* ============================
+       Flags
+    ============================ */
 
     isPinned: {
       type: Boolean,
@@ -201,14 +308,7 @@ const RoomMessageSchema = new Schema<IRoomMessage>(
 ===================================================== */
 
 RoomMessageSchema.path("content").validate(function (this: IRoomMessage) {
-  const noContentTypes: RoomMessageType[] = [
-    "system",
-    "announcement",
-    "join",
-    "leave",
-    "promotion",
-    "ban"
-  ];
+  const noContentTypes: RoomMessageType[] = ["system", "announcement", "join", "leave", "promotion", "ban"];
 
   if (noContentTypes.includes(this.type)) return true;
 
@@ -248,10 +348,7 @@ RoomMessageSchema.pre("validate", function () {
    INDEXES (Performance Optimized)
 ===================================================== */
 
-RoomMessageSchema.index(
-  { room: 1, createdAt: -1 },
-  { partialFilterExpression: { deletedForEveryone: false } }
-);
+RoomMessageSchema.index({ room: 1, createdAt: -1 }, { partialFilterExpression: { deletedForEveryone: false } });
 
 RoomMessageSchema.index(
   { room: 1, isPinned: 1, createdAt: -1 },
@@ -269,7 +366,6 @@ RoomMessageSchema.index(
 );
 
 RoomMessageSchema.index({ "reactions.user": 1 });
-
 RoomMessageSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 /* =====================================================
@@ -277,47 +373,33 @@ RoomMessageSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 ===================================================== */
 
 // ✅ بدون next (الأبسط والأضمن مع TypeScript)
-/* =====================================================
-   SOFT DELETE FILTER
-===================================================== */
+RoomMessageSchema.pre(/^find/, function (this: mongoose.Query<any, any>) {
+  this.setQuery({
+    ...this.getQuery(),
+    deletedForEveryone: false
+  });
+});
 
-import type mongooseType from "mongoose"; // أو استخدم mongoose مباشرة إن لم ترغب بسطر منفصل
-
-RoomMessageSchema.pre(
-  /^find/,
-  function (this: mongoose.Query<any, any>) {
-    // الأفضل: تعديل الفلتر الحالي بدل where()
-    this.setQuery({
-      ...this.getQuery(),
-      deletedForEveryone: false
-    });
-  }
-);
-
-RoomMessageSchema.pre(
-  /^count/,
-  function (this: mongoose.Query<any, any>) {
-    this.setQuery({
-      ...this.getQuery(),
-      deletedForEveryone: false
-    });
-  }
-);
+RoomMessageSchema.pre(/^count/, function (this: mongoose.Query<any, any>) {
+  this.setQuery({
+    ...this.getQuery(),
+    deletedForEveryone: false
+  });
+});
 
 // aggregate لا يمر على find hooks
 RoomMessageSchema.pre("aggregate", function () {
   const pipeline = this.pipeline();
 
-  const hasMatch = pipeline.some(
-    (stage: any) => stage?.$match?.deletedForEveryone !== undefined
-  );
+  const hasMatch = pipeline.some((stage: any) => stage?.$match?.deletedForEveryone !== undefined);
 
   if (!hasMatch) {
     pipeline.unshift({ $match: { deletedForEveryone: false } });
   }
 });
+
 /* =====================================================
-   MESSAGE COUNT SAFE UPDATE
+   MESSAGE COUNT SAFE UPDATE + ✅ DEBUG PRINTS
 ===================================================== */
 
 // ✅ بدون next لتفادي SaveOptions overload
@@ -326,28 +408,56 @@ RoomMessageSchema.pre("save", function () {
   this.$locals = this.$locals || {};
   // @ts-ignore
   this.$locals.wasNew = this.isNew;
+
+  // ✅ DEBUG: اطبع فقط رسائل النظام/الترقية
+  const t = String((this as any).type || "");
+  if (["promotion", "join", "leave", "ban", "announcement", "system"].includes(t)) {
+    console.log("[RoomMessage][pre-save] SYSTEM SNAPSHOT", {
+      _id: String((this as any)._id),
+      type: (this as any).type,
+      content: (this as any).content,
+      action: (this as any).action,
+      actorId: (this as any).actorId ? String((this as any).actorId) : undefined,
+      targetId: (this as any).targetId ? String((this as any).targetId) : undefined,
+      actorName: (this as any).actorName,
+      targetName: (this as any).targetName,
+      role: (this as any).role,
+      meta: (this as any).meta
+    });
+  }
 });
 
-RoomMessageSchema.post("save", async function (doc) {
+RoomMessageSchema.post("save", async function (doc: any) {
+  // ✅ DEBUG بعد الحفظ
+  const t = String(doc?.type || "");
+  if (["promotion", "join", "leave", "ban", "announcement", "system"].includes(t)) {
+    console.log("[RoomMessage][post-save] SYSTEM SAVED", {
+      _id: String(doc?._id),
+      type: doc?.type,
+      content: doc?.content,
+      action: doc?.action,
+      actorId: doc?.actorId ? String(doc.actorId) : undefined,
+      targetId: doc?.targetId ? String(doc.targetId) : undefined,
+      actorName: doc?.actorName,
+      targetName: doc?.targetName,
+      role: doc?.role,
+      meta: doc?.meta
+    });
+  }
+
   // @ts-ignore
   const wasNew = Boolean(doc?.$locals?.wasNew);
   if (!wasNew) return;
   if (doc.deletedForEveryone) return;
 
-  await mongoose.model("Room").updateOne(
-    { _id: doc.room },
-    { $inc: { messagesCount: 1 } }
-  );
+  await mongoose.model("Room").updateOne({ _id: doc.room }, { $inc: { messagesCount: 1 } });
 });
 
 RoomMessageSchema.post("findOneAndDelete", async function (doc: any) {
   if (!doc) return;
   if (doc.deletedForEveryone) return;
 
-  await mongoose.model("Room").updateOne(
-    { _id: doc.room },
-    { $inc: { messagesCount: -1 } }
-  );
+  await mongoose.model("Room").updateOne({ _id: doc.room }, { $inc: { messagesCount: -1 } });
 });
 
 RoomMessageSchema.post("findOneAndUpdate", async function (doc: any) {
@@ -359,10 +469,7 @@ RoomMessageSchema.post("findOneAndUpdate", async function (doc: any) {
   if (set?.deletedForEveryone !== true) return;
   if (doc.deletedForEveryone === true) return;
 
-  await mongoose.model("Room").updateOne(
-    { _id: doc.room },
-    { $inc: { messagesCount: -1 } }
-  );
+  await mongoose.model("Room").updateOne({ _id: doc.room }, { $inc: { messagesCount: -1 } });
 });
 
 /* =====================================================

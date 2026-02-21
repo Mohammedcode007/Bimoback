@@ -17,10 +17,6 @@ export const searchUsers = async (req: Request, res: Response) => {
     const query = (req.query.q as string)?.trim();
     const currentUserId = req.user.id;
 
-    console.log("======================================");
-    console.log("🔎 [SEARCH REQUEST]");
-    console.log("👤 Searching User ID:", currentUserId);
-    console.log("🔍 Query:", query);
 
     if (!query) {
       return res.status(400).json({ message: "Search query required" });
@@ -28,22 +24,15 @@ export const searchUsers = async (req: Request, res: Response) => {
 
     const users = await userService.search(currentUserId, query);
 
-    console.log("📦 Total Results:", users.length);
 
     users.forEach((user, index) => {
-      console.log(`----- Result ${index + 1} -----`);
-      console.log("🆔 User ID:", user._id.toString());
-      console.log("👤 Username:", user.username);
-      console.log("📛 AtUsername:", user.atUsername);
-      console.log("🔗 Relationship:", user.relationshipStatus);
+   
     });
 
-    console.log("======================================");
 
     res.json(users);
 
   } catch (error) {
-    console.error("❌ SEARCH ERROR:", error);
     res.status(500).json({ message: "Search failed" });
   }
 };
@@ -60,7 +49,6 @@ export const getUserProfile = async (req: Request, res: Response) => {
 
     const { userId } = req.params;
 
-    console.log("👤 [Profile] Fetching profile for:", userId);
 
     const user = await User.findById(userId).select("-password");
 
@@ -68,7 +56,6 @@ export const getUserProfile = async (req: Request, res: Response) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    console.log("📦 [Profile] User found:", user.username);
 
     res.json(user);
 
@@ -89,7 +76,6 @@ export const getFriends = async (req: Request, res: Response) => {
 
     const userId = new mongoose.Types.ObjectId(req.user.id);
 
-    console.log("👥 [Friends] Fetching friends for:", userId.toString());
 
     const relations = await Friend.find({
       status: "accepted",
@@ -99,7 +85,6 @@ export const getFriends = async (req: Request, res: Response) => {
       ]
     }).populate("requester recipient", "username avatar isOnline lastSeen");
 
-    console.log("📦 [Friends] Relations found:", relations.length);
 
     const friends = relations.map((relation: any) => {
       return relation.requester._id.equals(userId)
@@ -107,7 +92,6 @@ export const getFriends = async (req: Request, res: Response) => {
         : relation.requester;
     });
 
-    console.log("👥 [Friends] Final friends list:", friends);
 
     res.json(friends);
 
@@ -129,7 +113,6 @@ export const getUnreadNotificationCount = async (
 ) => {
   try {
 
-    console.log("🔔 [Notifications] Counting unread for:", req.user.id);
 
     const count = await Notification.countDocuments({
       recipient: req.user.id,
@@ -137,7 +120,6 @@ export const getUnreadNotificationCount = async (
       isDeleted: false
     });
 
-    console.log("🔢 [Notifications] Unread count:", count);
 
     res.json({ unreadCount: count });
 
@@ -159,7 +141,6 @@ export const blockUser = async (req: Request, res: Response) => {
     const userId = req.user.id;
     const { targetUserId } = req.body;
 
-    console.log("🚫 [Block] User:", userId, "blocking:", targetUserId);
 
     if (userId === targetUserId) {
       return res.status(400).json({ message: "Cannot block yourself" });
@@ -176,7 +157,6 @@ export const blockUser = async (req: Request, res: Response) => {
       ]
     });
 
-    console.log("✅ [Block] Completed successfully");
 
     res.json({ message: "User blocked successfully" });
 
@@ -195,13 +175,11 @@ export const blockUser = async (req: Request, res: Response) => {
 export const unblockUser = async (req: Request, res: Response) => {
   try {
 
-    console.log("♻️ [Unblock] User:", req.user.id, "unblocking:", req.body.targetUserId);
 
     await User.findByIdAndUpdate(req.user.id, {
       $pull: { blockedUsers: req.body.targetUserId }
     });
 
-    console.log("✅ [Unblock] Completed successfully");
 
     res.json({ message: "User unblocked successfully" });
 

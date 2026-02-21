@@ -210,31 +210,16 @@ export const joinRoom = asyncHandler(async (req, res) => {
   const userId = getUserId(req);
   const roomId = param(req, "roomId");
 
-  // ✅ Prints (Debug)
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log("🏠 JOIN ROOM REQUEST");
-  console.log("Time:", new Date().toISOString());
-  console.log("UserId:", userId, "| type:", typeof userId);
-  console.log("RoomId:", roomId, "| type:", typeof roomId);
-  console.log("Headers auth:", req.headers?.authorization ? "YES" : "NO");
-  console.log("IP:", req.ip);
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
 
   try {
     const result = await roomService.joinRoom(roomId, userId);
 
-    // ✅ Prints after service
-    console.log("✅ JOIN ROOM SUCCESS");
-    console.log("Result:", result);
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+ 
 
     return send(res, result, "Joined");
   } catch (err: any) {
-    // ✅ Prints on error
-    console.log("❌ JOIN ROOM FAILED");
-    console.log("Message:", err?.message);
-    console.log("Stack:", err?.stack);
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  
     throw err; // مهم: لإرجاع نفس الخطأ للـ asyncHandler
   }
 });

@@ -11,9 +11,7 @@ class FriendService {
 
  async sendRequest(userId: string, targetId: string) {
 
-  console.log("📌 [FriendService] sendRequest called");
-  console.log("👤 Sender:", userId);
-  console.log("🎯 Target:", targetId);
+ 
 
   if (userId === targetId)
     throw new Error("Invalid operation");
@@ -41,7 +39,6 @@ class FriendService {
     ]
   });
 
-  console.log("📦 Existing relation:", existing);
 
   /* =====================================================
      CASE 1: RELATION EXISTS
@@ -64,7 +61,6 @@ class FriendService {
       existing.status = "accepted";
       await existing.save();
 
-      console.log("✅ Auto-accepted reverse request");
 
       await notificationService.create({
         recipient: targetId,
@@ -85,7 +81,6 @@ class FriendService {
 
       await existing.save();
 
-      console.log("♻️ Reused old relation as pending");
 
       await notificationService.create({
         recipient: targetId,
@@ -112,9 +107,7 @@ class FriendService {
     status: "pending"
   });
 
-  console.log("🔥 After create requester:", relation.requester.toString());
-console.log("🔥 After create recipient:", relation.recipient.toString());
-  console.log("✅ New relation created:", relation);
+  
 
   await notificationService.create({
     recipient: targetId,
@@ -134,9 +127,6 @@ console.log("🔥 After create recipient:", relation.recipient.toString());
 
   async accept(userId: string, targetId: string) {
 
-    console.log("📌 [FriendService] accept called");
-    console.log("👤 Accepter:", userId);
-    console.log("🎯 Requester:", targetId);
 
     const relation = await Friend.findOne({
       requester: targetId,
@@ -144,7 +134,6 @@ console.log("🔥 After create recipient:", relation.recipient.toString());
       status: "pending"
     });
 
-    console.log("📦 Relation found:", relation);
 
     if (!relation)
       throw new Error("Request not found");
@@ -152,7 +141,6 @@ console.log("🔥 After create recipient:", relation.recipient.toString());
     relation.status = "accepted";
     await relation.save();
 
-    console.log("✅ Relation accepted");
 
     await notificationService.create({
       recipient: targetId,
@@ -161,7 +149,6 @@ console.log("🔥 After create recipient:", relation.recipient.toString());
       body: "Friend request accepted"
     });
 
-    console.log("🚀 Notification created for friend_accepted");
 
     return relation;
   }
@@ -174,9 +161,7 @@ console.log("🔥 After create recipient:", relation.recipient.toString());
 
   async reject(userId: string, targetId: string) {
 
-    console.log("📌 [FriendService] reject called");
-    console.log("👤 Rejector:", userId);
-    console.log("🎯 Requester:", targetId);
+ 
 
     const relation = await Friend.findOne({
       requester: targetId,
@@ -184,7 +169,6 @@ console.log("🔥 After create recipient:", relation.recipient.toString());
       status: "pending"
     });
 
-    console.log("📦 Relation found:", relation);
 
     if (!relation)
       throw new Error("Request not found");
@@ -192,7 +176,6 @@ console.log("🔥 After create recipient:", relation.recipient.toString());
     relation.status = "rejected";
     await relation.save();
 
-    console.log("❌ Relation rejected");
 
     await notificationService.create({
       recipient: targetId,
@@ -201,7 +184,6 @@ console.log("🔥 After create recipient:", relation.recipient.toString());
       body: "Friend request rejected"
     });
 
-    console.log("🚀 Notification created for rejection");
 
     return { success: true };
   }
@@ -214,9 +196,6 @@ console.log("🔥 After create recipient:", relation.recipient.toString());
 
   async cancelRequest(userId: string, targetId: string) {
 
-    console.log("📌 [FriendService] cancelRequest called");
-    console.log("👤 Sender:", userId);
-    console.log("🎯 Target:", targetId);
 
     const relation = await Friend.findOne({
       requester: userId,
@@ -224,7 +203,6 @@ console.log("🔥 After create recipient:", relation.recipient.toString());
       status: "pending"
     });
 
-    console.log("📦 Relation found:", relation);
 
     if (!relation)
       throw new Error("Request not found");
@@ -232,47 +210,14 @@ console.log("🔥 After create recipient:", relation.recipient.toString());
     relation.status = "cancelled";
     await relation.save();
 
-    console.log("🚫 Request cancelled");
 
     return { success: true };
   }
 
 
-/* =====================================================
-   GET FRIENDS
-===================================================== */
-
-// async getFriends(userId: string) {
-
-//   console.log("📌 [FriendService] getFriends called");
-//   console.log("👤 User ID:", userId);
-
-//   const relations = await Friend.find({
-//     status: "accepted",
-//     $or: [
-//       { requester: userId },
-//       { recipient: userId }
-//     ]
-//   })
-//     .populate("requester recipient", "username avatar isOnline lastSeen");
-
-//   console.log("📦 Relations found:", relations);
-
-//   const friends = relations.map((relation: any) => {
-//     return relation.requester._id.toString() === userId
-//       ? relation.recipient
-//       : relation.requester;
-//   });
-
-//   console.log("👥 Final friends list:", friends);
-
-//   return friends;
-// }
-
 async getFriends(userId: string) {
 
-  console.log("📌 [FriendService] getFriends called");
-  console.log("👤 User ID:", userId);
+ 
 
   const relations = await Friend.find({
     status: "accepted",
@@ -286,7 +231,6 @@ async getFriends(userId: string) {
     .populate("recipient")
     .lean();
 
-  console.log("📦 Relations found:", JSON.stringify(relations, null, 2));
 
   const friends = relations.map((relation: any) => {
 
@@ -298,7 +242,6 @@ async getFriends(userId: string) {
     return friend;
   });
 
-  console.log("👥 Final friends list:", JSON.stringify(friends, null, 2));
 
   return friends;
 }
@@ -309,15 +252,11 @@ async getFriends(userId: string) {
 
 async unblock(userId: string, targetId: string) {
 
-  console.log("📌 [FriendService] unblock called");
-  console.log("👤 User:", userId);
-  console.log("🎯 Target:", targetId);
 
   await User.findByIdAndUpdate(userId, {
     $pull: { blockedUsers: targetId }
   });
 
-  console.log("✅ User removed from blockedUsers");
 
   return { success: true };
 }
@@ -328,10 +267,7 @@ async unblock(userId: string, targetId: string) {
 
 async block(userId: string, targetId: string) {
 
-  console.log("📌 [FriendService] block called");
-  console.log("👤 Blocker:", userId);
-  console.log("🎯 Target:", targetId);
-
+ 
   if (userId === targetId)
     throw new Error("Cannot block yourself");
 
@@ -340,7 +276,6 @@ async block(userId: string, targetId: string) {
     $addToSet: { blockedUsers: targetId }
   });
 
-  console.log("🚫 User added to blockedUsers");
 
   // حذف أي علاقة صداقة موجودة
   await Friend.deleteMany({
@@ -350,7 +285,6 @@ async block(userId: string, targetId: string) {
     ]
   });
 
-  console.log("🗑 Any existing friendship removed");
 
   return { success: true };
 }
@@ -361,7 +295,6 @@ async block(userId: string, targetId: string) {
 
   async remove(userId: string, targetId: string) {
 
-    console.log("📌 [FriendService] remove called");
 
     const relation = await Friend.findOneAndDelete({
       $or: [
@@ -371,7 +304,6 @@ async block(userId: string, targetId: string) {
       status: "accepted"
     });
 
-    console.log("🗑 Removed relation:", relation);
 
     if (!relation)
       throw new Error("Friend relation not found");
