@@ -30,7 +30,6 @@ export interface IRoomMessage extends Document {
   content: string;
 
   replyTo?: Types.ObjectId;
-
   mentions: Types.ObjectId[];
 
   media?: {
@@ -64,6 +63,38 @@ export interface IRoomMessage extends Document {
 }
 
 /* =====================================================
+   SUBSCHEMAS
+===================================================== */
+
+const MediaSchema = new Schema(
+  {
+    url: { type: String, trim: true },
+    fileName: { type: String, trim: true },
+    fileSize: { type: Number, min: 0 },
+    mimeType: { type: String, trim: true }
+  },
+  { _id: false }
+);
+
+const GiftSchema = new Schema(
+  {
+    name: { type: String, trim: true },
+    value: { type: Number, min: 0 },
+    animation: { type: String, trim: true }
+  },
+  { _id: false }
+);
+
+const ReactionSchema = new Schema(
+  {
+    user: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    emoji: { type: String, required: true, trim: true },
+    createdAt: { type: Date, default: Date.now }
+  },
+  { _id: false }
+);
+
+/* =====================================================
    SCHEMA
 ===================================================== */
 
@@ -78,7 +109,8 @@ const RoomMessageSchema = new Schema<IRoomMessage>(
 
     sender: {
       type: Schema.Types.ObjectId,
-      ref: "User"
+      ref: "User",
+      index: true
     },
 
     type: {
@@ -97,121 +129,235 @@ const RoomMessageSchema = new Schema<IRoomMessage>(
         "ban",
         "gift"
       ],
-      default: "text"
+      default: "text",
+      required: true,
+      index: true
     },
 
     content: {
       type: String,
-      default: ""
+      default: "",
+      trim: true
     },
 
     replyTo: {
       type: Schema.Types.ObjectId,
-      ref: "RoomMessage"
+      ref: "RoomMessage",
+      index: true
     },
 
     mentions: [
       {
         type: Schema.Types.ObjectId,
-        ref: "User"
+        ref: "User",
+        index: true
       }
     ],
 
     media: {
-      url: String,
-      fileName: String,
-      fileSize: Number,
-      mimeType: String
+      type: MediaSchema,
+      default: undefined
     },
 
     gift: {
-      name: String,
-      value: Number,
-      animation: String
+      type: GiftSchema,
+      default: undefined
     },
 
     isPinned: {
       type: Boolean,
-      default: false
+      default: false,
+      index: true
     },
 
     isHighlighted: {
       type: Boolean,
-      default: false
+      default: false,
+      index: true
     },
 
-    expiresAt: Date,
+    expiresAt: {
+      type: Date,
+      default: undefined,
+      index: true
+    },
 
-    reactions: [
-      {
-        user: { type: Schema.Types.ObjectId, ref: "User" },
-        emoji: String,
-        createdAt: { type: Date, default: Date.now }
-      }
-    ],
+    reactions: {
+      type: [ReactionSchema],
+      default: []
+    },
 
     deletedForEveryone: {
       type: Boolean,
-      default: false
+      default: false,
+      index: true
     }
   },
   { timestamps: true }
 );
 
 /* =====================================================
+   VALIDATION & NORMALIZATION
+===================================================== */
+
+RoomMessageSchema.path("content").validate(function (this: IRoomMessage) {
+  const noContentTypes: RoomMessageType[] = [
+    "system",
+    "announcement",
+    "join",
+    "leave",
+    "promotion",
+    "ban"
+  ];
+
+  if (noContentTypes.includes(this.type)) return true;
+
+  if (["image", "video", "audio", "file"].includes(this.type)) {
+    return Boolean(this.media?.url) || (this.content?.trim()?.length ?? 0) > 0;
+  }
+
+  if (this.type === "gift") {
+    return Boolean(this.gift?.name) && typeof this.gift?.value === "number";
+  }
+
+  return (this.content?.trim()?.length ?? 0) > 0;
+}, "Invalid message payload for the given type.");
+
+// ✅ بدون next لتفادي أخطاء TS في overloads
+RoomMessageSchema.pre("validate", function () {
+  // mentions unique
+  if (Array.isArray(this.mentions) && this.mentions.length) {
+    const uniq = new Set(this.mentions.map(String));
+    // @ts-ignore
+    this.mentions = Array.from(uniq).map((id) => new mongoose.Types.ObjectId(id));
+  }
+
+  // reactions unique by (user, emoji)
+  if (Array.isArray(this.reactions) && this.reactions.length) {
+    const seen = new Set<string>();
+    this.reactions = this.reactions.filter((r) => {
+      const key = `${String(r.user)}::${String(r.emoji)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+});
+
+/* =====================================================
    INDEXES (Performance Optimized)
 ===================================================== */
 
-// الرسائل الأحدث أولًا داخل الغرفة
-RoomMessageSchema.index({ room: 1, createdAt: -1 });
-
-// pinned فقط
 RoomMessageSchema.index(
-  { room: 1, isPinned: 1 },
-  { partialFilterExpression: { isPinned: true } }
+  { room: 1, createdAt: -1 },
+  { partialFilterExpression: { deletedForEveryone: false } }
 );
 
-// reply support
-RoomMessageSchema.index({ replyTo: 1 });
+RoomMessageSchema.index(
+  { room: 1, isPinned: 1, createdAt: -1 },
+  {
+    partialFilterExpression: {
+      isPinned: true,
+      deletedForEveryone: false
+    }
+  }
+);
 
-// mentions lookup
-RoomMessageSchema.index({ mentions: 1 });
+RoomMessageSchema.index(
+  { mentions: 1, room: 1, createdAt: -1 },
+  { partialFilterExpression: { deletedForEveryone: false } }
+);
 
-// reactions lookup
 RoomMessageSchema.index({ "reactions.user": 1 });
 
-// TTL for expiring messages
-RoomMessageSchema.index(
-  { expiresAt: 1 },
-  { expireAfterSeconds: 0 }
-);
+RoomMessageSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 /* =====================================================
    SOFT DELETE FILTER
 ===================================================== */
 
-RoomMessageSchema.pre(/^find/, function (next) {
-  this.where({ deletedForEveryone: false });
-  next();
-});
+// ✅ بدون next (الأبسط والأضمن مع TypeScript)
+/* =====================================================
+   SOFT DELETE FILTER
+===================================================== */
 
+import type mongooseType from "mongoose"; // أو استخدم mongoose مباشرة إن لم ترغب بسطر منفصل
+
+RoomMessageSchema.pre(
+  /^find/,
+  function (this: mongoose.Query<any, any>) {
+    // الأفضل: تعديل الفلتر الحالي بدل where()
+    this.setQuery({
+      ...this.getQuery(),
+      deletedForEveryone: false
+    });
+  }
+);
+
+RoomMessageSchema.pre(
+  /^count/,
+  function (this: mongoose.Query<any, any>) {
+    this.setQuery({
+      ...this.getQuery(),
+      deletedForEveryone: false
+    });
+  }
+);
+
+// aggregate لا يمر على find hooks
+RoomMessageSchema.pre("aggregate", function () {
+  const pipeline = this.pipeline();
+
+  const hasMatch = pipeline.some(
+    (stage: any) => stage?.$match?.deletedForEveryone !== undefined
+  );
+
+  if (!hasMatch) {
+    pipeline.unshift({ $match: { deletedForEveryone: false } });
+  }
+});
 /* =====================================================
    MESSAGE COUNT SAFE UPDATE
 ===================================================== */
 
-// زيادة العداد فقط عند الإنشاء
-RoomMessageSchema.post("save", async function (doc) {
-  if (this.isNew) {
-    await mongoose.model("Room").updateOne(
-      { _id: doc.room },
-      { $inc: { messagesCount: 1 } }
-    );
-  }
+// ✅ بدون next لتفادي SaveOptions overload
+RoomMessageSchema.pre("save", function () {
+  // @ts-ignore
+  this.$locals = this.$locals || {};
+  // @ts-ignore
+  this.$locals.wasNew = this.isNew;
 });
 
-// إنقاص العداد عند الحذف
+RoomMessageSchema.post("save", async function (doc) {
+  // @ts-ignore
+  const wasNew = Boolean(doc?.$locals?.wasNew);
+  if (!wasNew) return;
+  if (doc.deletedForEveryone) return;
+
+  await mongoose.model("Room").updateOne(
+    { _id: doc.room },
+    { $inc: { messagesCount: 1 } }
+  );
+});
+
 RoomMessageSchema.post("findOneAndDelete", async function (doc: any) {
   if (!doc) return;
+  if (doc.deletedForEveryone) return;
+
+  await mongoose.model("Room").updateOne(
+    { _id: doc.room },
+    { $inc: { messagesCount: -1 } }
+  );
+});
+
+RoomMessageSchema.post("findOneAndUpdate", async function (doc: any) {
+  if (!doc) return;
+
+  const update: any = this.getUpdate() || {};
+  const set = update.$set || update;
+
+  if (set?.deletedForEveryone !== true) return;
+  if (doc.deletedForEveryone === true) return;
 
   await mongoose.model("Room").updateOne(
     { _id: doc.room },
@@ -223,7 +369,4 @@ RoomMessageSchema.post("findOneAndDelete", async function (doc: any) {
    EXPORT
 ===================================================== */
 
-export default mongoose.model<IRoomMessage>(
-  "RoomMessage",
-  RoomMessageSchema
-);
+export default mongoose.model<IRoomMessage>("RoomMessage", RoomMessageSchema);
