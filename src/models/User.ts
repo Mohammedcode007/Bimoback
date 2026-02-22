@@ -1,7 +1,14 @@
-
 // models/User.ts
 import mongoose, { Schema, Document } from "mongoose";
 
+export type VerificationType = "none" | "blue" | "gold" | "business";
+export type ActiveCustomization = {
+  avatarFrame?: string;
+  messageEffect?: string;
+  profileEntryAnimation?: string;
+  badges: string[];
+  verificationType: VerificationType;
+};
 export interface IUser extends Document {
   username: string;
   atUsername: string;
@@ -9,9 +16,10 @@ export interface IUser extends Document {
   email?: string;
 
   isOnline: boolean;
-  isInvisible?:boolean;
+  isInvisible?: boolean;
   lastSeen?: Date;
   blockedUsers: mongoose.Types.ObjectId[];
+  CoinzBalance: number; // 💰 رصيد عملة Coinz
 
   dateOfBirth?: Date;
   country?: string;
@@ -20,6 +28,18 @@ export interface IUser extends Document {
   avatar?: string;
   coverImage?: string;
 
+  /* ===== Purchasable / Customization ===== */
+
+  avatarFrame?: string;               // frameId
+  badges: string[];                   // badgeIds
+  verificationType: VerificationType; // none | blue | gold | business
+
+  ownedMessageEffects: string[];      // effectIds
+  ownedGifts: string[];              // giftIds
+
+  // ✅ أنيميشن واحد فقط عند دخول/فتح البروفايل (مثال: "entry_dragon_01" أو رابط Lottie)
+  profileEntryAnimation?: string;
+  activeCustomization: ActiveCustomization;
   /* ===== Counters Only ===== */
 
   followersCount: number;
@@ -88,10 +108,12 @@ const UserSchema = new Schema<IUser>(
       type: Boolean,
       default: false
     },
-    isInvisible: {     // 👈 تحكم المستخدم
+
+    isInvisible: {
       type: Boolean,
       default: false
     },
+
     blockedUsers: [
       {
         type: Schema.Types.ObjectId,
@@ -106,6 +128,12 @@ const UserSchema = new Schema<IUser>(
     followersCount: {
       type: Number,
       default: 0
+    },
+
+    CoinzBalance: {
+      type: Number,
+      default: 100000, // 🎁 يحصل المستخدم على 100000 Coinz عند التسجيل
+      min: 0
     },
 
     followingCount: {
@@ -134,7 +162,17 @@ const UserSchema = new Schema<IUser>(
       type: Boolean,
       default: false
     },
-
+    activeCustomization: {
+      avatarFrame: { type: String, trim: true, default: "" },
+      messageEffect: { type: String, trim: true, default: "" },
+      profileEntryAnimation: { type: String, trim: true, default: "" },
+      badges: { type: [String], default: [] },
+      verificationType: {
+        type: String,
+        enum: ["none", "blue", "gold", "business"],
+        default: "none"
+      }
+    },
     notificationSound: {
       type: Boolean,
       default: true
@@ -143,6 +181,43 @@ const UserSchema = new Schema<IUser>(
     readReceiptsEnabled: {
       type: Boolean,
       default: true
+    },
+
+    /* ===== Purchasable / Customization (NEW) ===== */
+
+    avatarFrame: {
+      type: String,
+      trim: true,
+      default: "" // فارغ = بدون إطار
+    },
+
+    badges: {
+      type: [String],
+      default: []
+    },
+
+    verificationType: {
+      type: String,
+      enum: ["none", "blue", "gold", "business"],
+      default: "none",
+      index: true
+    },
+
+    ownedMessageEffects: {
+      type: [String],
+      default: []
+    },
+
+    ownedGifts: {
+      type: [String],
+      default: []
+    },
+
+    // ✅ أنيميشن واحد فقط عند دخول/فتح البروفايل
+    profileEntryAnimation: {
+      type: String,
+      trim: true,
+      default: "" // فارغ = بدون أنيميشن
     }
   },
   { timestamps: true }
@@ -154,5 +229,6 @@ UserSchema.index({ username: "text", atUsername: "text" });
 UserSchema.index({ followersCount: -1 });
 UserSchema.index({ totalLikesReceived: -1 });
 UserSchema.index({ isOnline: 1, lastSeen: -1 });
+UserSchema.index({ verificationType: 1 });
 
 export default mongoose.model<IUser>("User", UserSchema);

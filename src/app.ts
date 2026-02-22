@@ -18,7 +18,7 @@ import chatRoutes from "./routes/chat.routes";
 import messageRoutes from "./routes/message.routes";
 import roomRoutes from "./routes/room.routes"; // ✅ Rooms
 import roomControlRoutes from "./routes/room.control.routes"; // ✅ Rooms
-
+import storeRoutes from "./routes/store.routes";
 import { errorHandler } from "./middlewares/error.middleware";
 
 dotenv.config();
@@ -59,7 +59,7 @@ app.use("/api/tweets", tweetRoutes);
 /* 🔥 Chat & Messages */
 app.use("/api/chats", chatRoutes);
 app.use("/api/messages", messageRoutes);
-
+app.use("/api/rooms", roomRoutes);
 /* 🔥 Rooms System */
 app.use("/api/rooms", roomRoutes); // ✅ تمت الإضافة
 

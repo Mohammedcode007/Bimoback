@@ -15,6 +15,7 @@ export type RoomMessageType =
   | "join"
   | "leave"
   | "promotion"
+
   | "ban"
   | "gift";
 
