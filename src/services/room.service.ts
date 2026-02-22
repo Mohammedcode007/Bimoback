@@ -2,6 +2,7 @@ import mongoose, { Types } from "mongoose";
 import Room, { RoomType, RoomPremiumLevel } from "../models/Room";
 import RoomMessage from "../models/RoomMessage";
 import { getIO } from "../config/socket";
+import RoomUserState from "../models/RoomUserState";
 
 /**
  * ملاحظة مهمة جدًا:
@@ -54,7 +55,62 @@ class RoomService {
     const uid = userId.toString();
     return (room.activeUsers || []).some((u: any) => u?.toString?.() === uid);
   }
+private async setClearedAt(
+  roomId: string,
+  userId: string,
+  date = new Date(),
+  keepPinnedId: string | null = null
+) {
+  let pinnedId: any = null;
+  let pinnedTime: Date | null = null;
 
+  if (keepPinnedId && this.isValidObjectId(keepPinnedId)) {
+    const pinned = await RoomMessage.findOne({
+      _id: keepPinnedId,
+      room: roomId,
+      isPinned: true,
+      deletedForEveryone: { $ne: true }
+    }).select("_id createdAt updatedAt");
+
+    if (pinned) {
+      pinnedId = pinned._id;
+      pinnedTime = (pinned.updatedAt || pinned.createdAt) as any;
+    }
+  }
+
+  await RoomUserState.updateOne(
+    { room: roomId, user: userId },
+    {
+      $set: {
+        clearedAt: date,
+        pinnedMessageIdAtClear: pinnedId,
+        pinnedMessageAtClear: pinnedTime
+      }
+    },
+    { upsert: true }
+  );
+}
+private async getLastPinnedBefore(roomId: string, beforeAt: Date) {
+  const lastPinned = await RoomMessage.findOne({
+    room: roomId,
+    isPinned: true,
+    deletedForEveryone: { $ne: true },
+    createdAt: { $lt: beforeAt }
+  })
+    .sort({ createdAt: -1 })
+    .select("_id");
+
+  return lastPinned?._id ? String(lastPinned._id) : null;
+}
+private async getUserState(roomId: string, userId: string) {
+  const st = await RoomUserState.findOne({ room: roomId, user: userId })
+    .select("clearedAt pinnedMessageIdAtClear");
+
+  return {
+    clearedAt: st?.clearedAt ?? null,
+    pinnedMessageIdAtClear: st?.pinnedMessageIdAtClear ? String(st.pinnedMessageIdAtClear) : null
+  };
+}
   private oid(id: string) {
     if (!this.isValidObjectId(id)) throw new Error("Invalid id");
     return new Types.ObjectId(id);
@@ -652,78 +708,107 @@ class RoomService {
    * - (اختياري) يضاف members لو كان none
    * - ثم يبث العدد الحقيقي عبر room:activeCount:update
    */
-  async joinRoom(roomId: string, userId: string) {
-    const uid = userId.toString();
+async joinRoom(roomId: string, userId: string) {
+  const uid = userId.toString();
+  const joinAt = new Date();
 
-    const { joined } = await this.withTx(async (session) => {
-      const room = await Room.findById(roomId).session(session);
-      if (!room) throw new Error("Room not found");
+  const { joined } = await this.withTx(async (session) => {
+    const room = await Room.findById(roomId).session(session);
+    if (!room) throw new Error("Room not found");
 
+    this.ensureArrays(room);
+
+    if (room.isLocked) throw new Error("Room is locked");
+    if (this.isBanned(room, uid)) throw new Error("You are banned");
+    if ((room.usersCount || 0) >= (room.maxUsers || 50)) throw new Error("Room is full");
+
+    const alreadyActive = room.activeUsers.some((u: any) => u?.toString?.() === uid);
+    if (alreadyActive) return { joined: false };
+
+    const role = this.getRole(room, uid);
+    if (role === "none") {
+      const alreadyMember = room.members.some((m: any) => m?.toString?.() === uid);
+      if (!alreadyMember) room.members.push(userId as any);
+    }
+
+    room.activeUsers.push(userId as any);
+    room.usersCount = (room.usersCount || 0) + 1;
+
+    await room.save({ session });
+    return { joined: true };
+  });
+
+  if (!joined) return { success: true };
+
+  // 1) آخر pinned قبل وقت الدخول
+  const keepPinnedId = await this.getLastPinnedBefore(roomId, joinAt);
+
+  // 2) بث دخول المستخدم للآخرين
+  this.io().to(`room:${roomId}`).emit("room:user:joined", { roomId, userId });
+
+  // 3) أنشئ رسالة system "دخل" (ستكون للغرفة، لكن سنخفيها عن الداخل بعد قليل)
+  await this.system(roomId, "دخل", "join", { sender: userId, mentions: [userId] });
+
+  // 4) ✅ اضبط clearedAt بعد رسالة "دخل" مباشرةً
+  //    وبذلك الداخل لن يرى لا الرسائل القديمة ولا رسالة "دخل"، وسيبقى فقط pinned
+  const afterJoinSystem = new Date();
+  await this.setClearedAt(roomId, userId, afterJoinSystem, keepPinnedId);
+
+  // 5) بث العدد الحقيقي
+  await this.emitActiveCount(roomId);
+
+  return { success: true };
+}
+
+/**
+ * ✅ leave:
+ * نفس الفكرة: حتى لو دخل مرة أخرى لاحقًا، لا يرى الرسائل قبل (آخر Leave)
+ * ونخفي كذلك رسالة "خرج" عن نفس المستخدم مستقبلًا
+ */
+async leaveRoom(roomId: string, userId: string, removeFromMembers = false) {
+  const uid = userId.toString();
+  const leaveAt = new Date();
+
+  // إزالة من activeUsers
+  await Room.updateOne(
+    { _id: roomId, activeUsers: uid },
+    { $pull: { activeUsers: uid }, $inc: { usersCount: -1 } }
+  );
+  await Room.updateOne({ _id: roomId, usersCount: { $lt: 0 } }, { $set: { usersCount: 0 } });
+
+  // (اختياري) إزالة من members
+  if (removeFromMembers) {
+    const room = await Room.findById(roomId);
+    if (room) {
       this.ensureArrays(room);
-
-      if (room.isLocked) throw new Error("Room is locked");
-      if (this.isBanned(room, uid)) throw new Error("You are banned");
-      if ((room.usersCount || 0) >= (room.maxUsers || 50)) throw new Error("Room is full");
-
-      const alreadyActive = room.activeUsers.some((u: any) => u?.toString?.() === uid);
-      if (alreadyActive) {
-        return { joined: false };
-      }
-
-      const role = this.getRole(room, uid);
-      if (role === "none") {
-        const alreadyMember = room.members.some((m: any) => m?.toString?.() === uid);
-        if (!alreadyMember) room.members.push(userId as any);
-      }
-
-      room.activeUsers.push(userId as any);
-      room.usersCount = (room.usersCount || 0) + 1;
-
-      await room.save({ session });
-
-      return { joined: true };
-    });
-
-    if (joined) {
-      this.io().to(`room:${roomId}`).emit("room:user:joined", { roomId, userId });
-      await this.system(roomId, "دخل", "join", { sender: userId, mentions: [userId] });
-
-      // ✅ بث العدد بعد الدخول
-      await this.emitActiveCount(roomId);
+      room.members = (room.members || []).filter((x: any) => x?.toString?.() !== uid);
+      await room.save();
+      this.io().to(`room:${roomId}`).emit("room:roles:update", {
+        roomId,
+        owners: (room.owners || []).map((x: any) => x.toString()),
+        admins: (room.admins || []).map((x: any) => x.toString()),
+        members: (room.members || []).map((x: any) => x.toString())
+      });
     }
-
-    return { success: true };
   }
 
-  /**
-   * ✅ leave:
-   * - تحديث atomic
-   * - ثم بث العدد الحقيقي
-   */
-  async leaveRoom(roomId: string, userId: string) {
-    const uid = userId.toString();
+  // 1) آخر pinned قبل وقت الخروج (حتى عند الرجوع لاحقًا يظهر pinned فقط)
+  const keepPinnedId = await this.getLastPinnedBefore(roomId, leaveAt);
 
-    const res = await Room.updateOne(
-      { _id: roomId, activeUsers: uid },
-      { $pull: { activeUsers: uid }, $inc: { usersCount: -1 } }
-    );
+  // 2) بث خروج المستخدم للآخرين
+  this.io().to(`room:${roomId}`).emit("room:user:left", { roomId, userId });
 
-    if (res.matchedCount === 0) {
-      const exists = await Room.exists({ _id: roomId });
-      if (!exists) throw new Error("Room not found");
-      // idempotent: المستخدم أصلاً ليس active
-    }
+  // 3) رسالة system "خرج" (للآخرين)
+  await this.system(roomId, "خرج", "leave", { sender: userId, mentions: [userId] });
 
-    await Room.updateOne({ _id: roomId, usersCount: { $lt: 0 } }, { $set: { usersCount: 0 } });
+  // 4) ✅ اضبط clearedAt بعد رسالة "خرج" حتى لا يراها عند العودة
+  const afterLeaveSystem = new Date();
+  await this.setClearedAt(roomId, userId, afterLeaveSystem, keepPinnedId);
 
-    this.io().to(`room:${roomId}`).emit("room:user:left", { roomId, userId });
-    await this.system(roomId, "خرج", "leave", { sender: userId, mentions: [userId] });
+  const activeCount = await this.emitActiveCount(roomId);
 
-    // ✅ بث العدد بعد الخروج
-    const activeCount = await this.emitActiveCount(roomId);
-
-    return { success: true, activeCount };
-  }
+  return { success: true, activeCount };
+}
 
   /* =====================================================
      CREATE ROOM / GET ROOMS / SEARCH ROOMS
@@ -1510,25 +1595,32 @@ class RoomService {
     return message;
   }
 
-  async getMessages(roomId: string, userId: string, pagination: Pagination = {}) {
-    const room = await Room.findById(roomId);
-    if (!room) throw new Error("Room not found");
-    this.ensureArrays(room);
+async getMessages(roomId: string, userId: string, pagination: Pagination = {}) {
+  const room = await Room.findById(roomId);
+  if (!room) throw new Error("Room not found");
+  this.ensureArrays(room);
 
-    const role = this.getRole(room, userId);
-    const isInside = this.isInside(room, userId);
+  const role = this.getRole(room, userId);
+  const isInside = this.isInside(room, userId);
+  if (!isInside && role === "none") throw new Error("Not allowed");
 
-    if (!isInside && role === "none") {
-      throw new Error("Not allowed");
-    }
+  const limit = Math.max(1, Math.min(100, Number(pagination.limit) || 30));
 
-    const limit = Math.max(1, Math.min(100, Number(pagination.limit) || 30));
-    const query: any = { room: roomId };
+  const state = await this.getUserState(roomId, userId);
 
-    if (pagination.before && this.isValidObjectId(pagination.before)) {
-      const beforeMsg = await RoomMessage.findById(pagination.before).select("createdAt");
-      if (beforeMsg?.createdAt) query.createdAt = { $lt: beforeMsg.createdAt };
-    }
+  // ✅ سنحفظ beforeDate لو موجود
+  let beforeDate: Date | null = null;
+
+  if (pagination.before && this.isValidObjectId(pagination.before)) {
+    const beforeMsg = await RoomMessage.findById(pagination.before).select("createdAt");
+    if (beforeMsg?.createdAt) beforeDate = beforeMsg.createdAt;
+  }
+
+  const query: any = { room: roomId };
+
+  // ✅ بدون clearedAt: طبّق فقط beforeDate إن وجد
+  if (!state.clearedAt) {
+    if (beforeDate) query.createdAt = { $lt: beforeDate };
 
     const messages = await RoomMessage.find(query)
       .sort({ createdAt: -1 })
@@ -1539,31 +1631,72 @@ class RoomService {
     return messages;
   }
 
-  async searchMessages(roomId: string, userId: string, q: string, limit = 30) {
-    const room = await Room.findById(roomId);
-    if (!room) throw new Error("Room not found");
-    this.ensureArrays(room);
+  // ✅ مع clearedAt: (createdAt > clearedAt) + (اختياري createdAt < beforeDate)
+  const createdCond: any = { $gt: state.clearedAt };
+  if (beforeDate) createdCond.$lt = beforeDate;
 
-    const role = this.getRole(room, userId);
-    const isInside = this.isInside(room, userId);
+  const or: any[] = [{ createdAt: createdCond }];
 
-    if (!isInside && role === "none") throw new Error("Not allowed");
-
-    const l = Math.max(1, Math.min(100, Number(limit) || 30));
-    const text = String(q || "").trim();
-    if (!text) return [];
-
-    const safe = text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const rx = new RegExp(safe, "i");
-
-    const messages = await RoomMessage.find({ room: roomId, content: rx })
-      .sort({ createdAt: -1 })
-      .limit(l)
-      .populate("sender", "username avatar")
-      .populate("replyTo");
-
-    return messages;
+  // ✅ استثناء pinned ولكن مع احترام beforeDate إن وجد (حتى لا يفسد pagination)
+  if (state.pinnedMessageIdAtClear) {
+    const pinCond: any = { _id: state.pinnedMessageIdAtClear };
+    if (beforeDate) pinCond.createdAt = { $lt: beforeDate };
+    or.push(pinCond);
   }
+
+  query.$or = or;
+
+  const messages = await RoomMessage.find(query)
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .populate("sender", "username avatar")
+    .populate("replyTo");
+
+  return messages;
+}
+async searchMessages(roomId: string, userId: string, q: string, limit = 30) {
+  const room = await Room.findById(roomId);
+  if (!room) throw new Error("Room not found");
+  this.ensureArrays(room);
+
+  const role = this.getRole(room, userId);
+  const isInside = this.isInside(room, userId);
+  if (!isInside && role === "none") throw new Error("Not allowed");
+
+  const l = Math.max(1, Math.min(100, Number(limit) || 30));
+  const text = String(q || "").trim();
+  if (!text) return [];
+
+  const safe = text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const rx = new RegExp(safe, "i");
+
+  const state = await this.getUserState(roomId, userId);
+
+  const query: any = { room: roomId };
+
+  if (state.clearedAt) {
+    const or: any[] = [
+      { content: rx, createdAt: { $gt: state.clearedAt } }
+    ];
+
+    if (state.pinnedMessageIdAtClear) {
+      // ✅ استثناء pinned حتى لو لا تطابق rx
+      or.push({ _id: state.pinnedMessageIdAtClear });
+    }
+
+    query.$or = or;
+  } else {
+    query.content = rx;
+  }
+
+  const messages = await RoomMessage.find(query)
+    .sort({ createdAt: -1 })
+    .limit(l)
+    .populate("sender", "username avatar")
+    .populate("replyTo");
+
+  return messages;
+}
 
   async toggleReaction(roomId: string, messageId: string, userId: string, emoji: string) {
     const room = await Room.findById(roomId);
@@ -1606,88 +1739,90 @@ class RoomService {
      ROOM USERS (WITH ROLES & STATUS)
   ===================================================== */
 
-  async getRoomUsers(roomId: string) {
-    const room = await Room.findById(roomId)
-      .populate("creator", "username avatar")
-      .populate("owners", "username avatar")
-      .populate("admins", "username avatar")
-      .populate("members", "username avatar");
+async getRoomUsers(roomId: string) {
+  const room = await Room.findById(roomId)
+    .populate("creator", "username avatar")
+    .populate("owners", "username avatar")
+    .populate("admins", "username avatar")
+    .populate("members", "username avatar");
 
-    if (!room) throw new Error("Room not found");
-    this.ensureArrays(room);
+  if (!room) throw new Error("Room not found");
+  this.ensureArrays(room);
 
-    const now = new Date();
+  const now = new Date();
 
-    const formatUser = (user: any, role: Role) => {
-      const vip = (room.vipUsers || []).find((v: any) => v.user.toString() === user._id.toString());
-      const muted = (room.mutedUsers || []).find((m: any) => m.user.toString() === user._id.toString());
+  const formatUser = (user: any, role: Role) => {
+    const vip = (room.vipUsers || []).find((v: any) => v.user.toString() === user._id.toString());
+    const muted = (room.mutedUsers || []).find((m: any) => m.user.toString() === user._id.toString());
 
-      const isActive = (room.activeUsers || []).some((u: any) => u?.toString?.() === user._id.toString());
+    const isActive = (room.activeUsers || []).some(
+      (u: any) => u?.toString?.() === user._id.toString()
+    );
 
-      return {
-        _id: user._id,
-        username: user.username,
-        avatar: user.avatar,
-        role,
-        isActive,
-        isVip: !!vip,
-        vipExpiresAt: vip?.expiresAt || null,
-        isMuted: !!muted && muted.until > now,
-        mutedUntil: muted?.until || null
-      };
+    return {
+      _id: user._id,
+      username: user.username,
+      avatar: user.avatar,
+      role,
+      isActive,
+      isVip: !!vip,
+      vipExpiresAt: vip?.expiresAt || null,
+      isMuted: !!muted && muted.until > now,
+      mutedUntil: muted?.until || null
     };
+  };
 
-    // ✅ أولوية الأدوار (الأعلى يغلب)
-    const rank: Record<Role, number> = {
-      none: 0,
-      member: 1,
-      admin: 2,
-      owner: 3,
-      creator: 4
-    };
+  // ✅ أولوية الأدوار (الأعلى يغلب)
+  const rank: Record<Role, number> = {
+    none: 0,
+    member: 1,
+    admin: 2,
+    owner: 3,
+    creator: 4
+  };
 
-    // ✅ خريطة فريدة حسب userId
-    const byId = new Map<string, any>();
+  // ✅ خريطة فريدة حسب userId
+  const byId = new Map<string, any>();
 
-    const upsert = (user: any, role: Role) => {
-      if (!user?._id) return;
-      const id = user._id.toString();
+  const upsert = (user: any, role: Role) => {
+    if (!user?._id) return;
+    const id = user._id.toString();
 
-      const existing = byId.get(id);
-      if (!existing) {
-        byId.set(id, formatUser(user, role));
-        return;
-      }
+    const existing = byId.get(id);
+    if (!existing) {
+      byId.set(id, formatUser(user, role));
+      return;
+    }
 
-      // إذا الدور الجديد أعلى، استبدله
-      if (rank[role] > rank[existing.role as Role]) {
-        const merged = formatUser(user, role);
+    // إذا الدور الجديد أعلى، استبدله
+    if (rank[role] > rank[existing.role as Role]) {
+      const merged = formatUser(user, role);
+      byId.set(id, { ...existing, ...merged, role });
+    } else {
+      // فقط حدّث flags (active/vip/muted) لو تغيرت
+      const refreshed = formatUser(user, existing.role as Role);
+      byId.set(id, { ...existing, ...refreshed });
+    }
+  };
 
-        // احتفظ بأي حقول إضافية كانت موجودة (اختياري)
-        byId.set(id, { ...existing, ...merged, role });
-      } else {
-        // فقط حدّث flags (active/vip/muted) لو تغيرت
-        const refreshed = formatUser(user, existing.role as Role);
-        byId.set(id, { ...existing, ...refreshed });
-      }
-    };
+  // ✅ أدخلهم جميعًا، وDedup سيضمن ظهورهم مرة واحدة بأعلى Role
+  upsert(room.creator, "creator");
+  for (const u of room.owners || []) upsert(u, "owner");
+  for (const u of room.admins || []) upsert(u, "admin");
+  for (const u of room.members || []) upsert(u, "member");
 
-    // ✅ أدخلهم جميعًا، وDedup سيضمن ظهورهم مرة واحدة بأعلى Role
-    upsert(room.creator, "creator");
-    for (const u of room.owners || []) upsert(u, "owner");
-    for (const u of room.admins || []) upsert(u, "admin");
-    for (const u of room.members || []) upsert(u, "member");
+  // ✅ ترتيب العرض: الأعلى Role أولاً ثم الاسم
+  let users = Array.from(byId.values()).sort((a, b) => {
+    const diff = rank[b.role as Role] - rank[a.role as Role];
+    if (diff !== 0) return diff;
+    return String(a.username || "").localeCompare(String(b.username || ""));
+  });
 
-    // ✅ ترتيب العرض (اختياري): creator ثم owners ثم admins ثم members ثم حسب الاسم
-    const users = Array.from(byId.values()).sort((a, b) => {
-      const diff = rank[b.role as Role] - rank[a.role as Role];
-      if (diff !== 0) return diff;
-      return String(a.username || "").localeCompare(String(b.username || ""));
-    });
+  // ✅ الحل الأول: اعرض الموجودين داخل الغرفة فقط (Active Users)
+  users = users.filter((u) => u.isActive);
 
-    return { total: users.length, users };
-  }
-
+  return { total: users.length, users };
+}
   /* =====================================================
      INCREASE MAX USERS LIMIT
   ===================================================== */

@@ -17,6 +17,7 @@ import followRoutes from "./routes/follow.routes";
 import chatRoutes from "./routes/chat.routes";
 import messageRoutes from "./routes/message.routes";
 import roomRoutes from "./routes/room.routes"; // ✅ Rooms
+import roomControlRoutes from "./routes/room.control.routes"; // ✅ Rooms
 
 import { errorHandler } from "./middlewares/error.middleware";
 
@@ -51,7 +52,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/friends", friendRoutes);
 app.use("/api/follow", followRoutes);
 app.use("/api/notifications", notificationRoutes);
-
+app.use("/api/room/control", roomControlRoutes);
 /* 🔥 Tweets */
 app.use("/api/tweets", tweetRoutes);
 
