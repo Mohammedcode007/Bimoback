@@ -69,6 +69,27 @@ export const changeRoomType = asyncHandler(async (req, res) => {
   const room = await roomService.changeType(roomId, userId, type);
   return send(res, room, "Room type updated");
 });
+// room.controller.ts (ADD)
+
+export const getRoomDetails = asyncHandler(async (req, res) => {
+  // ✅ roomId من params
+  const roomId = param(req, "roomId");
+console.log(roomId,'roomId');
+
+  // ✅ userId من التوكن عبر protect فقط
+  const userId =
+    asString(req.user?.id) ||
+    asString(req.user?._id?.toString?.());
+
+  if (!userId) {
+    const err: any = new Error("Unauthorized");
+    err.status = 401;
+    throw err;
+  }
+
+  const data = await roomService.getRoomDetails(roomId, userId);
+  return send(res, data, "Room details");
+});
 
 export const changeRoomPremium = asyncHandler(async (req, res) => {
   const userId = getUserId(req);

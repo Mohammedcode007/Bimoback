@@ -927,6 +927,189 @@ async getUserState(roomId: string, userId: string): Promise<RoomUserStateLean> {
   return { success: true };
 }
 
+/* =====================================================
+   ROOM DETAILS (FULL) - PERMISSIONED
+===================================================== */
+
+async getRoomDetails(roomId: string, userId?: string) {
+  if (!this.isValidObjectId(roomId)) throw new Error("Invalid roomId");
+
+  const uid = userId && this.isValidObjectId(userId) ? String(userId) : "";
+
+  // ✅ لا نريد إرجاع password نفسه
+  // نقرأه فقط لمعرفة هل الغرفة محمية بكلمة مرور أم لا
+  const room = await Room.findById(roomId).select("+password").lean();
+  if (!room) throw new Error("Room not found");
+
+  // ✅ Safe clone
+  const safeRoom: any = { ...room };
+  safeRoom.owners ||= [];
+  safeRoom.admins ||= [];
+  safeRoom.members ||= [];
+  safeRoom.blockeds ||= [];
+  safeRoom.activeUsers ||= [];
+  safeRoom.voiceQueue ||= [];
+  safeRoom.raisedHands ||= [];
+  safeRoom.voiceSpeakers ||= [];
+  safeRoom.vipUsers ||= [];
+  safeRoom.mutedUsers ||= [];
+  safeRoom.tags ||= [];
+
+  // ✅ صلاحيات (لو userId غير موجود -> زائر)
+  const myRole = uid ? this.getRole(safeRoom, uid) : ("none" as const);
+  const isInside = uid ? this.isInside(safeRoom, uid) : false;
+
+  const isManager = myRole === "creator" || myRole === "owner" || myRole === "admin";
+  const isMember = isInside || myRole === "member" || isManager;
+
+  // ✅ بيانات مشتقة
+  const passwordProtected = Boolean(safeRoom.password);
+  delete safeRoom.password;
+
+  // membersCount: إجمالي الناس اللي لهم membership/roles (تقريبي)
+  const membersCount =
+    (safeRoom.members?.length || 0) +
+    (safeRoom.owners?.length || 0) +
+    (safeRoom.admins?.length || 0) +
+    1; // creator
+
+  // ✅ الجزء العام (يظهر للجميع)
+  const publicRoom = {
+    _id: String(safeRoom._id),
+    name: safeRoom.name,
+    description: safeRoom.description || "",
+
+    avatar: safeRoom.avatar || "",
+    cover: safeRoom.cover || "",
+
+    type: safeRoom.type,
+    premiumLevel: safeRoom.premiumLevel,
+
+    maxUsers: Number(safeRoom.maxUsers || 0),
+    maxVoiceSeats: Number(safeRoom.maxVoiceSeats || 0),
+
+    isVerified: Boolean(safeRoom.isVerified),
+    tags: Array.isArray(safeRoom.tags) ? safeRoom.tags : [],
+
+    // Stats (آمنة)
+    usersCount: Number(safeRoom.usersCount || 0),       // active count
+    membersCount,
+    messagesCount: Number(safeRoom.messagesCount || 0),
+
+    // Boost (ممكن عرض جزء منه للعامة بدون نقاط/إيراد)
+    boostLevel: Number(safeRoom.boostLevel || 0),
+
+    createdAt: safeRoom.createdAt,
+    updatedAt: safeRoom.updatedAt
+  };
+
+  // ✅ تفاصيل إضافية للأعضاء/داخل الغرفة (غير حساسة)
+  const memberRoomExtra = isMember
+    ? {
+        isLocked: Boolean(safeRoom.isLocked),
+
+        // لو تحب تخليها boolean فقط للأعضاء بدل الأرقام
+        slowModeSeconds: Number(safeRoom.slowModeSeconds || 0),
+        antiSpamEnabled: Boolean(safeRoom.antiSpamEnabled),
+        maxMessagesPerMinute: Number(safeRoom.maxMessagesPerMinute || 0),
+
+        activePoll: safeRoom.activePoll || null
+      }
+    : {
+        // للزائر: ممكن تعرض الحالة بشكل عام فقط
+        isLocked: Boolean(safeRoom.isLocked),
+        activePoll: null as any
+      };
+
+  // ✅ تفاصيل الإدارة (حساسة)
+  const managerRoomExtra = isManager
+    ? {
+        subscriptionPrice: Number(safeRoom.subscriptionPrice || 0),
+        totalRevenue: Number(safeRoom.totalRevenue || 0),
+
+        xp: Number(safeRoom.xp || 0),
+        level: Number(safeRoom.level || 1),
+
+        boostPoints: Number(safeRoom.boostPoints || 0),
+        boostExpiresAt: safeRoom.boostExpiresAt || null,
+
+        passwordProtected
+      }
+    : {
+        // للغير إدارة: لا نعرض السعر ولا الإيراد ولا نقاط البوست ولا passwordProtected
+        subscriptionPrice: safeRoom.type === "subscription" ? Number(safeRoom.subscriptionPrice || 0) : 0
+      };
+
+  // ✅ Lists بناءً على المستوى
+  // creator يظهر للجميع كملف عام (آمن عادة)
+  const creatorSnap = await this.getUserPublicSnapshot(String(safeRoom.creator));
+
+  const lists: any = {
+    creator: creatorSnap
+  };
+
+  // Owners/Admins: تُعرض للأعضاء فقط أو للإدارة (حسب رغبتك)
+  // أنا هنا: للأعضاء نعم، للزائر لا
+  if (isMember) {
+    lists.owners = await Promise.all(
+      (safeRoom.owners as any[]).map((id) => this.getUserPublicSnapshot(String(id)))
+    );
+    lists.admins = await Promise.all(
+      (safeRoom.admins as any[]).map((id) => this.getUserPublicSnapshot(String(id)))
+    );
+  }
+
+  // Active/Voice: للأعضاء فقط
+  if (isMember) {
+    lists.activeUsers = await Promise.all(
+      (safeRoom.activeUsers as any[]).map((id) => this.getUserPublicSnapshot(String(id)))
+    );
+
+    lists.voiceSpeakers = await Promise.all(
+      (safeRoom.voiceSpeakers as any[]).map((id) => this.getUserPublicSnapshot(String(id)))
+    );
+    lists.voiceQueue = await Promise.all(
+      (safeRoom.voiceQueue as any[]).map((id) => this.getUserPublicSnapshot(String(id)))
+    );
+    lists.raisedHands = await Promise.all(
+      (safeRoom.raisedHands as any[]).map((id) => this.getUserPublicSnapshot(String(id)))
+    );
+  }
+
+  // VIP/Muted: للإدارة فقط
+  if (isManager) {
+    lists.vipUsers = await Promise.all(
+      (safeRoom.vipUsers as any[]).map(async (v) => ({
+        user: await this.getUserPublicSnapshot(String(v.user)),
+        expiresAt: v.expiresAt
+      }))
+    );
+
+    lists.mutedUsers = await Promise.all(
+      (safeRoom.mutedUsers as any[]).map(async (m) => ({
+        user: await this.getUserPublicSnapshot(String(m.user)),
+        until: m.until,
+        reason: m.reason || ""
+      }))
+    );
+  }
+
+  return {
+    room: {
+      ...publicRoom,
+      ...memberRoomExtra,
+      ...managerRoomExtra
+    },
+    lists,
+    my: {
+      userId: uid || null,
+      role: myRole,
+      isInside,
+      isMember,
+      canManage: isManager
+    }
+  };
+}
   /**
    * ✅ leave:
    * نفس الفكرة: حتى لو دخل مرة أخرى لاحقًا، لا يرى الرسائل قبل (آخر Leave)

@@ -53,7 +53,8 @@ import {
   createRoom,
   getRoomsByType,
   searchRooms,
-  getRoomMessages
+  getRoomMessages,
+  getRoomDetails
 } from "../controllers/room.controller";
 
 const router = Router();
@@ -68,7 +69,7 @@ router.get("/", getRoomsByType);
 
 // GET /api/rooms/search?q=chat&type=public&limit=30
 router.get("/search", searchRooms);
-
+// ✅ GET /api/rooms/:roomId/details
 /* =====================================================
    PROTECTED ROUTES
 ===================================================== */
@@ -86,6 +87,7 @@ router.patch("/:roomId", updateRoomInfo);
 router.patch("/:roomId/type", changeRoomType);
 router.patch("/:roomId/premium", changeRoomPremium);
 router.patch("/:roomId/anti-spam", toggleAntiSpam);
+router.get("/:roomId/details", getRoomDetails);
 
 /* =====================================================
    VIP
