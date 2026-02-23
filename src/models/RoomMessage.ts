@@ -28,6 +28,7 @@ export type RoomSystemAction =
   | "room:announcement"
   | ""; // للتوافق
 
+
 /* =====================================================
    INTERFACE
 ===================================================== */
@@ -38,7 +39,25 @@ export interface IRoomMessage extends Document {
 
   type: RoomMessageType;
   content: string;
+  senderSnapshot?: {
+    _id: string;
+    username: string;
+    atUsername?: string;
+    avatar?: string;
 
+    activeCustomization?: {
+      avatarFrame?: string;
+      messageEffect?: string;
+      profileEntryAnimation?: string;
+      badges: string[];
+      verificationType: "none" | "blue" | "gold" | "business";
+    };
+
+    verificationType?: "none" | "blue" | "gold" | "business";
+    avatarFrame?: string;
+    badges?: string[];
+    profileEntryAnimation?: string;
+  };
   // ✅ System meta (للترقيات والأحداث)
   action?: RoomSystemAction;
 
@@ -190,7 +209,28 @@ const RoomMessageSchema = new Schema<IRoomMessage>(
        ✅ System / Promotion fields
        (حل مشكلة ضياع actor/target/role في strict mode)
     ============================ */
+    senderSnapshot: {
+      type: {
+        _id: { type: String, default: "" },
+        username: { type: String, default: "", trim: true },
+        atUsername: { type: String, default: "", trim: true },
+        avatar: { type: String, default: "", trim: true },
 
+        activeCustomization: {
+          avatarFrame: { type: String, default: "" },
+          messageEffect: { type: String, default: "" },
+          profileEntryAnimation: { type: String, default: "" },
+          badges: { type: [String], default: [] },
+          verificationType: { type: String, default: "none" }
+        },
+
+        verificationType: { type: String, default: "none" },
+        avatarFrame: { type: String, default: "" },
+        badges: { type: [String], default: [] },
+        profileEntryAnimation: { type: String, default: "" }
+      },
+      default: undefined
+    },
     action: {
       type: String,
       default: "",

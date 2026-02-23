@@ -11,21 +11,20 @@ import {
    REGISTER
 ========================= */
 
+
 export const register = async (req: Request, res: Response) => {
   try {
+    const { username, password, role } = req.body;
 
-    const { username, password } = req.body;
+    const adminKey = req.headers["x-admin-key"]; // ✅ من Postman
 
-    const data = await registerUser(username, password);
+    const data = await registerUser(username, password, role, adminKey);
 
     return res.status(201).json(data);
-
   } catch (error: any) {
     return res.status(400).json({ message: error.message });
   }
 };
-
-
 /* =========================
    LOGIN
 ========================= */

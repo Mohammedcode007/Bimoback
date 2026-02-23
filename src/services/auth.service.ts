@@ -26,23 +26,81 @@ const generateToken = (user: any) => {
    REGISTER
 ===================================================== */
 
+// ✅ تعديل auth.service.ts (registerUser / loginUser)
+// المطلوب:
+// 1) registerUser يستقبل role اختياري، ولو لم يُرسل => "user"
+// 2) منع أي شخص من عمل نفسه admin من التسجيل (اختياري وآمن) عبر ADMIN_REGISTER_KEY
+//    - لو لا تريد الحماية، احذف جزء adminKey بالكامل
+// 3) loginUser يرجّع role في user
+// 4) البحث يكون بـ atUsername (الموحّد) لتفادي اختلاف الكيس/المسافات
+
+
+type UserRole = "user" | "admin";
+
+function normalizeAtUsername(username: string) {
+  return String(username || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
+}
+
+function normalizeRole(role: unknown): UserRole {
+  const r = String(role || "").trim().toLowerCase();
+  return r === "admin" ? "admin" : "user";
+}
+
+/* =====================================================
+   REGISTER
+===================================================== */
+
 export const registerUser = async (
   username: string,
-  password: string
+  password: string,
+  role?: unknown,
+  adminKey?: unknown // ✅ اختياري: مفتاح لإنشاء admin من التسجيل (حماية)
 ) => {
+  const rawUsername = String(username || "").trim();
+  if (!rawUsername || rawUsername.length < 3) {
+    throw new Error("Invalid username");
+  }
 
-  const existing = await User.findOne({ username });
+  if (!String(password || "").trim() || String(password).length < 6) {
+    throw new Error("Invalid password");
+  }
 
+  const atUsername = normalizeAtUsername(rawUsername);
+
+  // ✅ لو المستخدم موجود (افضل بالـ atUsername لأنه فريد)
+  const existing = await User.findOne({ atUsername }).lean();
   if (existing) {
     throw new Error("Username already exists");
+  }
+
+  // ✅ role default = user
+  let finalRole: UserRole = normalizeRole(role);
+
+  // ✅ حماية قوية (موصى بها): لا تسمح بـ admin إلا بمفتاح
+  if (finalRole === "admin") {
+    const required = String(process.env.ADMIN_REGISTER_KEY || "").trim();
+    if (!required) {
+      // لو لم تُحدد مفتاح في env، امنع تسجيل admin نهائيًا
+      finalRole = "user";
+    } else {
+      const provided = String(adminKey || "").trim();
+      if (provided !== required) {
+        // لو المفتاح غير صحيح، اجعلها user بدل رفض كامل (أو يمكنك رفض)
+        finalRole = "user";
+      }
+    }
   }
 
   const hashed = await hashPassword(password);
 
   const user = await User.create({
-    username,
-    atUsername: username.toLowerCase(),
-    password: hashed
+    username: rawUsername,
+    atUsername,
+    password: hashed,
+    role: finalRole // ✅ تخزين role
   });
 
   const token = generateToken(user);
@@ -54,6 +112,7 @@ export const registerUser = async (
       username: user.username,
       atUsername: user.atUsername,
       avatar: user.avatar,
+      role: (user as any).role || "user", // ✅ أضفنا role
       isVerified: user.isVerified,
       isOnline: false,
       isInvisible: false,
@@ -70,29 +129,21 @@ export const loginUser = async (
   username: string,
   password: string
 ) => {
+  const rawUsername = String(username || "").trim();
+  const atUsername = normalizeAtUsername(rawUsername);
 
-  const user = await User.findOne({ username });
+  // ✅ الأفضل الدخول عبر atUsername (لأنه ثابت وفريد)
+  // لو تريد الإبقاء على username حرفيًا: غيّر الاستعلام لـ { username: rawUsername }
+  const user = await User.findOne({ atUsername });
 
   if (!user) {
     throw new Error("Invalid credentials");
   }
 
-  const isMatch = await comparePassword(
-    password,
-    user.password
-  );
-
+  const isMatch = await comparePassword(password, user.password);
   if (!isMatch) {
     throw new Error("Invalid credentials");
   }
-
-  /* ===== Presence Update ===== */
-
-  // user.isOnline = true;
-  // لا نغير isInvisible
-  // لا نغير lastSeen هنا
-
-  // await user.save();
 
   const token = generateToken(user);
 
@@ -103,6 +154,7 @@ export const loginUser = async (
       username: user.username,
       atUsername: user.atUsername,
       avatar: user.avatar,
+      role: (user as any).role || "user", // ✅ أضفنا role
       isVerified: user.isVerified,
       bio: user.bio,
       country: user.country,

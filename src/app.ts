@@ -55,6 +55,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/room/control", roomControlRoutes);
 /* 🔥 Tweets */
 app.use("/api/tweets", tweetRoutes);
+app.use("/api/store", storeRoutes);
 
 /* 🔥 Chat & Messages */
 app.use("/api/chats", chatRoutes);

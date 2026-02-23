@@ -1,6 +1,6 @@
 // models/User.ts
 import mongoose, { Schema, Document } from "mongoose";
-
+export type UserRole = "user" | "admin";
 export type VerificationType = "none" | "blue" | "gold" | "business";
 export type ActiveCustomization = {
   avatarFrame?: string;
@@ -14,7 +14,7 @@ export interface IUser extends Document {
   atUsername: string;
   password: string;
   email?: string;
-
+role: UserRole;
   isOnline: boolean;
   isInvisible?: boolean;
   lastSeen?: Date;
@@ -83,7 +83,12 @@ const UserSchema = new Schema<IUser>(
       lowercase: true,
       index: true
     },
-
+role: {
+  type: String,
+  enum: ["user", "admin"],
+  default: "user",
+  index: true
+},
     /* ===== Basic Info ===== */
 
     dateOfBirth: Date,

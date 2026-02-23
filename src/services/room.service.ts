@@ -11,7 +11,10 @@ import RoomUserState from "../models/RoomUserState";
  */
 
 type Role = "creator" | "owner" | "admin" | "member" | "none";
-
+const USER_PUBLIC_FIELDS =
+  "username atUsername avatar coverImage isOnline lastSeen role " +
+  "activeCustomization verificationType avatarFrame badges ownedMessageEffects ownedGifts profileEntryAnimation " +
+  "followersCount followingCount totalLikesReceived totalRetweetsReceived profileViews";
 type SendMessageInput = {
   roomId: string;
   senderId: string;
@@ -55,62 +58,131 @@ class RoomService {
     const uid = userId.toString();
     return (room.activeUsers || []).some((u: any) => u?.toString?.() === uid);
   }
-private async setClearedAt(
-  roomId: string,
-  userId: string,
-  date = new Date(),
-  keepPinnedId: string | null = null
-) {
-  let pinnedId: any = null;
-  let pinnedTime: Date | null = null;
+  private async setClearedAt(
+    roomId: string,
+    userId: string,
+    date = new Date(),
+    keepPinnedId: string | null = null
+  ) {
+    let pinnedId: any = null;
+    let pinnedTime: Date | null = null;
 
-  if (keepPinnedId && this.isValidObjectId(keepPinnedId)) {
-    const pinned = await RoomMessage.findOne({
-      _id: keepPinnedId,
+    if (keepPinnedId && this.isValidObjectId(keepPinnedId)) {
+      const pinned = await RoomMessage.findOne({
+        _id: keepPinnedId,
+        room: roomId,
+        isPinned: true,
+        deletedForEveryone: { $ne: true }
+      }).select("_id createdAt updatedAt");
+
+      if (pinned) {
+        pinnedId = pinned._id;
+        pinnedTime = (pinned.updatedAt || pinned.createdAt) as any;
+      }
+    }
+
+    await RoomUserState.updateOne(
+      { room: roomId, user: userId },
+      {
+        $set: {
+          clearedAt: date,
+          pinnedMessageIdAtClear: pinnedId,
+          pinnedMessageAtClear: pinnedTime
+        }
+      },
+      { upsert: true }
+    );
+  }
+  private async getLastPinnedBefore(roomId: string, beforeAt: Date) {
+    const lastPinned = await RoomMessage.findOne({
       room: roomId,
       isPinned: true,
-      deletedForEveryone: { $ne: true }
-    }).select("_id createdAt updatedAt");
+      deletedForEveryone: { $ne: true },
+      createdAt: { $lt: beforeAt }
+    })
+      .sort({ createdAt: -1 })
+      .select("_id");
 
-    if (pinned) {
-      pinnedId = pinned._id;
-      pinnedTime = (pinned.updatedAt || pinned.createdAt) as any;
-    }
+    return lastPinned?._id ? String(lastPinned._id) : null;
   }
+private async getUserPublicSnapshot(userId: string) {
+  const User = mongoose.model("User");
 
-  await RoomUserState.updateOne(
-    { room: roomId, user: userId },
-    {
-      $set: {
-        clearedAt: date,
-        pinnedMessageIdAtClear: pinnedId,
-        pinnedMessageAtClear: pinnedTime
-      }
+  const u = await User.findById(userId).select(USER_PUBLIC_FIELDS);
+
+  // ✅ Default safe snapshot
+  const base = {
+    _id: String(userId),
+    username: "مستخدم",
+    atUsername: "",
+    avatar: "",
+    coverImage: "",
+    isOnline: false,
+    lastSeen: null as any,
+    role: "user",
+
+    activeCustomization: {
+      avatarFrame: "",
+      messageEffect: "",
+      profileEntryAnimation: "",
+      badges: [],
+      verificationType: "none"
     },
-    { upsert: true }
-  );
-}
-private async getLastPinnedBefore(roomId: string, beforeAt: Date) {
-  const lastPinned = await RoomMessage.findOne({
-    room: roomId,
-    isPinned: true,
-    deletedForEveryone: { $ne: true },
-    createdAt: { $lt: beforeAt }
-  })
-    .sort({ createdAt: -1 })
-    .select("_id");
 
-  return lastPinned?._id ? String(lastPinned._id) : null;
-}
-private async getUserState(roomId: string, userId: string) {
-  const st = await RoomUserState.findOne({ room: roomId, user: userId })
-    .select("clearedAt pinnedMessageIdAtClear");
+    verificationType: "none",
+    avatarFrame: "",
+    badges: [] as string[],
+    ownedMessageEffects: [] as string[],
+    ownedGifts: [] as string[],
+    profileEntryAnimation: "",
+
+    followersCount: 0,
+    followingCount: 0,
+    totalLikesReceived: 0,
+    totalRetweetsReceived: 0,
+    profileViews: 0
+  };
+
+  if (!u) return base;
 
   return {
-    clearedAt: st?.clearedAt ?? null,
-    pinnedMessageIdAtClear: st?.pinnedMessageIdAtClear ? String(st.pinnedMessageIdAtClear) : null
+    ...base,
+    _id: String(u._id),
+
+    username: u.username || base.username,
+    atUsername: u.atUsername || base.atUsername,
+    avatar: u.avatar || base.avatar,
+    coverImage: u.coverImage || base.coverImage,
+
+    isOnline: Boolean(u.isOnline),
+    lastSeen: u.lastSeen || null,
+    role: u.role || base.role,
+
+    activeCustomization: u.activeCustomization || base.activeCustomization,
+
+    verificationType: u.verificationType || base.verificationType,
+    avatarFrame: u.avatarFrame || base.avatarFrame,
+    badges: Array.isArray(u.badges) ? u.badges : base.badges,
+    ownedMessageEffects: Array.isArray(u.ownedMessageEffects) ? u.ownedMessageEffects : base.ownedMessageEffects,
+    ownedGifts: Array.isArray(u.ownedGifts) ? u.ownedGifts : base.ownedGifts,
+    profileEntryAnimation: u.profileEntryAnimation || base.profileEntryAnimation,
+
+    followersCount: Number(u.followersCount || 0),
+    followingCount: Number(u.followingCount || 0),
+    totalLikesReceived: Number(u.totalLikesReceived || 0),
+    totalRetweetsReceived: Number(u.totalRetweetsReceived || 0),
+    profileViews: Number(u.profileViews || 0)
   };
 }
+  private async getUserState(roomId: string, userId: string) {
+    const st = await RoomUserState.findOne({ room: roomId, user: userId })
+      .select("clearedAt pinnedMessageIdAtClear");
+
+    return {
+      clearedAt: st?.clearedAt ?? null,
+      pinnedMessageIdAtClear: st?.pinnedMessageIdAtClear ? String(st.pinnedMessageIdAtClear) : null
+    };
+  }
   private oid(id: string) {
     if (!this.isValidObjectId(id)) throw new Error("Invalid id");
     return new Types.ObjectId(id);
@@ -273,209 +345,209 @@ private async getUserState(roomId: string, userId: string) {
    * (تحويل creator يتم عبر transferCreator لديك بالفعل)
    */
   async setUserRole(
-  roomId: string,
-  actorId: string,
-  targetId: string,
-  newRole: "owner" | "admin" | "member"
-) {
-  const rid = String(roomId || "");
-  const aid = String(actorId || "");
-  const tid = String(targetId || "");
-  const sid = `role:${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+    roomId: string,
+    actorId: string,
+    targetId: string,
+    newRole: "owner" | "admin" | "member"
+  ) {
+    const rid = String(roomId || "");
+    const aid = String(actorId || "");
+    const tid = String(targetId || "");
+    const sid = `role:${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
 
-  const log = (msg: string, extra: any = {}) => {
-    console.log(`[setUserRole][${sid}] ${msg}`, extra);
-  };
+    const log = (msg: string, extra: any = {}) => {
+      console.log(`[setUserRole][${sid}] ${msg}`, extra);
+    };
 
-  log("IN", { roomId: rid, actorId: aid, targetId: tid, newRole });
+    log("IN", { roomId: rid, actorId: aid, targetId: tid, newRole });
 
-  // =========================
-  // Validate IDs
-  // =========================
-  const validIds =
-    this.isValidObjectId(rid) && this.isValidObjectId(aid) && this.isValidObjectId(tid);
+    // =========================
+    // Validate IDs
+    // =========================
+    const validIds =
+      this.isValidObjectId(rid) && this.isValidObjectId(aid) && this.isValidObjectId(tid);
 
-  if (!validIds) {
-    log("INVALID IDS", {
-      valid: { roomId: this.isValidObjectId(rid), actorId: this.isValidObjectId(aid), targetId: this.isValidObjectId(tid) }
+    if (!validIds) {
+      log("INVALID IDS", {
+        valid: { roomId: this.isValidObjectId(rid), actorId: this.isValidObjectId(aid), targetId: this.isValidObjectId(tid) }
+      });
+      throw new Error("Invalid ids");
+    }
+
+    if (aid === tid) {
+      log("BLOCKED: actorId === targetId");
+      throw new Error("Cannot change your own role");
+    }
+
+    // =========================
+    // Load room
+    // =========================
+    const room = await Room.findById(rid);
+    if (!room) {
+      log("ROOM NOT FOUND");
+      throw new Error("Room not found");
+    }
+
+    this.ensureArrays(room);
+
+    // =========================
+    // Roles snapshot BEFORE
+    // =========================
+    const before = {
+      creator: String(room.creator),
+      owners: (room.owners || []).map((x: any) => x?.toString?.()),
+      admins: (room.admins || []).map((x: any) => x?.toString?.()),
+      members: (room.members || []).map((x: any) => x?.toString?.())
+    };
+
+    log("ROOM LOADED + SNAPSHOT BEFORE", before);
+
+    // =========================
+    // Permission checks
+    // =========================
+    const actorRole = this.getRole(room, aid);
+    const targetRole = this.getRole(room, tid);
+
+    log("ROLES DETECTED", { actorRole, targetRole });
+
+    try {
+      this.assertCanModerate(room, aid, tid, "role");
+      log("PERMISSION OK");
+    } catch (e: any) {
+      log("PERMISSION FAIL", { message: e?.message });
+      throw e;
+    }
+
+    // =========================
+    // Constraints
+    // =========================
+    if (actorRole === "owner" && newRole === "owner") {
+      log("BLOCKED: owner cannot promote to owner");
+      throw new Error("Owner cannot promote to owner");
+    }
+
+    if (actorRole !== "creator" && targetRole === "owner") {
+      log("BLOCKED: only creator can change owner role", { actorRole, targetRole });
+      throw new Error("Only creator can change owner role");
+    }
+
+    if (targetRole === "creator") {
+      log("BLOCKED: cannot change creator via setUserRole");
+      throw new Error("Use transferCreator to change creator");
+    }
+
+    // =========================
+    // Apply change
+    // =========================
+    log("REMOVE ALL ROLES (target)", { targetId: tid });
+    this.removeAllRoles(room, tid);
+
+    if (newRole === "owner") {
+      if (!room.owners.some((x: any) => x?.toString?.() === tid)) {
+        room.owners.push(tid as any);
+        log("PUSH -> owners", { targetId: tid });
+      }
+    } else if (newRole === "admin") {
+      if (!room.admins.some((x: any) => x?.toString?.() === tid)) {
+        room.admins.push(tid as any);
+        log("PUSH -> admins", { targetId: tid });
+      }
+    } else {
+      if (!room.members.some((x: any) => x?.toString?.() === tid)) {
+        room.members.push(tid as any);
+        log("PUSH -> members", { targetId: tid });
+      }
+    }
+
+    // =========================
+    // Save
+    // =========================
+    log("SAVING ROOM...");
+    await room.save();
+    log("ROOM SAVED OK");
+
+    // =========================
+    // Roles snapshot AFTER
+    // =========================
+    const after = {
+      creator: String(room.creator),
+      owners: (room.owners || []).map((x: any) => x?.toString?.()),
+      admins: (room.admins || []).map((x: any) => x?.toString?.()),
+      members: (room.members || []).map((x: any) => x?.toString?.())
+    };
+
+    log("SNAPSHOT AFTER", after);
+
+    // =========================
+    // Emit roles update
+    // =========================
+    const rolesUpdatePayload = {
+      roomId: rid,
+      owners: after.owners,
+      admins: after.admins,
+      members: after.members
+    };
+
+    log("EMIT room:roles:update", rolesUpdatePayload);
+    this.io().to(`room:${rid}`).emit("room:roles:update", rolesUpdatePayload);
+
+    // =========================
+    // System message (promotion)
+    // =========================
+    const actor = await this.getUserBasic(aid);
+    const target = await this.getUserBasic(tid);
+
+    const roleAr = newRole === "owner" ? "مالك" : newRole === "admin" ? "أدمن" : "عضو";
+
+    const systemText = `⭐ تم وضع ${target.username} ${roleAr} بواسطة ${actor.username}`;
+
+    log("SYSTEM MESSAGE PREP", {
+      type: "promotion",
+      text: systemText,
+      actor: { id: actor._id, username: actor.username },
+      target: { id: target._id, username: target.username },
+      role: newRole
     });
-    throw new Error("Invalid ids");
-  }
 
-  if (aid === tid) {
-    log("BLOCKED: actorId === targetId");
-    throw new Error("Cannot change your own role");
-  }
+    // مهم: الأفضل إرسال meta/action (لو أنت ضايفهم في schema)
+    await this.systemActorTarget(
+      rid,
+      aid,
+      tid,
+      systemText,
+      "promotion",
+      {
+        action: "role:set",
+        meta: {
+          actorId: aid,
+          actorName: actor.username,
+          targetId: tid,
+          targetName: target.username,
+          role: newRole
+        },
 
-  // =========================
-  // Load room
-  // =========================
-  const room = await Room.findById(rid);
-  if (!room) {
-    log("ROOM NOT FOUND");
-    throw new Error("Room not found");
-  }
-
-  this.ensureArrays(room);
-
-  // =========================
-  // Roles snapshot BEFORE
-  // =========================
-  const before = {
-    creator: String(room.creator),
-    owners: (room.owners || []).map((x: any) => x?.toString?.()),
-    admins: (room.admins || []).map((x: any) => x?.toString?.()),
-    members: (room.members || []).map((x: any) => x?.toString?.())
-  };
-
-  log("ROOM LOADED + SNAPSHOT BEFORE", before);
-
-  // =========================
-  // Permission checks
-  // =========================
-  const actorRole = this.getRole(room, aid);
-  const targetRole = this.getRole(room, tid);
-
-  log("ROLES DETECTED", { actorRole, targetRole });
-
-  try {
-    this.assertCanModerate(room, aid, tid, "role");
-    log("PERMISSION OK");
-  } catch (e: any) {
-    log("PERMISSION FAIL", { message: e?.message });
-    throw e;
-  }
-
-  // =========================
-  // Constraints
-  // =========================
-  if (actorRole === "owner" && newRole === "owner") {
-    log("BLOCKED: owner cannot promote to owner");
-    throw new Error("Owner cannot promote to owner");
-  }
-
-  if (actorRole !== "creator" && targetRole === "owner") {
-    log("BLOCKED: only creator can change owner role", { actorRole, targetRole });
-    throw new Error("Only creator can change owner role");
-  }
-
-  if (targetRole === "creator") {
-    log("BLOCKED: cannot change creator via setUserRole");
-    throw new Error("Use transferCreator to change creator");
-  }
-
-  // =========================
-  // Apply change
-  // =========================
-  log("REMOVE ALL ROLES (target)", { targetId: tid });
-  this.removeAllRoles(room, tid);
-
-  if (newRole === "owner") {
-    if (!room.owners.some((x: any) => x?.toString?.() === tid)) {
-      room.owners.push(tid as any);
-      log("PUSH -> owners", { targetId: tid });
-    }
-  } else if (newRole === "admin") {
-    if (!room.admins.some((x: any) => x?.toString?.() === tid)) {
-      room.admins.push(tid as any);
-      log("PUSH -> admins", { targetId: tid });
-    }
-  } else {
-    if (!room.members.some((x: any) => x?.toString?.() === tid)) {
-      room.members.push(tid as any);
-      log("PUSH -> members", { targetId: tid });
-    }
-  }
-
-  // =========================
-  // Save
-  // =========================
-  log("SAVING ROOM...");
-  await room.save();
-  log("ROOM SAVED OK");
-
-  // =========================
-  // Roles snapshot AFTER
-  // =========================
-  const after = {
-    creator: String(room.creator),
-    owners: (room.owners || []).map((x: any) => x?.toString?.()),
-    admins: (room.admins || []).map((x: any) => x?.toString?.()),
-    members: (room.members || []).map((x: any) => x?.toString?.())
-  };
-
-  log("SNAPSHOT AFTER", after);
-
-  // =========================
-  // Emit roles update
-  // =========================
-  const rolesUpdatePayload = {
-    roomId: rid,
-    owners: after.owners,
-    admins: after.admins,
-    members: after.members
-  };
-
-  log("EMIT room:roles:update", rolesUpdatePayload);
-  this.io().to(`room:${rid}`).emit("room:roles:update", rolesUpdatePayload);
-
-  // =========================
-  // System message (promotion)
-  // =========================
-  const actor = await this.getUserBasic(aid);
-  const target = await this.getUserBasic(tid);
-
-  const roleAr = newRole === "owner" ? "مالك" : newRole === "admin" ? "أدمن" : "عضو";
-
-  const systemText = `⭐ تم وضع ${target.username} ${roleAr} بواسطة ${actor.username}`;
-
-  log("SYSTEM MESSAGE PREP", {
-    type: "promotion",
-    text: systemText,
-    actor: { id: actor._id, username: actor.username },
-    target: { id: target._id, username: target.username },
-    role: newRole
-  });
-
-  // مهم: الأفضل إرسال meta/action (لو أنت ضايفهم في schema)
-  await this.systemActorTarget(
-    rid,
-    aid,
-    tid,
-    systemText,
-    "promotion",
-    {
-      action: "role:set",
-      meta: {
-        actorId: aid,
+        // للتوافق مع كودك الحالي لو يقرأ من الجذر
         actorName: actor.username,
-        targetId: tid,
         targetName: target.username,
         role: newRole
-      },
+      }
+    );
 
-      // للتوافق مع كودك الحالي لو يقرأ من الجذر
-      actorName: actor.username,
-      targetName: target.username,
-      role: newRole
+    log("SYSTEM MESSAGE SENT");
+
+    // =========================
+    // Optional users update
+    // =========================
+    try {
+      this.emitUsersUpdate(rid);
+      log("EMIT room:users:update");
+    } catch (e: any) {
+      log("EMIT room:users:update FAILED (ignored)", { message: e?.message });
     }
-  );
 
-  log("SYSTEM MESSAGE SENT");
-
-  // =========================
-  // Optional users update
-  // =========================
-  try {
-    this.emitUsersUpdate(rid);
-    log("EMIT room:users:update");
-  } catch (e: any) {
-    log("EMIT room:users:update FAILED (ignored)", { message: e?.message });
+    log("OUT", { success: true });
+    return { success: true };
   }
-
-  log("OUT", { success: true });
-  return { success: true };
-}
 
   async kickUser(roomId: string, actorId: string, targetId: string) {
     const room = await Room.findById(roomId);
@@ -568,11 +640,14 @@ private async getUserState(roomId: string, userId: string) {
       const actorId = String(payload.mentions[0]);
       if (this.isValidObjectId(actorId)) payload.sender = actorId;
     }
+    if (payload.sender) {
+      payload.senderSnapshot = await this.getUserPublicSnapshot(payload.sender);
+    }
 
     const msg = await RoomMessage.create(payload);
 
     try {
-      await msg.populate("sender", "username avatar");
+      // await msg.populate("sender", USER_PUBLIC_FIELDS);
     } catch { }
 
     this.io().to(`room:${roomId}`).emit("room:message:new", msg);
@@ -708,107 +783,107 @@ private async getUserState(roomId: string, userId: string) {
    * - (اختياري) يضاف members لو كان none
    * - ثم يبث العدد الحقيقي عبر room:activeCount:update
    */
-async joinRoom(roomId: string, userId: string) {
-  const uid = userId.toString();
-  const joinAt = new Date();
+  async joinRoom(roomId: string, userId: string) {
+    const uid = userId.toString();
+    const joinAt = new Date();
 
-  const { joined } = await this.withTx(async (session) => {
-    const room = await Room.findById(roomId).session(session);
-    if (!room) throw new Error("Room not found");
+    const { joined } = await this.withTx(async (session) => {
+      const room = await Room.findById(roomId).session(session);
+      if (!room) throw new Error("Room not found");
 
-    this.ensureArrays(room);
-
-    if (room.isLocked) throw new Error("Room is locked");
-    if (this.isBanned(room, uid)) throw new Error("You are banned");
-    if ((room.usersCount || 0) >= (room.maxUsers || 50)) throw new Error("Room is full");
-
-    const alreadyActive = room.activeUsers.some((u: any) => u?.toString?.() === uid);
-    if (alreadyActive) return { joined: false };
-
-    const role = this.getRole(room, uid);
-    if (role === "none") {
-      const alreadyMember = room.members.some((m: any) => m?.toString?.() === uid);
-      if (!alreadyMember) room.members.push(userId as any);
-    }
-
-    room.activeUsers.push(userId as any);
-    room.usersCount = (room.usersCount || 0) + 1;
-
-    await room.save({ session });
-    return { joined: true };
-  });
-
-  if (!joined) return { success: true };
-
-  // 1) آخر pinned قبل وقت الدخول
-  const keepPinnedId = await this.getLastPinnedBefore(roomId, joinAt);
-
-  // 2) بث دخول المستخدم للآخرين
-  this.io().to(`room:${roomId}`).emit("room:user:joined", { roomId, userId });
-
-  // 3) أنشئ رسالة system "دخل" (ستكون للغرفة، لكن سنخفيها عن الداخل بعد قليل)
-  await this.system(roomId, "دخل", "join", { sender: userId, mentions: [userId] });
-
-  // 4) ✅ اضبط clearedAt بعد رسالة "دخل" مباشرةً
-  //    وبذلك الداخل لن يرى لا الرسائل القديمة ولا رسالة "دخل"، وسيبقى فقط pinned
-  const afterJoinSystem = new Date();
-  await this.setClearedAt(roomId, userId, afterJoinSystem, keepPinnedId);
-
-  // 5) بث العدد الحقيقي
-  await this.emitActiveCount(roomId);
-
-  return { success: true };
-}
-
-/**
- * ✅ leave:
- * نفس الفكرة: حتى لو دخل مرة أخرى لاحقًا، لا يرى الرسائل قبل (آخر Leave)
- * ونخفي كذلك رسالة "خرج" عن نفس المستخدم مستقبلًا
- */
-async leaveRoom(roomId: string, userId: string, removeFromMembers = false) {
-  const uid = userId.toString();
-  const leaveAt = new Date();
-
-  // إزالة من activeUsers
-  await Room.updateOne(
-    { _id: roomId, activeUsers: uid },
-    { $pull: { activeUsers: uid }, $inc: { usersCount: -1 } }
-  );
-  await Room.updateOne({ _id: roomId, usersCount: { $lt: 0 } }, { $set: { usersCount: 0 } });
-
-  // (اختياري) إزالة من members
-  if (removeFromMembers) {
-    const room = await Room.findById(roomId);
-    if (room) {
       this.ensureArrays(room);
-      room.members = (room.members || []).filter((x: any) => x?.toString?.() !== uid);
-      await room.save();
-      this.io().to(`room:${roomId}`).emit("room:roles:update", {
-        roomId,
-        owners: (room.owners || []).map((x: any) => x.toString()),
-        admins: (room.admins || []).map((x: any) => x.toString()),
-        members: (room.members || []).map((x: any) => x.toString())
-      });
-    }
+
+      if (room.isLocked) throw new Error("Room is locked");
+      if (this.isBanned(room, uid)) throw new Error("You are banned");
+      if ((room.usersCount || 0) >= (room.maxUsers || 50)) throw new Error("Room is full");
+
+      const alreadyActive = room.activeUsers.some((u: any) => u?.toString?.() === uid);
+      if (alreadyActive) return { joined: false };
+
+      const role = this.getRole(room, uid);
+      if (role === "none") {
+        const alreadyMember = room.members.some((m: any) => m?.toString?.() === uid);
+        if (!alreadyMember) room.members.push(userId as any);
+      }
+
+      room.activeUsers.push(userId as any);
+      room.usersCount = (room.usersCount || 0) + 1;
+
+      await room.save({ session });
+      return { joined: true };
+    });
+
+    if (!joined) return { success: true };
+
+    // 1) آخر pinned قبل وقت الدخول
+    const keepPinnedId = await this.getLastPinnedBefore(roomId, joinAt);
+
+    // 2) بث دخول المستخدم للآخرين
+    this.io().to(`room:${roomId}`).emit("room:user:joined", { roomId, userId });
+
+    // 3) أنشئ رسالة system "دخل" (ستكون للغرفة، لكن سنخفيها عن الداخل بعد قليل)
+    await this.system(roomId, "دخل", "join", { sender: userId, mentions: [userId] });
+
+    // 4) ✅ اضبط clearedAt بعد رسالة "دخل" مباشرةً
+    //    وبذلك الداخل لن يرى لا الرسائل القديمة ولا رسالة "دخل"، وسيبقى فقط pinned
+    const afterJoinSystem = new Date();
+    await this.setClearedAt(roomId, userId, afterJoinSystem, keepPinnedId);
+
+    // 5) بث العدد الحقيقي
+    await this.emitActiveCount(roomId);
+
+    return { success: true };
   }
 
-  // 1) آخر pinned قبل وقت الخروج (حتى عند الرجوع لاحقًا يظهر pinned فقط)
-  const keepPinnedId = await this.getLastPinnedBefore(roomId, leaveAt);
+  /**
+   * ✅ leave:
+   * نفس الفكرة: حتى لو دخل مرة أخرى لاحقًا، لا يرى الرسائل قبل (آخر Leave)
+   * ونخفي كذلك رسالة "خرج" عن نفس المستخدم مستقبلًا
+   */
+  async leaveRoom(roomId: string, userId: string, removeFromMembers = false) {
+    const uid = userId.toString();
+    const leaveAt = new Date();
 
-  // 2) بث خروج المستخدم للآخرين
-  this.io().to(`room:${roomId}`).emit("room:user:left", { roomId, userId });
+    // إزالة من activeUsers
+    await Room.updateOne(
+      { _id: roomId, activeUsers: uid },
+      { $pull: { activeUsers: uid }, $inc: { usersCount: -1 } }
+    );
+    await Room.updateOne({ _id: roomId, usersCount: { $lt: 0 } }, { $set: { usersCount: 0 } });
 
-  // 3) رسالة system "خرج" (للآخرين)
-  await this.system(roomId, "خرج", "leave", { sender: userId, mentions: [userId] });
+    // (اختياري) إزالة من members
+    if (removeFromMembers) {
+      const room = await Room.findById(roomId);
+      if (room) {
+        this.ensureArrays(room);
+        room.members = (room.members || []).filter((x: any) => x?.toString?.() !== uid);
+        await room.save();
+        this.io().to(`room:${roomId}`).emit("room:roles:update", {
+          roomId,
+          owners: (room.owners || []).map((x: any) => x.toString()),
+          admins: (room.admins || []).map((x: any) => x.toString()),
+          members: (room.members || []).map((x: any) => x.toString())
+        });
+      }
+    }
 
-  // 4) ✅ اضبط clearedAt بعد رسالة "خرج" حتى لا يراها عند العودة
-  const afterLeaveSystem = new Date();
-  await this.setClearedAt(roomId, userId, afterLeaveSystem, keepPinnedId);
+    // 1) آخر pinned قبل وقت الخروج (حتى عند الرجوع لاحقًا يظهر pinned فقط)
+    const keepPinnedId = await this.getLastPinnedBefore(roomId, leaveAt);
 
-  const activeCount = await this.emitActiveCount(roomId);
+    // 2) بث خروج المستخدم للآخرين
+    this.io().to(`room:${roomId}`).emit("room:user:left", { roomId, userId });
 
-  return { success: true, activeCount };
-}
+    // 3) رسالة system "خرج" (للآخرين)
+    await this.system(roomId, "خرج", "leave", { sender: userId, mentions: [userId] });
+
+    // 4) ✅ اضبط clearedAt بعد رسالة "خرج" حتى لا يراها عند العودة
+    const afterLeaveSystem = new Date();
+    await this.setClearedAt(roomId, userId, afterLeaveSystem, keepPinnedId);
+
+    const activeCount = await this.emitActiveCount(roomId);
+
+    return { success: true, activeCount };
+  }
 
   /* =====================================================
      CREATE ROOM / GET ROOMS / SEARCH ROOMS
@@ -960,10 +1035,12 @@ async leaveRoom(roomId: string, userId: string, removeFromMembers = false) {
     if (this.isMuted(room, senderId)) throw new Error("You are muted");
 
     const cleanMentions = Array.from(new Set((mentions || []).filter((x) => this.isValidObjectId(x))));
-
+    const senderSnapshot = await this.getUserPublicSnapshot(senderId);
     const message = await RoomMessage.create({
       room: roomId,
       sender: senderId,
+      senderSnapshot, // ✅ هنا
+
       content,
       type,
       replyTo: replyTo && this.isValidObjectId(replyTo) ? replyTo : undefined,
@@ -973,7 +1050,7 @@ async leaveRoom(roomId: string, userId: string, removeFromMembers = false) {
     });
 
     try {
-      await message.populate("sender", "username avatar");
+      // await message.populate("sender", USER_PUBLIC_FIELDS);
     } catch { }
 
     this.io().to(`room:${roomId}`).emit("room:message:new", message);
@@ -1594,7 +1671,6 @@ async leaveRoom(roomId: string, userId: string, removeFromMembers = false) {
 
     return message;
   }
-
 async getMessages(roomId: string, userId: string, pagination: Pagination = {}) {
   const room = await Room.findById(roomId);
   if (!room) throw new Error("Room not found");
@@ -1605,12 +1681,10 @@ async getMessages(roomId: string, userId: string, pagination: Pagination = {}) {
   if (!isInside && role === "none") throw new Error("Not allowed");
 
   const limit = Math.max(1, Math.min(100, Number(pagination.limit) || 30));
-
   const state = await this.getUserState(roomId, userId);
 
-  // ✅ سنحفظ beforeDate لو موجود
+  // ✅ beforeDate from cursor
   let beforeDate: Date | null = null;
-
   if (pagination.before && this.isValidObjectId(pagination.before)) {
     const beforeMsg = await RoomMessage.findById(pagination.before).select("createdAt");
     if (beforeMsg?.createdAt) beforeDate = beforeMsg.createdAt;
@@ -1618,26 +1692,27 @@ async getMessages(roomId: string, userId: string, pagination: Pagination = {}) {
 
   const query: any = { room: roomId };
 
-  // ✅ بدون clearedAt: طبّق فقط beforeDate إن وجد
+  // ✅ بدون clearedAt
   if (!state.clearedAt) {
     if (beforeDate) query.createdAt = { $lt: beforeDate };
 
     const messages = await RoomMessage.find(query)
       .sort({ createdAt: -1 })
       .limit(limit)
-      .populate("sender", "username avatar")
-      .populate("replyTo");
+      .populate("replyTo"); // ✅ فقط replyTo
+
+    // ✅ Backfill senderSnapshot للرسائل القديمة (اختياري لكن مفيد)
+    await this.backfillSenderSnapshots(messages);
 
     return messages;
   }
 
-  // ✅ مع clearedAt: (createdAt > clearedAt) + (اختياري createdAt < beforeDate)
+  // ✅ مع clearedAt
   const createdCond: any = { $gt: state.clearedAt };
   if (beforeDate) createdCond.$lt = beforeDate;
 
   const or: any[] = [{ createdAt: createdCond }];
 
-  // ✅ استثناء pinned ولكن مع احترام beforeDate إن وجد (حتى لا يفسد pagination)
   if (state.pinnedMessageIdAtClear) {
     const pinCond: any = { _id: state.pinnedMessageIdAtClear };
     if (beforeDate) pinCond.createdAt = { $lt: beforeDate };
@@ -1649,54 +1724,168 @@ async getMessages(roomId: string, userId: string, pagination: Pagination = {}) {
   const messages = await RoomMessage.find(query)
     .sort({ createdAt: -1 })
     .limit(limit)
-    .populate("sender", "username avatar")
-    .populate("replyTo");
+    .populate("replyTo"); // ✅ فقط replyTo
+
+  // ✅ Backfill senderSnapshot للرسائل القديمة (اختياري)
+  await this.backfillSenderSnapshots(messages);
 
   return messages;
 }
-async searchMessages(roomId: string, userId: string, q: string, limit = 30) {
-  const room = await Room.findById(roomId);
-  if (!room) throw new Error("Room not found");
-  this.ensureArrays(room);
 
-  const role = this.getRole(room, userId);
-  const isInside = this.isInside(room, userId);
-  if (!isInside && role === "none") throw new Error("Not allowed");
+/**
+ * ✅ يملأ senderSnapshot للرسائل القديمة التي لا تحتويه
+ * - يقلل عدد الاستعلامات: يجمع senderIds الفريدة ثم يجلب snapshots في Loop (يمكن تحسينها أكثر)
+ * - لا يكسر الأداء لأن limit عندك 30/100 فقط
+ */
+private async backfillSenderSnapshots(messages: any[]) {
+  // اجمع الرسائل التي تحتاج backfill
+  const need = messages.filter((m) => m?.sender && !m?.senderSnapshot);
+  if (!need.length) return;
 
-  const l = Math.max(1, Math.min(100, Number(limit) || 30));
-  const text = String(q || "").trim();
-  if (!text) return [];
+  // اجمع senderIds الفريدة
+  const ids = Array.from(
+    new Set(
+      need
+        .map((m) => String(m.sender))
+        .filter((id) => this.isValidObjectId(id))
+    )
+  );
 
-  const safe = text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const rx = new RegExp(safe, "i");
+  if (!ids.length) return;
 
-  const state = await this.getUserState(roomId, userId);
-
-  const query: any = { room: roomId };
-
-  if (state.clearedAt) {
-    const or: any[] = [
-      { content: rx, createdAt: { $gt: state.clearedAt } }
-    ];
-
-    if (state.pinnedMessageIdAtClear) {
-      // ✅ استثناء pinned حتى لو لا تطابق rx
-      or.push({ _id: state.pinnedMessageIdAtClear });
-    }
-
-    query.$or = or;
-  } else {
-    query.content = rx;
+  // جيب snapshots لكل senderId
+  const snapshotById = new Map<string, any>();
+  for (const id of ids) {
+    const snap = await this.getUserPublicSnapshot(id);
+    snapshotById.set(id, snap);
   }
 
-  const messages = await RoomMessage.find(query)
-    .sort({ createdAt: -1 })
-    .limit(l)
-    .populate("sender", "username avatar")
-    .populate("replyTo");
+  // جهّز bulk update
+  const ops = need
+    .map((m) => {
+      const sid = String(m.sender);
+      const snap = snapshotById.get(sid);
+      if (!snap) return null;
 
-  return messages;
+      // حدّث الـ document في الذاكرة (للرد للعميل)
+      m.senderSnapshot = snap;
+
+      // حدّثه في DB مرة واحدة
+      return {
+        updateOne: {
+          filter: { _id: m._id, senderSnapshot: { $exists: false } },
+          update: { $set: { senderSnapshot: snap } }
+        }
+      };
+    })
+    .filter(Boolean);
+
+  if (ops.length) {
+    await RoomMessage.bulkWrite(ops as any, { ordered: false });
+  }
 }
+  // async getMessages(roomId: string, userId: string, pagination: Pagination = {}) {
+  //   const room = await Room.findById(roomId);
+  //   if (!room) throw new Error("Room not found");
+  //   this.ensureArrays(room);
+
+  //   const role = this.getRole(room, userId);
+  //   const isInside = this.isInside(room, userId);
+  //   if (!isInside && role === "none") throw new Error("Not allowed");
+
+  //   const limit = Math.max(1, Math.min(100, Number(pagination.limit) || 30));
+
+  //   const state = await this.getUserState(roomId, userId);
+
+  //   // ✅ سنحفظ beforeDate لو موجود
+  //   let beforeDate: Date | null = null;
+
+  //   if (pagination.before && this.isValidObjectId(pagination.before)) {
+  //     const beforeMsg = await RoomMessage.findById(pagination.before).select("createdAt");
+  //     if (beforeMsg?.createdAt) beforeDate = beforeMsg.createdAt;
+  //   }
+
+  //   const query: any = { room: roomId };
+
+  //   // ✅ بدون clearedAt: طبّق فقط beforeDate إن وجد
+  //   if (!state.clearedAt) {
+  //     if (beforeDate) query.createdAt = { $lt: beforeDate };
+
+  //     const messages = await RoomMessage.find(query)
+  //       .sort({ createdAt: -1 })
+  //       .limit(limit)
+  //       .populate("sender", "username avatar")
+  //       .populate("replyTo");
+
+  //     return messages;
+  //   }
+
+  //   // ✅ مع clearedAt: (createdAt > clearedAt) + (اختياري createdAt < beforeDate)
+  //   const createdCond: any = { $gt: state.clearedAt };
+  //   if (beforeDate) createdCond.$lt = beforeDate;
+
+  //   const or: any[] = [{ createdAt: createdCond }];
+
+  //   // ✅ استثناء pinned ولكن مع احترام beforeDate إن وجد (حتى لا يفسد pagination)
+  //   if (state.pinnedMessageIdAtClear) {
+  //     const pinCond: any = { _id: state.pinnedMessageIdAtClear };
+  //     if (beforeDate) pinCond.createdAt = { $lt: beforeDate };
+  //     or.push(pinCond);
+  //   }
+
+  //   query.$or = or;
+
+  //   const messages = await RoomMessage.find(query)
+  //     .sort({ createdAt: -1 })
+  //     .limit(limit)
+  //     .populate("sender", USER_PUBLIC_FIELDS)
+  //     .populate("replyTo");
+
+  //   return messages;
+  // }
+  async searchMessages(roomId: string, userId: string, q: string, limit = 30) {
+    const room = await Room.findById(roomId);
+    if (!room) throw new Error("Room not found");
+    this.ensureArrays(room);
+
+    const role = this.getRole(room, userId);
+    const isInside = this.isInside(room, userId);
+    if (!isInside && role === "none") throw new Error("Not allowed");
+
+    const l = Math.max(1, Math.min(100, Number(limit) || 30));
+    const text = String(q || "").trim();
+    if (!text) return [];
+
+    const safe = text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const rx = new RegExp(safe, "i");
+
+    const state = await this.getUserState(roomId, userId);
+
+    const query: any = { room: roomId };
+
+    if (state.clearedAt) {
+      const or: any[] = [
+        { content: rx, createdAt: { $gt: state.clearedAt } }
+      ];
+
+      if (state.pinnedMessageIdAtClear) {
+        // ✅ استثناء pinned حتى لو لا تطابق rx
+        or.push({ _id: state.pinnedMessageIdAtClear });
+      }
+
+      query.$or = or;
+    } else {
+      query.content = rx;
+    }
+
+    const messages = await RoomMessage.find(query)
+      .sort({ createdAt: -1 })
+      .limit(l)
+      .populate("sender", "username avatar")
+      .populate("replyTo");
+
+    return messages;
+  }
 
   async toggleReaction(roomId: string, messageId: string, userId: string, emoji: string) {
     const room = await Room.findById(roomId);
@@ -1739,90 +1928,90 @@ async searchMessages(roomId: string, userId: string, q: string, limit = 30) {
      ROOM USERS (WITH ROLES & STATUS)
   ===================================================== */
 
-async getRoomUsers(roomId: string) {
-  const room = await Room.findById(roomId)
-    .populate("creator", "username avatar")
-    .populate("owners", "username avatar")
-    .populate("admins", "username avatar")
-    .populate("members", "username avatar");
+  async getRoomUsers(roomId: string) {
+    const room = await Room.findById(roomId)
+      .populate("creator", "username avatar")
+      .populate("owners", "username avatar")
+      .populate("admins", "username avatar")
+      .populate("members", "username avatar");
 
-  if (!room) throw new Error("Room not found");
-  this.ensureArrays(room);
+    if (!room) throw new Error("Room not found");
+    this.ensureArrays(room);
 
-  const now = new Date();
+    const now = new Date();
 
-  const formatUser = (user: any, role: Role) => {
-    const vip = (room.vipUsers || []).find((v: any) => v.user.toString() === user._id.toString());
-    const muted = (room.mutedUsers || []).find((m: any) => m.user.toString() === user._id.toString());
+    const formatUser = (user: any, role: Role) => {
+      const vip = (room.vipUsers || []).find((v: any) => v.user.toString() === user._id.toString());
+      const muted = (room.mutedUsers || []).find((m: any) => m.user.toString() === user._id.toString());
 
-    const isActive = (room.activeUsers || []).some(
-      (u: any) => u?.toString?.() === user._id.toString()
-    );
+      const isActive = (room.activeUsers || []).some(
+        (u: any) => u?.toString?.() === user._id.toString()
+      );
 
-    return {
-      _id: user._id,
-      username: user.username,
-      avatar: user.avatar,
-      role,
-      isActive,
-      isVip: !!vip,
-      vipExpiresAt: vip?.expiresAt || null,
-      isMuted: !!muted && muted.until > now,
-      mutedUntil: muted?.until || null
+      return {
+        _id: user._id,
+        username: user.username,
+        avatar: user.avatar,
+        role,
+        isActive,
+        isVip: !!vip,
+        vipExpiresAt: vip?.expiresAt || null,
+        isMuted: !!muted && muted.until > now,
+        mutedUntil: muted?.until || null
+      };
     };
-  };
 
-  // ✅ أولوية الأدوار (الأعلى يغلب)
-  const rank: Record<Role, number> = {
-    none: 0,
-    member: 1,
-    admin: 2,
-    owner: 3,
-    creator: 4
-  };
+    // ✅ أولوية الأدوار (الأعلى يغلب)
+    const rank: Record<Role, number> = {
+      none: 0,
+      member: 1,
+      admin: 2,
+      owner: 3,
+      creator: 4
+    };
 
-  // ✅ خريطة فريدة حسب userId
-  const byId = new Map<string, any>();
+    // ✅ خريطة فريدة حسب userId
+    const byId = new Map<string, any>();
 
-  const upsert = (user: any, role: Role) => {
-    if (!user?._id) return;
-    const id = user._id.toString();
+    const upsert = (user: any, role: Role) => {
+      if (!user?._id) return;
+      const id = user._id.toString();
 
-    const existing = byId.get(id);
-    if (!existing) {
-      byId.set(id, formatUser(user, role));
-      return;
-    }
+      const existing = byId.get(id);
+      if (!existing) {
+        byId.set(id, formatUser(user, role));
+        return;
+      }
 
-    // إذا الدور الجديد أعلى، استبدله
-    if (rank[role] > rank[existing.role as Role]) {
-      const merged = formatUser(user, role);
-      byId.set(id, { ...existing, ...merged, role });
-    } else {
-      // فقط حدّث flags (active/vip/muted) لو تغيرت
-      const refreshed = formatUser(user, existing.role as Role);
-      byId.set(id, { ...existing, ...refreshed });
-    }
-  };
+      // إذا الدور الجديد أعلى، استبدله
+      if (rank[role] > rank[existing.role as Role]) {
+        const merged = formatUser(user, role);
+        byId.set(id, { ...existing, ...merged, role });
+      } else {
+        // فقط حدّث flags (active/vip/muted) لو تغيرت
+        const refreshed = formatUser(user, existing.role as Role);
+        byId.set(id, { ...existing, ...refreshed });
+      }
+    };
 
-  // ✅ أدخلهم جميعًا، وDedup سيضمن ظهورهم مرة واحدة بأعلى Role
-  upsert(room.creator, "creator");
-  for (const u of room.owners || []) upsert(u, "owner");
-  for (const u of room.admins || []) upsert(u, "admin");
-  for (const u of room.members || []) upsert(u, "member");
+    // ✅ أدخلهم جميعًا، وDedup سيضمن ظهورهم مرة واحدة بأعلى Role
+    upsert(room.creator, "creator");
+    for (const u of room.owners || []) upsert(u, "owner");
+    for (const u of room.admins || []) upsert(u, "admin");
+    for (const u of room.members || []) upsert(u, "member");
 
-  // ✅ ترتيب العرض: الأعلى Role أولاً ثم الاسم
-  let users = Array.from(byId.values()).sort((a, b) => {
-    const diff = rank[b.role as Role] - rank[a.role as Role];
-    if (diff !== 0) return diff;
-    return String(a.username || "").localeCompare(String(b.username || ""));
-  });
+    // ✅ ترتيب العرض: الأعلى Role أولاً ثم الاسم
+    let users = Array.from(byId.values()).sort((a, b) => {
+      const diff = rank[b.role as Role] - rank[a.role as Role];
+      if (diff !== 0) return diff;
+      return String(a.username || "").localeCompare(String(b.username || ""));
+    });
 
-  // ✅ الحل الأول: اعرض الموجودين داخل الغرفة فقط (Active Users)
-  users = users.filter((u) => u.isActive);
+    // ✅ الحل الأول: اعرض الموجودين داخل الغرفة فقط (Active Users)
+    users = users.filter((u) => u.isActive);
 
-  return { total: users.length, users };
-}
+    return { total: users.length, users };
+  }
   /* =====================================================
      INCREASE MAX USERS LIMIT
   ===================================================== */

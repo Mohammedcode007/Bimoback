@@ -14,10 +14,15 @@ router.get("/items", protect, StoreController.listItems);
 /* =========================
    User Store
 ========================= */
-
+// ✅ تعديل meta (Admin فقط داخل الكنترولر)
+router.patch("/items/:id/meta", protect, StoreController.updateItemMeta);
+router.patch("/items/:id/meta/set", protect, StoreController.setItemMetaFields);
 // عرض مخزون المستخدم + الرصيد
 router.get("/me/inventory", protect, StoreController.myInventory);
 
+// ✅ شراء Coinz (للمستخدم نفسه فقط - Mock)
+router.post("/coinz/buy", protect, StoreController.buyCoinz);
+router.post("/items", protect, StoreController.createItem);
 // شراء عناصر
 router.post("/purchase", protect, StoreController.purchase);
 
