@@ -9,7 +9,12 @@ import RoomUserState from "../models/RoomUserState";
  * - في RoomMessageSchema عندك يوجد Hook يقوم بزيادة messagesCount تلقائيًا عند إنشاء الرسالة.
  * - لذلك في هذا الملف لا نقوم بزيادة room.messagesCount يدويًا داخل sendMessage حتى لا يحدث تضاعف.
  */
-
+type RoomUserStateLean = {
+  clearedAt: Date | null;
+  pinnedMessageIdAtClear: Types.ObjectId | null;
+  pinnedMessageAtClear?: Date | null;
+  lastGiftSeenAt: Date; // ✅ أضف هذا
+};
 type Role = "creator" | "owner" | "admin" | "member" | "none";
 const USER_PUBLIC_FIELDS =
   "username atUsername avatar coverImage isOnline lastSeen role " +
@@ -58,6 +63,74 @@ class RoomService {
     const uid = userId.toString();
     return (room.activeUsers || []).some((u: any) => u?.toString?.() === uid);
   }
+  private async applyGiftOncePolicy(
+  roomId: string,
+  userId: string,
+  state: any,
+  messages: any[],
+  pagination: { before?: string }
+) {
+  if (!Array.isArray(messages) || !messages.length) return messages;
+
+  const lastGiftSeenAt = state?.lastGiftSeenAt ? new Date(state.lastGiftSeenAt) : new Date(0);
+
+  // ✅ نعتبر “مرة واحدة عند فتح الشاشة” = أول صفحة فقط (بدون before)
+  const isFirstPage = !pagination?.before;
+
+  // ✅ اجلب Gifts غير المعروضة داخل الصفحة الحالية
+  const unseenGifts = messages
+    .filter((m: any) => m?.type === "gift" && m?.createdAt && new Date(m.createdAt).getTime() > lastGiftSeenAt.getTime())
+    .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  // لا يوجد شيء جديد
+  if (!unseenGifts.length) {
+    // ✅ حتى لو توجد gifts قديمة، نحولها system حتى لا تعمل overlay عند كل فتح
+    return messages.map((m: any) => {
+      if (m?.type !== "gift") return m;
+      return {
+        ...m.toObject?.() ?? m,
+        type: "system",
+        content: "🚀 Boost",
+        systemType: "gift"
+      };
+    });
+  }
+
+  // ✅ اختر Gift واحدة فقط (الأحدث unseen)
+  const chosenId = String(unseenGifts[0]._id);
+
+  const patched = messages.map((m: any) => {
+    if (m?.type !== "gift") return m;
+
+    const isChosen = String(m._id) === chosenId;
+
+    if (isChosen) return m; // ✅ هذه الوحيدة التي ستصل للفرونت كـ gift فتشغل overlay
+
+    // ✅ غير المختارة تتحول system حتى لا تشغل overlay
+    return {
+      ...m.toObject?.() ?? m,
+      type: "system",
+      content: "🚀 Boost",
+      systemType: "gift"
+    };
+  });
+
+  // ✅ تحديث lastGiftSeenAt مرة واحدة فقط عند أول صفحة
+  // حتى لا يحصل تحديث “خاطئ” أثناء pagination
+  if (isFirstPage) {
+    const newestSeen = new Date(unseenGifts[0].createdAt);
+
+    // حماية إضافية: لا تحدث إذا التاريخ غير صحيح
+    if (!Number.isNaN(newestSeen.getTime())) {
+      await RoomUserState.updateOne(
+        { room: roomId, user: userId },
+        { $set: { lastGiftSeenAt: newestSeen } }
+      );
+    }
+  }
+
+  return patched;
+}
   private async setClearedAt(
     roomId: string,
     userId: string,
@@ -174,15 +247,21 @@ private async getUserPublicSnapshot(userId: string) {
     profileViews: Number(u.profileViews || 0)
   };
 }
-  private async getUserState(roomId: string, userId: string) {
-    const st = await RoomUserState.findOne({ room: roomId, user: userId })
-      .select("clearedAt pinnedMessageIdAtClear");
+async getUserState(roomId: string, userId: string): Promise<RoomUserStateLean> {
+  const state = await RoomUserState.findOne({ room: roomId, user: userId }).lean();
 
-    return {
-      clearedAt: st?.clearedAt ?? null,
-      pinnedMessageIdAtClear: st?.pinnedMessageIdAtClear ? String(st.pinnedMessageIdAtClear) : null
-    };
+  if (!state) {
+    const created = await RoomUserState.create({
+      room: roomId,
+      user: userId,
+      lastGiftSeenAt: new Date(0),
+    });
+
+    return created.toObject() as RoomUserStateLean;
   }
+
+  return state as RoomUserStateLean;
+}
   private oid(id: string) {
     if (!this.isValidObjectId(id)) throw new Error("Invalid id");
     return new Types.ObjectId(id);
@@ -783,57 +862,70 @@ private async getUserPublicSnapshot(userId: string) {
    * - (اختياري) يضاف members لو كان none
    * - ثم يبث العدد الحقيقي عبر room:activeCount:update
    */
-  async joinRoom(roomId: string, userId: string) {
-    const uid = userId.toString();
-    const joinAt = new Date();
+ async joinRoom(roomId: string, userId: string, password?: string) {
+  const uid = userId.toString();
+  const joinAt = new Date();
 
-    const { joined } = await this.withTx(async (session) => {
-      const room = await Room.findById(roomId).session(session);
-      if (!room) throw new Error("Room not found");
+  const { joined } = await this.withTx(async (session) => {
+    const room = await Room.findById(roomId).session(session);
+    if (!room) throw new Error("Room not found");
 
-      this.ensureArrays(room);
+    this.ensureArrays(room);
 
-      if (room.isLocked) throw new Error("Room is locked");
-      if (this.isBanned(room, uid)) throw new Error("You are banned");
-      if ((room.usersCount || 0) >= (room.maxUsers || 50)) throw new Error("Room is full");
+    if (room.isLocked) throw new Error("Room is locked");
+    if (this.isBanned(room, uid)) throw new Error("You are banned");
+    if ((room.usersCount || 0) >= (room.maxUsers || 50)) throw new Error("Room is full");
 
-      const alreadyActive = room.activeUsers.some((u: any) => u?.toString?.() === uid);
-      if (alreadyActive) return { joined: false };
+    const alreadyActive = room.activeUsers.some((u: any) => u?.toString?.() === uid);
+    if (alreadyActive) return { joined: false };
 
-      const role = this.getRole(room, uid);
-      if (role === "none") {
-        const alreadyMember = room.members.some((m: any) => m?.toString?.() === uid);
-        if (!alreadyMember) room.members.push(userId as any);
+    // ✅ 1) احسب الدور قبل التحقق من الباسورد
+    const role = this.getRole(room, uid);
+
+    // ✅ 2) شرط الغرفة المحمية
+    if (room.type === RoomType.PROTECTED) {
+      const bypass = role === "creator" || role === "owner" || role === "admin";
+
+      if (!bypass) {
+        const pass = String(password || "").trim();
+
+        // لا تقبل الدخول بدون باسورد
+        if (!pass) throw new Error("Password required");
+
+        // تحقق من التطابق (بسيطة لأنك تخزنها نصًا عندك)
+        // لو عندك hashing عدلها كما بالأسفل في ملاحظة رقم (2)
+        if (pass !== String(room.password || "")) throw new Error("Invalid password");
       }
+    }
 
-      room.activeUsers.push(userId as any);
-      room.usersCount = (room.usersCount || 0) + 1;
+    // ✅ لو كان none: ضمه للأعضاء (كما عندك)
+    if (role === "none") {
+      const alreadyMember = room.members.some((m: any) => m?.toString?.() === uid);
+      if (!alreadyMember) room.members.push(userId as any);
+    }
 
-      await room.save({ session });
-      return { joined: true };
-    });
+    room.activeUsers.push(userId as any);
+    room.usersCount = (room.usersCount || 0) + 1;
 
-    if (!joined) return { success: true };
+    await room.save({ session });
+    return { joined: true };
+  });
 
-    // 1) آخر pinned قبل وقت الدخول
-    const keepPinnedId = await this.getLastPinnedBefore(roomId, joinAt);
+  if (!joined) return { success: true };
 
-    // 2) بث دخول المستخدم للآخرين
-    this.io().to(`room:${roomId}`).emit("room:user:joined", { roomId, userId });
+  const keepPinnedId = await this.getLastPinnedBefore(roomId, joinAt);
 
-    // 3) أنشئ رسالة system "دخل" (ستكون للغرفة، لكن سنخفيها عن الداخل بعد قليل)
-    await this.system(roomId, "دخل", "join", { sender: userId, mentions: [userId] });
+  this.io().to(`room:${roomId}`).emit("room:user:joined", { roomId, userId });
 
-    // 4) ✅ اضبط clearedAt بعد رسالة "دخل" مباشرةً
-    //    وبذلك الداخل لن يرى لا الرسائل القديمة ولا رسالة "دخل"، وسيبقى فقط pinned
-    const afterJoinSystem = new Date();
-    await this.setClearedAt(roomId, userId, afterJoinSystem, keepPinnedId);
+  await this.system(roomId, "دخل", "join", { sender: userId, mentions: [userId] });
 
-    // 5) بث العدد الحقيقي
-    await this.emitActiveCount(roomId);
+  const afterJoinSystem = new Date();
+  await this.setClearedAt(roomId, userId, afterJoinSystem, keepPinnedId);
 
-    return { success: true };
-  }
+  await this.emitActiveCount(roomId);
+
+  return { success: true };
+}
 
   /**
    * ✅ leave:
@@ -972,33 +1064,47 @@ private async getUserPublicSnapshot(userId: string) {
     return room;
   }
 
-  async getRoomsByType(type: RoomType, pagination: { limit?: number; page?: number } = {}) {
-    const t: RoomType = Object.values(RoomType).includes(type) ? type : RoomType.PUBLIC;
+async getRoomsByType(
+  type: RoomType,
+  pagination: { limit?: number; page?: number } = {}
+) {
+  const t: RoomType = Object.values(RoomType).includes(type)
+    ? type
+    : RoomType.PUBLIC;
 
-    const limit = Math.max(1, Math.min(100, Number(pagination.limit) || 30));
-    const page = Math.max(1, Number(pagination.page) || 1);
-    const skip = (page - 1) * limit;
+  const limit = Math.max(1, Math.min(100, Number(pagination.limit) || 30));
+  const page = Math.max(1, Number(pagination.page) || 1);
+  const skip = (page - 1) * limit;
 
-    const filter: any = { type: t };
+  const filter: any = {};
 
-    const [items, total] = await Promise.all([
-      Room.find(filter)
-        .select("-password")
-        .sort({ boostLevel: -1, usersCount: -1, createdAt: -1 })
-        .skip(skip)
-        .limit(limit),
-      Room.countDocuments(filter)
-    ]);
-
-    return {
-      type: t,
-      page,
-      limit,
-      total,
-      pages: Math.ceil(total / limit),
-      items
-    };
+  // ✅ لو Public → اعرض Public + Protected فقط
+  if (t === RoomType.PUBLIC) {
+    filter.type = { $in: [RoomType.PUBLIC, RoomType.PROTECTED] };
+  } else {
+    // ✅ باقي الأنواع كما هي
+    filter.type = t;
   }
+
+  const [items, total] = await Promise.all([
+    Room.find(filter)
+      .select("-password")
+      .sort({ boostPoints: -1, usersCount: -1, createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    Room.countDocuments(filter),
+  ]);
+
+  return {
+    type: t,
+    page,
+    limit,
+    total,
+    pages: Math.ceil(total / limit),
+    items,
+  };
+}
 
   async searchRooms(query: string, type?: RoomType, limit = 30) {
     const q = String(query || "").trim();
@@ -1671,38 +1777,126 @@ private async getUserPublicSnapshot(userId: string) {
 
     return message;
   }
+// async getMessages(roomId: string, userId: string, pagination: Pagination = {}) {
+//   const room = await Room.findById(roomId);
+//   if (!room) throw new Error("Room not found");
+//   this.ensureArrays(room);
+
+//   const role = this.getRole(room, userId);
+//   const isInside = this.isInside(room, userId);
+//   if (!isInside && role === "none") throw new Error("Not allowed");
+
+//   const limit = Math.max(1, Math.min(100, Number(pagination.limit) || 30));
+//   const state = await this.getUserState(roomId, userId);
+
+//   // ✅ beforeDate from cursor
+//   let beforeDate: Date | null = null;
+//   if (pagination.before && this.isValidObjectId(pagination.before)) {
+//     const beforeMsg = await RoomMessage.findById(pagination.before).select("createdAt");
+//     if (beforeMsg?.createdAt) beforeDate = beforeMsg.createdAt;
+//   }
+
+//   const query: any = { room: roomId };
+
+//   // ✅ بدون clearedAt
+//   if (!state.clearedAt) {
+//     if (beforeDate) query.createdAt = { $lt: beforeDate };
+
+//     const messages = await RoomMessage.find(query)
+//       .sort({ createdAt: -1 })
+//       .limit(limit)
+//       .populate("replyTo"); // ✅ فقط replyTo
+
+//     // ✅ Backfill senderSnapshot للرسائل القديمة (اختياري لكن مفيد)
+//     await this.backfillSenderSnapshots(messages);
+
+//     return messages;
+//   }
+
+//   // ✅ مع clearedAt
+//   const createdCond: any = { $gt: state.clearedAt };
+//   if (beforeDate) createdCond.$lt = beforeDate;
+
+//   const or: any[] = [{ createdAt: createdCond }];
+
+//   if (state.pinnedMessageIdAtClear) {
+//     const pinCond: any = { _id: state.pinnedMessageIdAtClear };
+//     if (beforeDate) pinCond.createdAt = { $lt: beforeDate };
+//     or.push(pinCond);
+//   }
+
+//   query.$or = or;
+
+//   const messages = await RoomMessage.find(query)
+//     .sort({ createdAt: -1 })
+//     .limit(limit)
+//     .populate("replyTo"); // ✅ فقط replyTo
+
+//   // ✅ Backfill senderSnapshot للرسائل القديمة (اختياري)
+//   await this.backfillSenderSnapshots(messages);
+
+//   return messages;
+// }
 async getMessages(roomId: string, userId: string, pagination: Pagination = {}) {
+  console.log("══════════════════════════════════════");
+  console.log("📩 getMessages START");
+  console.log("roomId:", roomId);
+  console.log("userId:", userId);
+  console.log("pagination:", pagination);
+
   const room = await Room.findById(roomId);
   if (!room) throw new Error("Room not found");
   this.ensureArrays(room);
 
   const role = this.getRole(room, userId);
   const isInside = this.isInside(room, userId);
+
+  console.log("role:", role);
+  console.log("isInside:", isInside);
+
   if (!isInside && role === "none") throw new Error("Not allowed");
 
   const limit = Math.max(1, Math.min(100, Number(pagination.limit) || 30));
   const state = await this.getUserState(roomId, userId);
 
-  // ✅ beforeDate from cursor
+  console.log("lastGiftSeenAt:", state?.lastGiftSeenAt);
+  console.log("clearedAt:", state?.clearedAt);
+
+  // beforeDate from cursor
   let beforeDate: Date | null = null;
   if (pagination.before && this.isValidObjectId(pagination.before)) {
     const beforeMsg = await RoomMessage.findById(pagination.before).select("createdAt");
     if (beforeMsg?.createdAt) beforeDate = beforeMsg.createdAt;
   }
 
+  console.log("beforeDate:", beforeDate);
+
   const query: any = { room: roomId };
+  let messages: any[] = [];
 
   // ✅ بدون clearedAt
   if (!state.clearedAt) {
     if (beforeDate) query.createdAt = { $lt: beforeDate };
 
-    const messages = await RoomMessage.find(query)
+    messages = await RoomMessage.find(query)
       .sort({ createdAt: -1 })
       .limit(limit)
-      .populate("replyTo"); // ✅ فقط replyTo
+      .populate("replyTo");
 
-    // ✅ Backfill senderSnapshot للرسائل القديمة (اختياري لكن مفيد)
+    console.log("📦 Raw messages count:", messages.length);
+
+    const giftCount = messages.filter((m: any) => m.type === "gift").length;
+    console.log("🎁 Gifts before policy:", giftCount);
+
     await this.backfillSenderSnapshots(messages);
+
+    messages = await this.applyGiftOncePolicy(roomId, userId, state, messages, pagination);
+
+    const giftCountAfter = messages.filter((m: any) => m.type === "gift").length;
+    console.log("🎁 Gifts after policy:", giftCountAfter);
+
+    console.log("📩 getMessages END");
+    console.log("══════════════════════════════════════");
 
     return messages;
   }
@@ -1721,17 +1915,28 @@ async getMessages(roomId: string, userId: string, pagination: Pagination = {}) {
 
   query.$or = or;
 
-  const messages = await RoomMessage.find(query)
+  messages = await RoomMessage.find(query)
     .sort({ createdAt: -1 })
     .limit(limit)
-    .populate("replyTo"); // ✅ فقط replyTo
+    .populate("replyTo");
 
-  // ✅ Backfill senderSnapshot للرسائل القديمة (اختياري)
+  console.log("📦 Raw messages count (clearedAt mode):", messages.length);
+
+  const giftCount = messages.filter((m: any) => m.type === "gift").length;
+  console.log("🎁 Gifts before policy:", giftCount);
+
   await this.backfillSenderSnapshots(messages);
+
+  messages = await this.applyGiftOncePolicy(roomId, userId, state, messages, pagination);
+
+  const giftCountAfter = messages.filter((m: any) => m.type === "gift").length;
+  console.log("🎁 Gifts after policy:", giftCountAfter);
+
+  console.log("📩 getMessages END");
+  console.log("══════════════════════════════════════");
 
   return messages;
 }
-
 /**
  * ✅ يملأ senderSnapshot للرسائل القديمة التي لا تحتويه
  * - يقلل عدد الاستعلامات: يجمع senderIds الفريدة ثم يجلب snapshots في Loop (يمكن تحسينها أكثر)

@@ -30,6 +30,7 @@ export interface IRoom extends Document {
 
   avatar?: string;
   cover?: string;
+  boostPoints: number;
 
   creator: Types.ObjectId;
   type: RoomType;
@@ -162,6 +163,7 @@ const RoomSchema = new Schema<IRoom>(
 
     avatar: { type: String, trim: true },
     cover: { type: String, trim: true },
+    boostPoints: { type: Number, default: 0, min: 0, index: true },
 
     creator: {
       type: Schema.Types.ObjectId,
@@ -283,6 +285,9 @@ RoomSchema.pre("validate", function () {
   this.mutedUsers ||= [];
   this.vipUsers ||= [];
 });
+  const bp = Number((this as any).boostPoints);
+  (this as any).boostPoints = Number.isFinite(bp) && bp > 0 ? Math.trunc(bp) : 0;
+
 
 /* =====================================================
    INDEXES
@@ -292,6 +297,7 @@ RoomSchema.pre("validate", function () {
 RoomSchema.index({ usersCount: -1 });
 RoomSchema.index({ level: -1 });
 RoomSchema.index({ boostLevel: -1 });
+RoomSchema.index({ boostPoints: -1 });
 
 // Useful for discovery/search
 RoomSchema.index({ type: 1, premiumLevel: -1, usersCount: -1 });

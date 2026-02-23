@@ -10,6 +10,8 @@ const RoomUserStateSchema = new Schema(
     // ✅ آخر رسالة مثبّتة كانت موجودة لحظة المسح/الدخول
     pinnedMessageIdAtClear: { type: Types.ObjectId, ref: "RoomMessage", default: null },
     pinnedMessageAtClear: { type: Date, default: null },
+        lastGiftSeenAt: { type: Date, default: new Date(0), index: true },
+
   },
   { timestamps: true }
 );
