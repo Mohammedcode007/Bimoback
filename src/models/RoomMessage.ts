@@ -88,11 +88,18 @@ export interface IRoomMessage extends Document {
     mimeType?: string;
   };
 
-  gift?: {
-    name: string;
-    value: number;
-    animation?: string;
-  };
+ gift?: {
+  key: string;              // gift_rose | boost_rocket ...
+  icon?: string;            // 🌹 ...
+  count?: number;           // للـ overlay particles
+  targetId?: string;        // كـ string لتبسيط التوافق مع الفرونت (أو Types.ObjectId)
+  targetName?: string;
+
+  // إن كنت لازلت تحتاجها (اختياري)
+  name?: string;            // display name (Rose/Boost...)
+  value?: number;           // قيمة/مستوى
+  animation?: string;
+};
 
   isPinned: boolean;
   isHighlighted: boolean;
@@ -127,13 +134,20 @@ const MediaSchema = new Schema(
 
 const GiftSchema = new Schema(
   {
-    name: { type: String, trim: true },
-    value: { type: Number, min: 0 },
-    animation: { type: String, trim: true }
+    key: { type: String, trim: true, default: "" },   // ✅ أساسي
+    icon: { type: String, trim: true, default: "" },
+    count: { type: Number, min: 0, default: 0 },
+
+    targetId: { type: String, trim: true, default: "" },
+    targetName: { type: String, trim: true, default: "" },
+
+    // اختياري للحفاظ على الموجود
+    name: { type: String, trim: true, default: "" },
+    value: { type: Number, min: 0, default: 0 },
+    animation: { type: String, trim: true, default: "" }
   },
   { _id: false }
 );
-
 const ReactionSchema = new Schema(
   {
     user: { type: Schema.Types.ObjectId, ref: "User", required: true },
@@ -357,9 +371,14 @@ RoomMessageSchema.path("content").validate(function (this: IRoomMessage) {
     return Boolean(this.media?.url) || (this.content?.trim()?.length ?? 0) > 0;
   }
 
-  if (this.type === "gift") {
-    return Boolean(this.gift?.name) && typeof this.gift?.value === "number";
-  }
+if (this.type === "gift") {
+  const key = String(this.gift?.key || "").trim();
+  const name = String(this.gift?.name || "").trim();
+
+  // ✅ نقبل أي Gift إذا عندنا key أو name
+  // (ولو عندك هدايا قديمة value موجودة ما زال OK)
+  return Boolean(key) || Boolean(name);
+}
 
   return (this.content?.trim()?.length ?? 0) > 0;
 }, "Invalid message payload for the given type.");

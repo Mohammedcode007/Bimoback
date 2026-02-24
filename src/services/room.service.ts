@@ -33,11 +33,19 @@ type SendMessageInput = {
     fileSize?: number;
     mimeType?: string;
   };
-  gift?: {
-    name: string;
-    value: number;
-    animation?: string;
-  };
+ gift?: {
+  key?: string;
+  icon?: string;
+  count?: number;
+
+  targetId?: string;
+  targetName?: string;
+
+  // للتوافق القديم إن وُجد
+  name?: string;
+  value?: number;
+  animation?: string;
+};
 };
 
 type Pagination = {
@@ -63,7 +71,7 @@ class RoomService {
     const uid = userId.toString();
     return (room.activeUsers || []).some((u: any) => u?.toString?.() === uid);
   }
-  private async applyGiftOncePolicy(
+private async applyGiftOncePolicy(
   roomId: string,
   userId: string,
   state: any,
@@ -74,21 +82,28 @@ class RoomService {
 
   const lastGiftSeenAt = state?.lastGiftSeenAt ? new Date(state.lastGiftSeenAt) : new Date(0);
 
-  // ✅ نعتبر “مرة واحدة عند فتح الشاشة” = أول صفحة فقط (بدون before)
+  // مرة واحدة = أول صفحة فقط
   const isFirstPage = !pagination?.before;
 
-  // ✅ اجلب Gifts غير المعروضة داخل الصفحة الحالية
-  const unseenGifts = messages
-    .filter((m: any) => m?.type === "gift" && m?.createdAt && new Date(m.createdAt).getTime() > lastGiftSeenAt.getTime())
+  // ✅ فلترة Boost فقط وليس كل gift
+  const isBoost = (m: any) => {
+    const key = String(m?.gift?.key || m?.content || "").trim();
+    return key.startsWith("boost_");
+  };
+
+  // ✅ boosts unseen داخل الصفحة
+  const unseenBoosts = messages
+    .filter((m: any) => m?.type === "gift" && isBoost(m) && m?.createdAt && new Date(m.createdAt).getTime() > lastGiftSeenAt.getTime())
     .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  // لا يوجد شيء جديد
-  if (!unseenGifts.length) {
-    // ✅ حتى لو توجد gifts قديمة، نحولها system حتى لا تعمل overlay عند كل فتح
+  // ✅ لو لا يوجد Boost جديد: حوّل boosts القديمة فقط إلى system حتى لا تعمل overlay
+  if (!unseenBoosts.length) {
     return messages.map((m: any) => {
       if (m?.type !== "gift") return m;
+      if (!isBoost(m)) return m; // ✅ لا تلمس الهدايا العادية
+
       return {
-        ...m.toObject?.() ?? m,
+        ...(m.toObject?.() ?? m),
         type: "system",
         content: "🚀 Boost",
         systemType: "gift"
@@ -96,35 +111,35 @@ class RoomService {
     });
   }
 
-  // ✅ اختر Gift واحدة فقط (الأحدث unseen)
-  const chosenId = String(unseenGifts[0]._id);
+  // ✅ اختر Boost واحدة فقط (الأحدث unseen)
+  const chosenId = String(unseenBoosts[0]._id);
 
   const patched = messages.map((m: any) => {
     if (m?.type !== "gift") return m;
 
+    // ✅ لا تلمس الهدايا العادية
+    if (!isBoost(m)) return m;
+
     const isChosen = String(m._id) === chosenId;
+    if (isChosen) return m;
 
-    if (isChosen) return m; // ✅ هذه الوحيدة التي ستصل للفرونت كـ gift فتشغل overlay
-
-    // ✅ غير المختارة تتحول system حتى لا تشغل overlay
+    // ✅ boosts الأخرى تتحول system لتمنع overlay المتكرر
     return {
-      ...m.toObject?.() ?? m,
+      ...(m.toObject?.() ?? m),
       type: "system",
       content: "🚀 Boost",
       systemType: "gift"
     };
   });
 
-  // ✅ تحديث lastGiftSeenAt مرة واحدة فقط عند أول صفحة
-  // حتى لا يحصل تحديث “خاطئ” أثناء pagination
+  // ✅ تحديث lastGiftSeenAt مرة واحدة عند أول صفحة فقط
   if (isFirstPage) {
-    const newestSeen = new Date(unseenGifts[0].createdAt);
-
-    // حماية إضافية: لا تحدث إذا التاريخ غير صحيح
+    const newestSeen = new Date(unseenBoosts[0].createdAt);
     if (!Number.isNaN(newestSeen.getTime())) {
       await RoomUserState.updateOne(
         { room: roomId, user: userId },
-        { $set: { lastGiftSeenAt: newestSeen } }
+        { $set: { lastGiftSeenAt: newestSeen } },
+        { upsert: true }
       );
     }
   }
@@ -1322,7 +1337,9 @@ async getRoomsByType(
     if (!this.isInside(room, senderId)) throw new Error("Not inside room");
     if (this.isBanned(room, senderId)) throw new Error("You are banned");
     if (this.isMuted(room, senderId)) throw new Error("You are muted");
-
+const hasGift =
+  Boolean(String(gift?.key || "").trim()) ||
+  Boolean(String(gift?.name || "").trim());
     const cleanMentions = Array.from(new Set((mentions || []).filter((x) => this.isValidObjectId(x))));
     const senderSnapshot = await this.getUserPublicSnapshot(senderId);
     const message = await RoomMessage.create({
@@ -1335,8 +1352,9 @@ async getRoomsByType(
       replyTo: replyTo && this.isValidObjectId(replyTo) ? replyTo : undefined,
       mentions: cleanMentions,
       media: media?.url ? media : undefined,
-      gift: gift?.name ? gift : undefined
-    });
+
+
+gift: hasGift ? gift : undefined    });
 
     try {
       // await message.populate("sender", USER_PUBLIC_FIELDS);
