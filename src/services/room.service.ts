@@ -71,6 +71,10 @@ class RoomService {
     const uid = userId.toString();
     return (room.activeUsers || []).some((u: any) => u?.toString?.() === uid);
   }
+  private oidOrNull(id?: string) {
+  const s = String(id || "");
+  return this.isValidObjectId(s) ? new Types.ObjectId(s) : null;
+}
 private async applyGiftOncePolicy(
   roomId: string,
   userId: string,
@@ -1264,34 +1268,59 @@ async getRoomDetails(roomId: string, userId?: string) {
 
 async getRoomsByType(
   type: RoomType,
+  viewerId?: string,
   pagination: { limit?: number; page?: number } = {}
 ) {
-  const t: RoomType = Object.values(RoomType).includes(type)
-    ? type
-    : RoomType.PUBLIC;
+  const t: RoomType = Object.values(RoomType).includes(type) ? type : RoomType.PUBLIC;
 
   const limit = Math.max(1, Math.min(100, Number(pagination.limit) || 30));
   const page = Math.max(1, Number(pagination.page) || 1);
   const skip = (page - 1) * limit;
 
   const filter: any = {};
-
-  // ✅ لو Public → اعرض Public + Protected فقط
   if (t === RoomType.PUBLIC) {
     filter.type = { $in: [RoomType.PUBLIC, RoomType.PROTECTED] };
   } else {
-    // ✅ باقي الأنواع كما هي
     filter.type = t;
   }
 
+  const viewerStr = viewerId ? String(viewerId).trim() : "";
+
+  const pipeline: any[] = [
+    { $match: filter },
+
+    {
+      $addFields: {
+        isActive: viewerStr
+          ? {
+              $in: [
+                viewerStr,
+                {
+                  $map: {
+                    input: { $ifNull: ["$activeUsers", []] },
+                    as: "u",
+                    in: { $toString: "$$u" }
+                  }
+                }
+              ]
+            }
+          : false
+      }
+    },
+
+    // لا نرجع password ولا activeUsers
+    { $project: { password: 0, activeUsers: 0 } },
+
+    // ✅ يُفضّل إضافة _id لضمان ترتيب ثابت
+    { $sort: { boostPoints: -1, usersCount: -1, createdAt: -1, _id: -1 } },
+
+    { $skip: skip },
+    { $limit: limit }
+  ];
+
   const [items, total] = await Promise.all([
-    Room.find(filter)
-      .select("-password")
-      .sort({ boostPoints: -1, usersCount: -1, createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean(),
-    Room.countDocuments(filter),
+    Room.aggregate(pipeline),
+    Room.countDocuments(filter)
   ]);
 
   return {
@@ -1300,28 +1329,76 @@ async getRoomsByType(
     limit,
     total,
     pages: Math.ceil(total / limit),
-    items,
+    items
   };
 }
+// async getRoomsByType(
+//   type: RoomType,
+//   pagination: { limit?: number; page?: number } = {}
+// ) {
+//   const t: RoomType = Object.values(RoomType).includes(type)
+//     ? type
+//     : RoomType.PUBLIC;
 
-  async searchRooms(query: string, type?: RoomType, limit = 30) {
-    const q = String(query || "").trim();
-    if (!q) return [];
+//   const limit = Math.max(1, Math.min(100, Number(pagination.limit) || 30));
+//   const page = Math.max(1, Number(pagination.page) || 1);
+//   const skip = (page - 1) * limit;
 
-    const l = Math.max(1, Math.min(100, Number(limit) || 30));
-    const safe = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const rx = new RegExp(safe, "i");
+//   const filter: any = {};
 
-    const filter: any = { $or: [{ name: rx }, { description: rx }, { tags: rx }] };
-    if (type && Object.values(RoomType).includes(type)) filter.type = type;
+//   // ✅ لو Public → اعرض Public + Protected فقط
+//   if (t === RoomType.PUBLIC) {
+//     filter.type = { $in: [RoomType.PUBLIC, RoomType.PROTECTED] };
+//   } else {
+//     // ✅ باقي الأنواع كما هي
+//     filter.type = t;
+//   }
 
-    const rooms = await Room.find(filter)
-      .select("-password")
-      .sort({ usersCount: -1, boostLevel: -1, createdAt: -1 })
-      .limit(l);
+//   const [items, total] = await Promise.all([
+//     Room.find(filter)
+//       .select("-password")
+//       .sort({ boostPoints: -1, usersCount: -1, createdAt: -1 })
+//       .skip(skip)
+//       .limit(limit)
+//       .lean(),
+//     Room.countDocuments(filter),
+//   ]);
 
-    return rooms;
-  }
+//   return {
+//     type: t,
+//     page,
+//     limit,
+//     total,
+//     pages: Math.ceil(total / limit),
+//     items,
+//   };
+// }
+
+async searchRooms(query: string, viewerId?: string, type?: RoomType, limit = 30) {
+  const q = String(query || "").trim();
+  if (!q) return [];
+
+  const l = Math.max(1, Math.min(100, Number(limit) || 30));
+  const safe = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const rx = new RegExp(safe, "i");
+
+  const filter: any = { $or: [{ name: rx }, { description: rx }, { tags: rx }] };
+  if (type && Object.values(RoomType).includes(type)) filter.type = type;
+
+  const viewerOid = this.oidOrNull(viewerId);
+
+  const pipeline: any[] = [
+    { $match: filter },
+    ...(viewerOid
+      ? [{ $addFields: { isActive: { $in: [viewerOid, "$activeUsers"] } } }]
+      : [{ $addFields: { isActive: false } }]),
+    { $project: { password: 0, activeUsers: 0 } },
+    { $sort: { usersCount: -1, boostLevel: -1, createdAt: -1 } },
+    { $limit: l }
+  ];
+
+  return Room.aggregate(pipeline);
+}
 
   /* =====================================================
      MESSAGES
@@ -1737,35 +1814,196 @@ gift: hasGift ? gift : undefined    });
   /* =====================================================
      MODERATION (Ban / Unban / Mute / Unmute / Kick)
   ===================================================== */
+// ✅ أضف هذه الدوال داخل class RoomService (بنفس الملف الذي أرسلته)
+// ملاحظة: الدوال تستخدم نفس أسلوبك: ensureArrays + require + systemActorTarget + emitUsersUpdate
 
-  async unbanUser(roomId: string, actorId: string, targetId: string) {
-    const room = await Room.findById(roomId);
-    if (!room) throw new Error("Room not found");
-    this.ensureArrays(room);
+/* =====================================================
+   ✅ BANNED USERS (Get / Unban one / many / all)
+===================================================== */
 
-    // unban: admin/owner/creator
-    this.require(room, actorId, ["creator", "owner", "admin"]);
+// ✅ جلب قائمة المحظورين (مع snapshot إن أحببت)
+async getBannedUsers(roomId: string, actorId: string) {
+  const room = await Room.findById(roomId);
+  if (!room) throw new Error("Room not found");
+  this.ensureArrays(room);
 
-    const tid = targetId.toString();
-    room.blockeds = (room.blockeds || []).filter((x: any) => x?.toString?.() !== tid);
-    await room.save();
+  // فقط الإدارة
+  this.require(room, actorId, ["creator", "owner", "admin"]);
 
-    this.io().to(`room:${roomId}`).emit("room:user:unbanned", { roomId, targetId });
+  const ids = (room.blockeds || []).map((x: any) => String(x?.toString?.() ?? x)).filter(Boolean);
 
+  // snapshots للعرض في الفرونت
+  const users = await Promise.all(
+    ids
+      .filter((id) => this.isValidObjectId(id))
+      .map(async (id) => this.getUserPublicSnapshot(id))
+  );
+
+  return {
+    roomId: String(roomId),
+    total: ids.length,
+    users
+  };
+}
+
+// ✅ رفع الحظر عن مستخدم واحد
+async unbanOne(roomId: string, actorId: string, targetId: string, reason = "تم فك الحظر") {
+  const room = await Room.findById(roomId);
+  if (!room) throw new Error("Room not found");
+  this.ensureArrays(room);
+
+  // unban: admin/owner/creator
+  this.require(room, actorId, ["creator", "owner", "admin"]);
+
+  const tid = String(targetId || "");
+  if (!this.isValidObjectId(tid)) throw new Error("Invalid targetId");
+
+  const before = (room.blockeds || []).length;
+
+  room.blockeds = (room.blockeds || []).filter((x: any) => x?.toString?.() !== tid);
+
+  const after = (room.blockeds || []).length;
+  const removed = before !== after;
+
+  await room.save();
+
+  // events
+  this.io().to(`room:${roomId}`).emit("room:user:unbanned", { roomId, targetId: tid, reason });
+  this.io().to(tid).emit("room:unbanned", { roomId, reason });
+
+  // system message
+  if (removed) {
     const actor = await this.getUserBasic(actorId);
-    const target = await this.getUserBasic(targetId);
+    const target = await this.getUserBasic(tid);
 
     await this.systemActorTarget(
       roomId,
       actorId,
-      targetId,
-      `✅ ${actor.username} فك الحظر عن ${target.username}`,
-      "system"
+      tid,
+      `✅ ${actor.username} فك الحظر عن ${target.username}${reason ? ` (${reason})` : ""}`,
+      "system", // ✅ بدل "unban"
+      {
+        systemType: "unban", // ✅ تمييز الحدث هنا
+        action: "unban:one",
+        meta: { actorId, targetId: tid, reason }
+      }
     );
-
-    this.emitUsersUpdate(roomId);
-    return { success: true };
   }
+
+  this.emitUsersUpdate(roomId);
+
+  return {
+    success: true,
+    removed
+  };
+}
+
+// ✅ رفع الحظر عن مجموعة (IDs)
+async unbanMany(
+  roomId: string,
+  actorId: string,
+  targetIds: string[],
+  reason = "تم فك الحظر"
+) {
+  const room = await Room.findById(roomId);
+  if (!room) throw new Error("Room not found");
+  this.ensureArrays(room);
+
+  this.require(room, actorId, ["creator", "owner", "admin"]);
+
+  const ids = Array.from(new Set((targetIds || []).map((x) => String(x || "")).filter(Boolean)));
+
+  const valid = ids.filter((id) => this.isValidObjectId(id));
+  if (!valid.length) throw new Error("No valid target ids");
+
+  const beforeSet = new Set((room.blockeds || []).map((x: any) => x?.toString?.()));
+  const removedIds = valid.filter((id) => beforeSet.has(id));
+
+  if (!removedIds.length) {
+    return { success: true, removed: 0, removedIds: [] as string[] };
+  }
+
+  room.blockeds = (room.blockeds || []).filter((x: any) => !removedIds.includes(x?.toString?.()));
+  await room.save();
+
+  // events per user
+  for (const id of removedIds) {
+    this.io().to(`room:${roomId}`).emit("room:user:unbanned", { roomId, targetId: id, reason });
+    this.io().to(id).emit("room:unbanned", { roomId, reason });
+  }
+
+  // system message (واحدة فقط لتقليل spam)
+  const actor = await this.getUserBasic(actorId);
+  await this.system(
+    roomId,
+    `✅ ${actor.username} فك الحظر عن ${removedIds.length} مستخدم${removedIds.length === 1 ? "" : "ين"}${reason ? ` (${reason})` : ""}`,
+    "unban",
+    {
+      sender: actorId,
+      mentions: [actorId, ...removedIds],
+      action: "unban:many",
+      meta: { actorId, removedIds, reason }
+    }
+  );
+
+  this.emitUsersUpdate(roomId);
+
+  return {
+    success: true,
+    removed: removedIds.length,
+    removedIds
+  };
+}
+
+// ✅ رفع الحظر عن الجميع
+async unbanAll(roomId: string, actorId: string, reason = "تم فك الحظر عن الجميع") {
+  const room = await Room.findById(roomId);
+  if (!room) throw new Error("Room not found");
+  this.ensureArrays(room);
+
+  this.require(room, actorId, ["creator", "owner", "admin"]);
+
+  const removedIds = (room.blockeds || []).map((x: any) => x?.toString?.()).filter(Boolean);
+
+  if (!removedIds.length) {
+    return { success: true, removed: 0, removedIds: [] as string[] };
+  }
+
+  room.blockeds = [];
+  await room.save();
+
+  // events (broadcast + individual)
+  this.io().to(`room:${roomId}`).emit("room:unban:all", { roomId, reason });
+
+  for (const id of removedIds) {
+    this.io().to(`room:${roomId}`).emit("room:user:unbanned", { roomId, targetId: id, reason });
+    this.io().to(id).emit("room:unbanned", { roomId, reason });
+  }
+
+  const actor = await this.getUserBasic(actorId);
+  await this.system(
+    roomId,
+    `✅ ${actor.username} فك الحظر عن الجميع (${removedIds.length})`,
+    "unban",
+    {
+      sender: actorId,
+      mentions: [actorId, ...removedIds],
+      action: "unban:all",
+      meta: { actorId, removedIdsCount: removedIds.length, reason }
+    }
+  );
+
+  this.emitUsersUpdate(roomId);
+
+  return {
+    success: true,
+    removed: removedIds.length,
+    removedIds
+  };
+}
+async unbanUser(roomId: string, actorId: string, targetId: string) {
+  return this.unbanOne(roomId, actorId, targetId, "تم فك الحظر");
+}
 
   async muteUser(roomId: string, actorId: string, targetId: string, minutes: number, reason = "Muted") {
     const room = await Room.findById(roomId);

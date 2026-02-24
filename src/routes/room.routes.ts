@@ -8,6 +8,7 @@ import {
   changeRoomType,
   changeRoomPremium,
   toggleAntiSpam,
+  getRoomDetails,
 
   // VIP
   addVip,
@@ -36,11 +37,16 @@ import {
 
   // Moderation
   kickUser,
+  getBannedUsers,
+  unbanOne,
+  unbanMany,
+  unbanAll,
 
   // Messages
   sendMessage,
   pinMessage,
   toggleReaction,
+  getRoomMessages,
 
   // Users & Stats
   getRoomUsers,
@@ -52,29 +58,26 @@ import {
   // Create / Get / Search
   createRoom,
   getRoomsByType,
-  searchRooms,
-  getRoomMessages,
-  getRoomDetails
+  searchRooms
 } from "../controllers/room.controller";
 
 const router = Router();
 
 /* =====================================================
    PUBLIC ROUTES
-   (مسارات عامة قبل protect)
 ===================================================== */
 
 // GET /api/rooms?type=public&limit=30&page=1
-router.get("/", getRoomsByType);
 
 // GET /api/rooms/search?q=chat&type=public&limit=30
 router.get("/search", searchRooms);
-// ✅ GET /api/rooms/:roomId/details
+
 /* =====================================================
    PROTECTED ROUTES
 ===================================================== */
 
 router.use(protect);
+router.get("/", getRoomsByType);
 
 // POST /api/rooms
 router.post("/", createRoom);
@@ -136,13 +139,21 @@ router.get("/me/active-rooms", autoRejoin);
    MODERATION
 ===================================================== */
 
+// Kick
 router.post("/:roomId/kick/:targetId", kickUser);
-router.get("/:roomId/messages", getRoomMessages);
-router.post("/:roomId/messages", sendMessage);
+
+// 🔴 BANNED MANAGEMENT
+router.get("/:roomId/control/banned", getBannedUsers);
+router.patch("/:roomId/control/unban/one", unbanOne);
+router.patch("/:roomId/control/unban/many", unbanMany);
+router.patch("/:roomId/control/unban/all", unbanAll);
+
 /* =====================================================
    MESSAGES
 ===================================================== */
 
+router.get("/:roomId/messages", getRoomMessages);
+router.post("/:roomId/messages", sendMessage);
 router.patch("/:roomId/messages/:messageId/pin", pinMessage);
 router.post("/:roomId/messages/:messageId/reaction", toggleReaction);
 

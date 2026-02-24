@@ -267,12 +267,21 @@ export const createRoom = asyncHandler(async (req, res) => {
 });
 
 export const getRoomsByType = asyncHandler(async (req, res) => {
-  // مثال: /rooms?type=public&limit=30&page=1
-  const type = req.query?.type as any;
-  const limit = req.query?.limit !== undefined ? Number(req.query.limit) : undefined;
-  const page = req.query?.page !== undefined ? Number(req.query.page) : undefined;
+  const type = String(req.query?.type || "public") as any;
 
-  const data = await roomService.getRoomsByType(type as RoomType, { limit, page });
+  const limit = req.query?.limit !== undefined ? Number(req.query.limit) : 30;
+  const page = req.query?.page !== undefined ? Number(req.query.page) : 1;
+
+  const viewerId = getUserId(req); // ✅ يلتقط من protect أو x-user-id
+ console.log("=====================================");
+  console.log("[controller:getRoomsByType] type:", type, "page:", page, "limit:", limit);
+  console.log("[controller:getRoomsByType] req.user:", req.user);
+  console.log("[controller:getRoomsByType] req.userId:", (req as any).userId);
+  console.log("[controller:getRoomsByType] x-user-id:", req.headers["x-user-id"]);
+  console.log("[controller:getRoomsByType] Authorization:", req.headers["authorization"]);
+  console.log("[controller:getRoomsByType] viewerId(final):", viewerId);
+  console.log("=====================================");
+  const data = await roomService.getRoomsByType(type as RoomType, viewerId, { limit, page });
   return send(res, data, "Rooms fetched");
 });
 
@@ -282,7 +291,8 @@ export const searchRooms = asyncHandler(async (req, res) => {
   const type = req.query?.type as any;
   const limit = req.query?.limit !== undefined ? Number(req.query.limit) : 30;
 
-  const rooms = await roomService.searchRooms(q, type as RoomType, limit);
+const viewerId = getUserId(req);
+const rooms = await roomService.searchRooms(q, viewerId, type as RoomType, limit);
   return send(res, rooms, "Rooms search results");
 });
 export const leaveRoom = asyncHandler(async (req, res) => {
@@ -374,4 +384,52 @@ export const deleteRoom = asyncHandler(async (req, res) => {
 
   const result = await roomService.deleteRoom(roomId, userId);
   return send(res, result, "Room deleted");
+});
+// ✅ room.controller.ts
+// أضف/الصق هذه الدوال في نفس الملف (أسفل قسم MODERATION أو في أي مكان مناسب)
+// لا تنسَ إضافة Routes لاحقًا في ملف routes مع protect
+
+/* =====================================================
+   MODERATION: BANNED (Get / Unban one / many / all)
+===================================================== */
+
+export const getBannedUsers = asyncHandler(async (req, res) => {
+  const userId = getUserId(req);
+  const roomId = param(req, "roomId");
+
+  const data = await roomService.getBannedUsers(roomId, userId);
+  return send(res, data, "Banned users");
+});
+
+export const unbanOne = asyncHandler(async (req, res) => {
+  const userId = getUserId(req);
+  const roomId = param(req, "roomId");
+
+  const targetId = asString(req.body?.targetId);
+  const reason = asString(req.body?.reason || "تم فك الحظر");
+
+  const data = await roomService.unbanOne(roomId, userId, targetId, reason);
+  return send(res, data, "Unbanned");
+});
+
+export const unbanMany = asyncHandler(async (req, res) => {
+  const userId = getUserId(req);
+  const roomId = param(req, "roomId");
+
+  const raw = req.body?.targetIds;
+  const targetIds = Array.isArray(raw) ? raw.map((x: any) => asString(x)).filter(Boolean) : [];
+  const reason = asString(req.body?.reason || "تم فك الحظر");
+
+  const data = await roomService.unbanMany(roomId, userId, targetIds, reason);
+  return send(res, data, "Unbanned many");
+});
+
+export const unbanAll = asyncHandler(async (req, res) => {
+  const userId = getUserId(req);
+  const roomId = param(req, "roomId");
+
+  const reason = asString(req.body?.reason || "تم فك الحظر عن الجميع");
+
+  const data = await roomService.unbanAll(roomId, userId, reason);
+  return send(res, data, "Unbanned all");
 });
