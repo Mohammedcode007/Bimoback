@@ -63,6 +63,12 @@ export const initSocket = (server: http.Server) => {
   /* ================= CONNECTION ================= */
 
   io.on("connection", (socket) => {
+ const userId = String(socket.data?.userId || "");
+
+  // ✅ دخول غرفة شخصية للمستخدم (مهم لكل io.to(userId))
+  if (userId) {
+    socket.join(userId);
+  }
 
     /* ⚡ Rate Limit أولًا */
     rateLimitSocket(socket);

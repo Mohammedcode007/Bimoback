@@ -187,9 +187,11 @@ async send(
   replyTo?: string,
   clientTempId?: string
 ) {
-
   if (!mongoose.Types.ObjectId.isValid(chatId)) {
     throw new Error("Invalid chat id");
+  }
+  if (!mongoose.Types.ObjectId.isValid(senderId)) {
+    throw new Error("Invalid sender id");
   }
 
   const chatObjectId = new mongoose.Types.ObjectId(chatId);
@@ -198,11 +200,13 @@ async send(
   const chat = await Chat.findById(chatObjectId);
   if (!chat) throw new Error("Chat not found");
 
-  const targetId = chat.participants
-    .find(id => id.toString() !== senderId)
-    ?.toString();
+  const targetId =
+    chat.participants.find((id) => id.toString() !== senderId)?.toString();
 
   if (!targetId) throw new Error("Target not found");
+  if (!mongoose.Types.ObjectId.isValid(targetId)) {
+    throw new Error("Invalid target id");
+  }
 
   const relation = await checkRelationship(senderId, targetId);
   if (relation.blocked) {
@@ -220,21 +224,19 @@ async send(
     content,
     clientTempId,
     media: media || undefined,
-    replyTo: replyTo
-      ? new mongoose.Types.ObjectId(replyTo)
-      : undefined,
+    replyTo: replyTo ? new mongoose.Types.ObjectId(replyTo) : undefined,
     reactions: [],
     deliveryStatus: {
       deliveredTo: [],
       seenBy: [],
       deliveredAt: undefined,
-      seenAt: undefined
+      seenAt: undefined,
     },
     status: "sent",
     deletedForEveryone: false,
     deletedFor: [],
     edited: false,
-    isSystemMessage: false
+    isSystemMessage: false,
   });
 
   const io = getIO();
@@ -243,14 +245,10 @@ async send(
      TARGET STATUS
   ===================================================== */
 
-  const targetUser = await User.findById(targetId)
-    .select("isInvisible");
+  const targetUser = await User.findById(targetId).select("isInvisible");
 
-  const targetSockets =
-    io.sockets.adapter.rooms.get(targetId);
-
-  const isTargetOnline =
-    !!targetSockets && targetSockets.size > 0;
+  const targetSockets = io.sockets.adapter.rooms.get(targetId);
+  const isTargetOnline = !!targetSockets && targetSockets.size > 0;
 
   /* =====================================================
      CHECK IF TARGET INSIDE CHAT ROOM
@@ -258,9 +256,7 @@ async send(
 
   let isTargetInsideRoom = false;
 
-  const room =
-    io.sockets.adapter.rooms.get(`chat:${chatId}`);
-
+  const room = io.sockets.adapter.rooms.get(`chat:${chatId}`);
   if (room) {
     for (const socketId of room) {
       const s = io.sockets.sockets.get(socketId);
@@ -275,36 +271,17 @@ async send(
      DELIVERY / SEEN LOGIC
   ===================================================== */
 
-  if (
-    !targetUser?.isInvisible &&
-    isTargetOnline &&
-    isTargetInsideRoom
-  ) {
-
-    message.deliveryStatus.deliveredTo.push(
-      new mongoose.Types.ObjectId(targetId)
-    );
-
-    message.deliveryStatus.seenBy.push(
-      new mongoose.Types.ObjectId(targetId)
-    );
+  if (!targetUser?.isInvisible && isTargetOnline && isTargetInsideRoom) {
+    message.deliveryStatus.deliveredTo.push(new mongoose.Types.ObjectId(targetId));
+    message.deliveryStatus.seenBy.push(new mongoose.Types.ObjectId(targetId));
 
     message.status = "seen";
     message.deliveryStatus.deliveredAt = new Date();
     message.deliveryStatus.seenAt = new Date();
 
     await message.save();
-  }
-
-  else if (
-    !targetUser?.isInvisible &&
-    relation.isFriend &&
-    isTargetOnline
-  ) {
-
-    message.deliveryStatus.deliveredTo.push(
-      new mongoose.Types.ObjectId(targetId)
-    );
+  } else if (!targetUser?.isInvisible && relation.isFriend && isTargetOnline) {
+    message.deliveryStatus.deliveredTo.push(new mongoose.Types.ObjectId(targetId));
 
     message.status = "delivered";
     message.deliveryStatus.deliveredAt = new Date();
@@ -313,18 +290,24 @@ async send(
   }
 
   /* =====================================================
-     UPDATE CHAT META (Atomic Safe)
+     UPDATE CHAT META + RESTORE IF DELETED (Atomic)
   ===================================================== */
 
   await Chat.updateOne(
-    { _id: chatId },
+    { _id: chatObjectId },
     {
       $set: {
         lastMessage: message._id,
         lastMessagePreview: content,
         lastMessageType: type,
-        updatedAt: new Date()
-      }
+        updatedAt: new Date(),
+      },
+      // ✅ استرجاع المحادثة للطرفين لو كانت محذوفة عند أحدهما
+      $pull: {
+        deletedFor: {
+          $in: [new mongoose.Types.ObjectId(targetId), senderObjectId],
+        },
+      },
     }
   );
 
@@ -335,26 +318,45 @@ async send(
   let updatedUnread = 0;
 
   if (!isTargetInsideRoom) {
-
     const updatedChat = await Chat.findByIdAndUpdate(
-      chatId,
-      {
-        $inc: { [`unreadCounts.${targetId}`]: 1 }
-      },
+      chatObjectId, // ✅ استخدم ObjectId
+      { $inc: { [`unreadCounts.${targetId}`]: 1 } },
       { new: true }
     );
 
-    updatedUnread =
-      updatedChat?.unreadCounts?.[targetId] || 0;
+    updatedUnread = updatedChat?.unreadCounts?.[targetId] || 0;
 
     io.to(targetId).emit("chat:unread:update", {
       chatId,
-      unreadCount: updatedUnread
+      unreadCount: updatedUnread,
     });
   }
 
   /* =====================================================
-     EMIT MESSAGE
+     ✅ BUILD CHAT SNAPSHOT FOR INBOX (حل أول مرة)
+  ===================================================== */
+
+  const chatSnap = await Chat.findById(chatObjectId)
+    .populate("participants", "username avatar isOnline isInvisible lastSeen")
+    .populate("lastMessage")
+    .lean();
+
+  /* =====================================================
+     🔥 INBOX REALTIME UPDATE (FULL CHAT SNAP)
+  ===================================================== */
+
+  io.to(targetId).emit("chat:inbox:update", {
+    chat: chatSnap,
+    unreadCount: updatedUnread,
+  });
+
+  io.to(senderId).emit("chat:inbox:update", {
+    chat: chatSnap,
+    unreadCount: 0,
+  });
+
+  /* =====================================================
+     ✅ EMIT MESSAGE (ACTIVE CHAT ROOM)
   ===================================================== */
 
   io.to(`chat:${chatId}`).emit("chat:new", message);
@@ -363,20 +365,12 @@ async send(
      EMIT SEEN IF ACTIVE
   ===================================================== */
 
-  if (
-    isTargetInsideRoom &&
-    isTargetOnline &&
-    !targetUser?.isInvisible
-  ) {
-
-    io.to(`chat:${chatId}`).emit(
-      "chat:seen:update",
-      {
-        chatId,
-        userId: targetId,
-        messageIds: [message._id]
-      }
-    );
+  if (isTargetInsideRoom && isTargetOnline && !targetUser?.isInvisible) {
+    io.to(`chat:${chatId}`).emit("chat:seen:update", {
+      chatId,
+      userId: targetId,
+      messageIds: [message._id],
+    });
   }
 
   /* =====================================================
@@ -384,35 +378,29 @@ async send(
   ===================================================== */
 
   if (!isTargetOnline) {
-
     await Notification.create({
       recipient: targetId,
       sender: senderId,
       type: "message",
       body: content,
-      relatedChat: chatId
+      relatedChat: chatId,
     });
 
     const chats = await Chat.find({
       participants: targetId,
-      deletedFor: { $ne: targetId }
+      deletedFor: { $ne: targetId },
     }).lean();
 
     let totalUnread = 0;
-
-    chats.forEach(c => {
+    chats.forEach((c) => {
       totalUnread += c.unreadCounts?.[targetId] || 0;
     });
 
-    io.to(targetId).emit(
-      "notification:unreadTotal",
-      totalUnread
-    );
+    io.to(targetId).emit("notification:unreadTotal", totalUnread);
   }
 
   return message;
 }
-
 
 
   /* =====================================================
