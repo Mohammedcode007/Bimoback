@@ -148,6 +148,7 @@ export type NotificationType =
   | "room_invite"
   | "badge_awarded"
   | "follow"
+  | "reaction"
   | "system";
 
 export interface INotification extends Document {
@@ -208,6 +209,8 @@ const NotificationSchema = new Schema<INotification>(
         "room_invite",
         "badge_awarded",
         "follow",
+            "reaction", // ✅ أضف هذا
+
         "system"
       ],
       required: true

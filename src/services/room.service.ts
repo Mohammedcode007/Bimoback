@@ -3,6 +3,7 @@ import Room, { RoomType, RoomPremiumLevel } from "../models/Room";
 import RoomMessage from "../models/RoomMessage";
 import { getIO } from "../config/socket";
 import RoomUserState from "../models/RoomUserState";
+import notificationService from "./notification.service";
 
 /**
  * ملاحظة مهمة جدًا:
@@ -65,7 +66,42 @@ class RoomService {
   private isValidObjectId(id: string) {
     return Types.ObjectId.isValid(id);
   }
+private buildMessagePreviewForNotification(message: any) {
+  const msgType = String(message?.type || "text");
 
+  // لو عندك media
+  const hasMedia = Boolean(message?.media?.url);
+
+  // حاول تمييز فيديو/صورة
+  const mime = String(message?.media?.mimeType || "").toLowerCase();
+  const url = String(message?.media?.url || "").toLowerCase();
+
+  const isVideo =
+    mime.startsWith("video/") ||
+    url.endsWith(".mp4") ||
+    url.endsWith(".mov") ||
+    url.endsWith(".mkv") ||
+    url.endsWith(".webm");
+
+  const isImage =
+    mime.startsWith("image/") ||
+    url.endsWith(".jpg") ||
+    url.endsWith(".jpeg") ||
+    url.endsWith(".png") ||
+    url.endsWith(".gif") ||
+    url.endsWith(".webp");
+
+  if (hasMedia || msgType === "image" || msgType === "video") {
+    if (isVideo || msgType === "video") return { kind: "video", labelAr: "فيديو", preview: "" };
+    return { kind: "image", labelAr: "صورة", preview: "" };
+  }
+
+  // رسالة نصية
+  const text = String(message?.content || "").trim();
+  const preview = text.length > 80 ? text.slice(0, 80) + "…" : text;
+
+  return { kind: "text", labelAr: "رسالة", preview };
+}
   // ✅ إصلاح: المقارنة تكون دائمًا عبر toString()
   private isInside(room: any, userId: string) {
     const uid = userId.toString();
@@ -2530,43 +2566,135 @@ private async backfillSenderSnapshots(messages: any[]) {
 
     return messages;
   }
+async toggleReaction(roomId: string, messageId: string, userId: string, emoji: string) {
+  const room = await Room.findById(roomId);
+  if (!room) throw new Error("Room not found");
+  this.ensureArrays(room);
 
-  async toggleReaction(roomId: string, messageId: string, userId: string, emoji: string) {
-    const room = await Room.findById(roomId);
-    if (!room) throw new Error("Room not found");
-    this.ensureArrays(room);
+  const role = this.getRole(room, userId);
+  const isInside = this.isInside(room, userId);
 
-    const role = this.getRole(room, userId);
-    const isInside = this.isInside(room, userId);
+  if (!isInside && role === "none") throw new Error("Not allowed");
 
-    if (!isInside && role === "none") throw new Error("Not allowed");
+  const message = await RoomMessage.findById(messageId);
+  if (!message) throw new Error("Message not found");
+  if (message.room.toString() !== roomId) throw new Error("Invalid room message");
 
-    const message = await RoomMessage.findById(messageId);
-    if (!message) throw new Error("Message not found");
-    if (message.room.toString() !== roomId) throw new Error("Invalid room message");
+  const e = String(emoji || "").trim();
+  if (!e) throw new Error("Invalid emoji");
 
-    const e = String(emoji || "").trim();
-    if (!e) throw new Error("Invalid emoji");
+  const existing = (message.reactions || []).find(
+    (r: any) => r.user.toString() === userId && r.emoji === e
+  );
 
-    const existing = (message.reactions || []).find((r: any) => r.user.toString() === userId && r.emoji === e);
+  // ✅ سنحدد هل تمت الإضافة أم الإزالة
+  let added = false;
 
-    if (existing) {
-      message.reactions = message.reactions.filter(
-        (r: any) => !(r.user.toString() === userId && r.emoji === e)
-      );
-    } else {
-      message.reactions.push({ user: userId as any, emoji: e, createdAt: new Date() });
-    }
-
-    await message.save();
-
-    this.io().to(`room:${roomId}`).emit("room:reaction:update", {
-      messageId,
-      reactions: message.reactions
-    });
-
-    return message.reactions;
+  if (existing) {
+    // إزالة
+    message.reactions = message.reactions.filter(
+      (r: any) => !(r.user.toString() === userId && r.emoji === e)
+    );
+    added = false;
+  } else {
+    // إضافة
+    message.reactions.push({ user: userId as any, emoji: e, createdAt: new Date() });
+    added = true;
   }
+
+  await message.save();
+
+  // بث تحديث الرياكشن للغرفة
+  this.io().to(`room:${roomId}`).emit("room:reaction:update", {
+    messageId,
+    reactions: message.reactions
+  });
+
+  // =====================================================
+  // ✅ إرسال إشعار لصاحب الرسالة (فقط عند الإضافة)
+  // =====================================================
+  try {
+    const recipientId = message.sender?.toString?.() ? String(message.sender) : "";
+    const actorId = String(userId);
+
+    // لا ترسل لنفسه
+    if (added && recipientId && recipientId !== actorId) {
+      const actor = await this.getUserBasic(actorId);
+
+      const info = this.buildMessagePreviewForNotification(message);
+
+      // نص الإشعار
+      const title = "تفاعل جديد";
+      let body = "";
+
+      if (info.kind === "text") {
+        // "فلان عمل لك رياكشن 😀 على رسالتك: ...."
+        body = `قام ${actor.username} بالتفاعل ${e} على رسالتك${info.preview ? `: ${info.preview}` : ""}`;
+      } else {
+        // "فلان عمل لك رياكشن 😀 على صورة/فيديو"
+        body = `قام ${actor.username} بالتفاعل ${e} على ${info.labelAr}`;
+      }
+
+      await notificationService.create({
+        recipient: recipientId,
+        sender: actorId,
+        type: "reaction", // أي قيمة مناسبة عندك
+        title,
+        body,
+
+        // بيانات إضافية لتوجيه المستخدم عند الضغط على الإشعار
+        data: {
+          roomId: String(roomId),
+          messageId: String(messageId),
+          emoji: e,
+          messageType: String(message.type || "text"),
+          mediaUrl: message?.media?.url || ""
+        }
+      });
+    }
+  } catch (err) {
+    // مهم: لا نكسر العملية الأساسية بسبب الإشعار
+    console.error("reaction notification error:", err);
+  }
+
+  return message.reactions;
+}
+  // async toggleReaction(roomId: string, messageId: string, userId: string, emoji: string) {
+  //   const room = await Room.findById(roomId);
+  //   if (!room) throw new Error("Room not found");
+  //   this.ensureArrays(room);
+
+  //   const role = this.getRole(room, userId);
+  //   const isInside = this.isInside(room, userId);
+
+  //   if (!isInside && role === "none") throw new Error("Not allowed");
+
+  //   const message = await RoomMessage.findById(messageId);
+  //   if (!message) throw new Error("Message not found");
+  //   if (message.room.toString() !== roomId) throw new Error("Invalid room message");
+
+  //   const e = String(emoji || "").trim();
+  //   if (!e) throw new Error("Invalid emoji");
+
+  //   const existing = (message.reactions || []).find((r: any) => r.user.toString() === userId && r.emoji === e);
+
+  //   if (existing) {
+  //     message.reactions = message.reactions.filter(
+  //       (r: any) => !(r.user.toString() === userId && r.emoji === e)
+  //     );
+  //   } else {
+  //     message.reactions.push({ user: userId as any, emoji: e, createdAt: new Date() });
+  //   }
+
+  //   await message.save();
+
+  //   this.io().to(`room:${roomId}`).emit("room:reaction:update", {
+  //     messageId,
+  //     reactions: message.reactions
+  //   });
+
+  //   return message.reactions;
+  // }
 
   /* =====================================================
      ROOM USERS (WITH ROLES & STATUS)
