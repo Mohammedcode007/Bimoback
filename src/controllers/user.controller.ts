@@ -310,7 +310,40 @@ export const getBlockedUsers = async (req: Request, res: Response) => {
     res.status(500).json({ message: "Failed to fetch blocked users" });
   }
 };
+export const getMyFullUser = async (req: Request, res: Response) => {
+  try {
+    const userId =
+      (req as any).user?.id ||
+      (req as any).user?._id?.toString();
 
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const data = await userService.getMyFullUser(userId);
+
+    return res.json({
+      success: true,
+      data,
+    });
+  } catch (e: any) {
+    return res.status(400).json({
+      success: false,
+      message: e?.message || "Failed to load user",
+    });
+  }
+};
+export const updateMyProfileSettings = async (req: Request, res: Response) => {
+  const userId = (req as any).user.id; // من middleware protect
+
+  const updatedUser = await userService.updateFullProfileSettings(userId, req.body);
+
+  res.json({
+    success: true,
+    message: "Profile updated successfully",
+    data: updatedUser,
+  });
+};
 /* ======================================================
    UPDATE ONLINE STATUS
 ====================================================== */

@@ -1,9 +1,186 @@
-import User from "../models/User";
 import Friend from "../models/Friend";
 import mongoose from "mongoose";
+import User, { IUser } from "../models/User";
+import { Types } from "mongoose";
+type UpdateProfilePayload = {
+  displayName?: string;
+  bio?: string;
+  country?: string;
+  city?: string;
+  dateOfBirth?: Date;
 
+  avatar?: string;
+  coverImage?: string;
+
+  tags?: string[];
+
+  privacy?: {
+    profileVisible?: boolean;
+    showLastActive?: boolean;
+    showMedia?: boolean;
+    allowMessages?: boolean;
+  };
+
+  notifications?: {
+    messages?: boolean;
+    likes?: boolean;
+    follows?: boolean;
+  };
+
+  partnerPreferences?: {
+    ageRange?: string;
+    location?: string;
+    maritalStatus?: string;
+    religiosity?: string;
+  };
+
+  notificationSound?: boolean;
+  readReceiptsEnabled?: boolean;
+};
 class UserService {
+// services/user.service.ts
 
+
+  async getMyFullUser(userId: string) {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new Error("Invalid user id");
+    }
+
+    const user = await User.findById(userId)
+      .select("-password -__v") // ✅ يرجّع كل شيء ما عدا password و __v
+      .lean();
+
+    if (!user) throw new Error("User not found");
+    return user;
+  }
+
+// داخل class UserService
+
+async updateFullProfileSettings(
+  userId: string,
+  payload: UpdateProfilePayload
+): Promise<IUser> {
+  if (!Types.ObjectId.isValid(userId)) {
+    throw new Error("Invalid user id");
+  }
+
+  const updateData: Record<string, any> = {};
+
+  // Helper: string
+  const setStr = (key: string, v: any, maxLen?: number) => {
+    if (typeof v !== "string") return;
+    const s = v.trim();
+    if (!s && s !== "") return;
+    updateData[key] = maxLen ? s.slice(0, maxLen) : s;
+  };
+
+  // Helper: boolean
+  const setBool = (key: string, v: any) => {
+    if (typeof v !== "boolean") return;
+    updateData[key] = v;
+  };
+
+  /* =============================
+     ✅ Basic Editable Fields
+     (🚫 لا يوجد username / atUsername هنا)
+  ============================= */
+
+  setStr("displayName", payload.displayName, 80);
+  setStr("bio", payload.bio, 2000);
+  setStr("country", payload.country, 50);
+  setStr("city", payload.city, 60);
+
+  // dateOfBirth: يقبل Date أو string ISO
+  if (payload.dateOfBirth) {
+    const d =
+      payload.dateOfBirth instanceof Date
+        ? payload.dateOfBirth
+        : new Date(payload.dateOfBirth as any);
+
+    if (!isNaN(d.getTime())) {
+      updateData.dateOfBirth = d;
+    }
+  }
+
+  if (typeof payload.avatar === "string") updateData.avatar = payload.avatar;
+  if (typeof payload.coverImage === "string") updateData.coverImage = payload.coverImage;
+
+  // tags: تنظيف + منع التكرار + حد أقصى
+  if (Array.isArray(payload.tags)) {
+    const cleaned = payload.tags
+      .filter((x) => typeof x === "string")
+      .map((x) => x.trim())
+      .filter((x) => x.length > 0)
+      .slice(0, 30);
+
+    // unique
+    updateData.tags = Array.from(new Set(cleaned));
+  }
+
+  /* =============================
+     ✅ Privacy (nested)
+  ============================= */
+
+  if (payload.privacy) {
+    setBool("privacy.profileVisible", payload.privacy.profileVisible);
+    setBool("privacy.showLastActive", payload.privacy.showLastActive);
+    setBool("privacy.showMedia", payload.privacy.showMedia);
+    setBool("privacy.allowMessages", payload.privacy.allowMessages);
+  }
+
+  /* =============================
+     ✅ Notifications (nested)
+  ============================= */
+
+  if (payload.notifications) {
+    setBool("notifications.messages", payload.notifications.messages);
+    setBool("notifications.likes", payload.notifications.likes);
+    setBool("notifications.follows", payload.notifications.follows);
+  }
+
+  /* =============================
+     ✅ Partner Preferences (nested)
+  ============================= */
+
+  if (payload.partnerPreferences) {
+    setStr("partnerPreferences.ageRange", payload.partnerPreferences.ageRange, 40);
+    setStr("partnerPreferences.location", payload.partnerPreferences.location, 120);
+    setStr("partnerPreferences.maritalStatus", payload.partnerPreferences.maritalStatus, 40);
+    setStr("partnerPreferences.religiosity", payload.partnerPreferences.religiosity, 60);
+  }
+
+  /* =============================
+     ✅ Other settings (existing in schema)
+  ============================= */
+
+  setBool("notificationSound", payload.notificationSound);
+  setBool("readReceiptsEnabled", payload.readReceiptsEnabled);
+
+  /* =============================
+     ✅ حماية إضافية
+     - لو المستخدم أرسل username/atUsername لن يتم استخدامهم أصلاً
+     - ولا يتم تمرير req.body كما هو
+  ============================= */
+
+  // لو مفيش أي تحديث
+  if (Object.keys(updateData).length === 0) {
+    const me = await User.findById(userId);
+    if (!me) throw new Error("User not found");
+    return me;
+  }
+
+  const updated = await User.findByIdAndUpdate(
+    userId,
+    { $set: updateData },
+    { new: true, runValidators: true }
+  );
+
+  if (!updated) {
+    throw new Error("User not found");
+  }
+
+  return updated;
+}
   async search(currentUserId: string, query: string) {
 
     const currentObjectId = new mongoose.Types.ObjectId(currentUserId);

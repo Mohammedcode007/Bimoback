@@ -9,7 +9,9 @@ import {
   unblockUser,
   updateProfile,
   getBlockedUsers,
-  updateOnlineStatus
+  updateOnlineStatus,
+  updateMyProfileSettings,
+  getMyFullUser
 } from "../controllers/user.controller";
 
 const router = Router();
@@ -19,7 +21,8 @@ router.get("/profile/:userId", protect, getUserProfile);
 router.get("/friends", protect, getFriends);
 router.get("/notifications/unread-count", protect, getUnreadNotificationCount);
 router.get("/blocked", protect, getBlockedUsers);   // ✅ مهم جداً
-
+router.patch("/me/settings", protect, updateMyProfileSettings); // نفس الكنترولر
+router.get("/me/full", protect, getMyFullUser);
 router.post("/block", protect, blockUser);
 router.post("/unblock", protect, unblockUser);
 router.patch("/update", protect, updateProfile);
