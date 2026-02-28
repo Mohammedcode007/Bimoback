@@ -11,7 +11,8 @@ import {
   getBlockedUsers,
   updateOnlineStatus,
   updateMyProfileSettings,
-  getMyFullUser
+  getMyFullUser,
+  changePassword
 } from "../controllers/user.controller";
 
 const router = Router();
@@ -27,4 +28,6 @@ router.post("/block", protect, blockUser);
 router.post("/unblock", protect, unblockUser);
 router.patch("/update", protect, updateProfile);
 router.post("/status", protect, updateOnlineStatus);
+router.patch("/password", protect, changePassword);
+
 export default router;

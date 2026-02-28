@@ -812,9 +812,7 @@ async getUserState(roomId: string, userId: string): Promise<RoomUserStateLean> {
     const methods = Object.getOwnPropertyNames(proto).filter(
       (k) => k !== "constructor" && typeof (this as any)[k] === "function"
     );
-    console.log("✅ RoomService runtime file:", __filename);
-    console.log("✅ RoomService methods:", methods);
-    console.log("✅ has getRoomsByType?", typeof (this as any).getRoomsByType);
+   
   }
 
   /* =====================================================

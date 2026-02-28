@@ -25,7 +25,8 @@ import storyRoutes from "./routes/story.routes"; // ✅ NEW
 /* ✅ NEW: App Config + Force Update */
 import appConfigRoutes from "./routes/appConfig.routes";
 import { enforceMinVersion } from "./middlewares/enforceMinVersion.middleware";
-dotenv.config();
+import contactUsRoutes from "./routes/contactUs.routes";
+// dotenv.config();
 
 const app = express();
 
@@ -79,8 +80,7 @@ app.use("/api/messages", messageRoutes);
 app.use("/api/rooms", roomRoutes);
 /* 🔥 Rooms System */
 app.use("/api/rooms", roomRoutes); // ✅ تمت الإضافة
-
-
+app.use("/api/contact-us", contactUsRoutes);
 
 /* =========================
    404 Handler

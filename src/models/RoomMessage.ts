@@ -341,7 +341,6 @@ const RoomMessageSchema = new Schema<IRoomMessage>(
     expiresAt: {
       type: Date,
       default: undefined,
-      index: true
     },
 
     reactions: {

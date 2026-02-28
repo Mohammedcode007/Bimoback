@@ -635,7 +635,108 @@ if (!activeChatId || activeChatId.toString() !== chatId.toString()) {
 
     return { success: true };
   }
+// داخل MessageService class
 
+async sendContactUsText(senderId: string, content: string) {
+ 
+
+  try {
+    if (!mongoose.Types.ObjectId.isValid(senderId)) {
+      console.log("[sendContactUsText] ❌ Invalid sender id");
+      throw new Error("Invalid sender id");
+    }
+
+    const text = (content ?? "").trim();
+
+    if (!text) {
+      throw new Error("Message content is required");
+    }
+
+    if (text.length > 2000) {
+      throw new Error("Message too long");
+    }
+
+    const contactKey = process.env.CONTACT_US_USER_ID; // ممكن يكون ObjectId أو username مثل "contact"
+
+    if (!contactKey) {
+      throw new Error("CONTACT_US_USER_ID is missing");
+    }
+
+    // ✅ resolve contact user: إذا ObjectId استخدمه، غير ذلك اعتبره username
+    let supportUserIdObj: mongoose.Types.ObjectId;
+    if (mongoose.Types.ObjectId.isValid(contactKey)) {
+      supportUserIdObj = new mongoose.Types.ObjectId(contactKey);
+    } else {
+
+      const supportUser = await User.findOne({ username: contactKey }).select("_id username");
+      if (!supportUser) {
+        throw new Error("Contact us account not found");
+      }
+
+      supportUserIdObj = supportUser._id as any;
+    }
+
+    const contactUsId = supportUserIdObj.toString();
+
+    // منع إرسال المستخدم لنفسه لو حدث خطأ في الإعداد
+    if (contactUsId === senderId.toString()) {
+      throw new Error("Invalid contact us user");
+    }
+
+    const senderObjectId = new mongoose.Types.ObjectId(senderId);
+
+    /* =====================================================
+       FIND EXISTING CHAT
+    ===================================================== */
+
+    let chat = await Chat.findOne({
+      participants: { $all: [senderObjectId, supportUserIdObj] },
+      // لو عندك type للخاص أضفها هنا:
+      // type: "private",
+    });
+
+    if (chat) {
+    }
+
+    /* =====================================================
+       CREATE CHAT IF NOT EXISTS
+    ===================================================== */
+    if (!chat) {
+
+      chat = await Chat.create({
+        participants: [senderObjectId, supportUserIdObj],
+        unreadCounts: {
+          [contactUsId]: 0,
+          [senderId]: 0,
+        },
+        deletedFor: [],
+        // لو عندك حقول إلزامية أضفها هنا
+      });
+
+    }
+
+    /* =====================================================
+       SEND MESSAGE (TEXT ONLY)
+    ===================================================== */
+
+    const message = await this.send(
+      chat._id.toString(),
+      senderId,
+      text,
+      "text",
+      undefined, // media ممنوعة
+      undefined, // replyTo
+      undefined  // clientTempId
+    );
+
+ 
+
+    return message;
+  } catch (error: any) {
+ 
+    throw error;
+  }
+}
   /* =====================================================
      PAGINATION
   ===================================================== */

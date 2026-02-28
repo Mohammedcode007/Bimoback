@@ -12,15 +12,9 @@ class StoryService {
    *  ========================================= */
   async getFriendsStoriesFeed(viewerId: string, page = 1, limit = 30) {
     try {
-      console.log("======================================");
-      console.log("[getFriendsStoriesFeed] START");
-      console.log("[getFriendsStoriesFeed] DB:", mongoose.connection.name);
-      console.log("[getFriendsStoriesFeed] User collection:", User.collection.name);
-      console.log("[getFriendsStoriesFeed] viewerId:", viewerId);
-      console.log("[getFriendsStoriesFeed] page/limit:", page, limit);
+  
 
       if (!Types.ObjectId.isValid(viewerId)) {
-        console.log("[getFriendsStoriesFeed] ❌ Invalid viewerId");
         throw new Error("Invalid user id");
       }
 
@@ -31,31 +25,17 @@ class StoryService {
       // Snapshot للتأكد أني أقرأ نفس DB/Collection وأن stories موجودة في نفس الوثيقة
       const meSnap = await User.findById(viewerId).select("_id username stories").lean();
 
-      console.log("[getFriendsStoriesFeed] me exists:", !!meSnap);
-      console.log("[getFriendsStoriesFeed] me username:", (meSnap as any)?.username);
-      console.log("[getFriendsStoriesFeed] me stories count:", (meSnap as any)?.stories?.length || 0);
       if ((meSnap as any)?.stories?.[0]) {
         const f = (meSnap as any).stories[0];
-        console.log("[getFriendsStoriesFeed] me first story:", {
-          _id: String(f?._id),
-          expiresAt: f?.expiresAt,
-          expiresAtType: typeof f?.expiresAt,
-          expiresAtIsDate: f?.expiresAt instanceof Date,
-          privacy: f?.privacy,
-          isArchived: f?.isArchived,
-          createdAt: f?.createdAt,
-        });
+  
       }
 
       const friendIds = await friendService.getFriendIds(viewerId);
-      console.log("[getFriendsStoriesFeed] friendIds count:", friendIds?.length || 0);
 
       const idsToFetch = Array.from(new Set([viewerId, ...(friendIds || [])]));
-      console.log("[getFriendsStoriesFeed] idsToFetch count:", idsToFetch.length);
 
       if (!idsToFetch.length) {
-        console.log("[getFriendsStoriesFeed] DONE (no ids)");
-        console.log("======================================");
+      
         return [];
       }
 
@@ -104,26 +84,15 @@ class StoryService {
         { $limit: safeLimit },
       ]);
 
-      console.log("[getFriendsStoriesFeed] ✅ rows:", rows?.length || 0);
       if (!rows?.length) {
-        console.log("[getFriendsStoriesFeed] ⚠️ rows=0 بعد الفلترة.");
       } else {
-        console.log("[getFriendsStoriesFeed] sample:", {
-          ownerId: String(rows[0]?._id),
-          username: rows[0]?.username,
-          storiesCount: rows[0]?.stories?.length || 0,
-          firstStoryId: rows[0]?.stories?.[0]?._id ? String(rows[0].stories[0]._id) : undefined,
-          firstExpiresAt: rows[0]?.stories?.[0]?.expiresAt,
-        });
+  
       }
 
-      console.log("[getFriendsStoriesFeed] DONE");
-      console.log("======================================");
+    
       return rows;
     } catch (err: any) {
-      console.log("======================================");
-      console.error("[getFriendsStoriesFeed] ERROR:", err?.message || err);
-      console.log("======================================");
+  
       throw err;
     }
   }

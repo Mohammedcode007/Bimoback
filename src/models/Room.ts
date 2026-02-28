@@ -123,8 +123,8 @@ export interface IRoom extends Document {
 
 const MutedUserSchema = new Schema(
   {
-    user: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
-    until: { type: Date, required: true, index: true },
+    user: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    until: { type: Date, required: true },
     reason: { type: String, trim: true }
   },
   { _id: false }
@@ -184,7 +184,7 @@ const RoomSchema = new Schema<IRoom>(
     members: [{ type: Schema.Types.ObjectId, ref: "User", index: true }],
     blockeds: [{ type: Schema.Types.ObjectId, ref: "User", index: true }],
 
-    activeUsers: [{ type: Schema.Types.ObjectId, ref: "User"}],
+    activeUsers: [{ type: Schema.Types.ObjectId, ref: "User" }],
 
     mutedUsers: { type: [MutedUserSchema], default: [] },
 
@@ -235,11 +235,11 @@ const RoomSchema = new Schema<IRoom>(
 
     totalRevenue: { type: Number, default: 0, min: 0 },
 
-premiumLevel: {
-  type: Number,
-  default: RoomPremiumLevel.FREE,
-  enum: Object.values(RoomPremiumLevel).filter((v) => typeof v === "number"),
-},
+    premiumLevel: {
+      type: Number,
+      default: RoomPremiumLevel.FREE,
+      enum: Object.values(RoomPremiumLevel).filter((v) => typeof v === "number"),
+    },
 
     tags: { type: [String], default: [] },
     isVerified: { type: Boolean, default: false, index: true }
@@ -285,8 +285,8 @@ RoomSchema.pre("validate", function () {
   this.mutedUsers ||= [];
   this.vipUsers ||= [];
 });
-  const bp = Number((this as any).boostPoints);
-  (this as any).boostPoints = Number.isFinite(bp) && bp > 0 ? Math.trunc(bp) : 0;
+const bp = Number((this as any).boostPoints);
+(this as any).boostPoints = Number.isFinite(bp) && bp > 0 ? Math.trunc(bp) : 0;
 
 
 /* =====================================================

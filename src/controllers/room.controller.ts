@@ -273,14 +273,7 @@ export const getRoomsByType = asyncHandler(async (req, res) => {
   const page = req.query?.page !== undefined ? Number(req.query.page) : 1;
 
   const viewerId = getUserId(req); // ✅ يلتقط من protect أو x-user-id
- console.log("=====================================");
-  console.log("[controller:getRoomsByType] type:", type, "page:", page, "limit:", limit);
-  console.log("[controller:getRoomsByType] req.user:", req.user);
-  console.log("[controller:getRoomsByType] req.userId:", (req as any).userId);
-  console.log("[controller:getRoomsByType] x-user-id:", req.headers["x-user-id"]);
-  console.log("[controller:getRoomsByType] Authorization:", req.headers["authorization"]);
-  console.log("[controller:getRoomsByType] viewerId(final):", viewerId);
-  console.log("=====================================");
+ 
   const data = await roomService.getRoomsByType(type as RoomType, viewerId, { limit, page });
   return send(res, data, "Rooms fetched");
 });

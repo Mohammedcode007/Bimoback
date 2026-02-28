@@ -5,12 +5,56 @@ import User from "../models/User";
 import Friend from "../models/Friend";
 import Notification from "../models/Notification";
 import userService from "../services/user.service";
+import bcrypt from "bcrypt"; // ✅ أفضل من require داخل الدالة
+import { comparePassword, hashPassword } from "../utils/hash";
 
 /* ======================================================
    1️⃣ SEARCH USERS
 ====================================================== */
 
 
+
+export const changePassword = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id || req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const { oldPassword, newPassword } = req.body as {
+      oldPassword?: string;
+      newPassword?: string;
+    };
+
+    const oldP = String(oldPassword || "").trim();
+    const newP = String(newPassword || "").trim();
+
+    if (!oldP) return res.status(400).json({ message: "Old password required" });
+    if (!newP) return res.status(400).json({ message: "New password required" });
+    if (newP.length < 6) {
+      return res.status(400).json({ message: "New password must be at least 6 characters" });
+    }
+    if (oldP === newP) {
+      return res.status(400).json({ message: "New password must be different" });
+    }
+
+    // ✅ لازم تجيب الباسورد من DB
+    const user = await User.findById(userId).select("+password");
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // ✅ نفس طريقة المقارنة المستخدمة في loginUser
+    const ok = await comparePassword(oldP, user.password);
+    if (!ok) return res.status(400).json({ message: "Old password incorrect" });
+
+    // ✅ هنا هو الفرق المهم: نعمل hash يدويًا (بدون الاعتماد على pre-save)
+    const hashed = await hashPassword(newP);
+    user.password = hashed;
+    await user.save();
+
+    return res.json({ success: true, message: "Password changed successfully" });
+  } catch (e) {
+    console.error("❌ CHANGE PASSWORD ERROR:", e);
+    return res.status(500).json({ message: "Failed to change password" });
+  }
+};
 export const searchUsers = async (req: Request, res: Response) => {
   try {
 

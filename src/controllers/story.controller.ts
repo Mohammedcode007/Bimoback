@@ -31,7 +31,6 @@ class StoryController {
         data,
       });
     } catch (err: any) {
-      console.error("[getFriendsStoriesFeed]", err);
       return res.status(400).json({
         success: false,
         message: err.message || "Failed to load stories",
