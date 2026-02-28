@@ -21,7 +21,10 @@ import roomControlRoutes from "./routes/room.control.routes"; // ✅ Rooms
 import storeRoutes from "./routes/store.routes";
 import { errorHandler } from "./middlewares/error.middleware";
 import storyRoutes from "./routes/story.routes"; // ✅ NEW
-
+/* ✅ NEW: App Config + Force Update */
+/* ✅ NEW: App Config + Force Update */
+import appConfigRoutes from "./routes/appConfig.routes";
+import { enforceMinVersion } from "./middlewares/enforceMinVersion.middleware";
 dotenv.config();
 
 const app = express();
@@ -38,12 +41,23 @@ app.use(express.json());
 ========================= */
 
 app.get("/", (_, res) => {
-  res.status(200).json({
-    success: true,
-    message: "Chat Backend Running 🚀"
-  });
+   res.status(200).json({
+      success: true,
+      message: "Chat Backend Running 🚀"
+   });
 });
 
+app.get("/health", (_, res) => res.json({ ok: true }));
+
+/* =========================
+   App Config (must be BEFORE enforceMinVersion)
+========================= */
+app.use("/api", appConfigRoutes);
+
+/* =========================
+   Force Update Middleware (applies to all APIs after this)
+========================= */
+app.use(enforceMinVersion);
 /* =========================
    API Routes
 ========================= */
@@ -66,15 +80,17 @@ app.use("/api/rooms", roomRoutes);
 /* 🔥 Rooms System */
 app.use("/api/rooms", roomRoutes); // ✅ تمت الإضافة
 
+
+
 /* =========================
    404 Handler
 ========================= */
 
 app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: "Route not found"
-  });
+   res.status(404).json({
+      success: false,
+      message: "Route not found"
+   });
 });
 
 /* =========================
