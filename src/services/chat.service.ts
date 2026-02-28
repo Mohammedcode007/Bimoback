@@ -10,34 +10,74 @@ class ChatService {
      CREATE OR GET PRIVATE CHAT
   ===================================================== */
 
-  async createOrGetPrivateChat(userId: string, targetId: string) {
+//   async createOrGetPrivateChat(userId: string, targetId: string) {
 
-  if (userId === targetId)
-    throw new Error("Cannot create chat with yourself");
+//   if (userId === targetId)
+//     throw new Error("Cannot create chat with yourself");
+
+//   const userObjectId = new mongoose.Types.ObjectId(userId);
+
+//   const existing = await Chat.findOne({
+//     participants: { $all: [userId, targetId] }
+//   });
+
+//   if (existing) {
+
+//     if (existing.deletedFor?.some(id => id.equals(userObjectId))) {
+
+//       await Chat.updateOne(
+//         { _id: existing._id },
+//         {
+//           $pull: { deletedFor: userObjectId }
+//         }
+//       );
+
+//       const restored = await Chat.findById(existing._id);
+
+//       return restored;
+//     }
+
+//     return existing;
+//   }
+
+//   const chat = await Chat.create({
+//     participants: [userId, targetId],
+//     unreadCounts: {
+//       [userId]: 0,
+//       [targetId]: 0
+//     }
+//   });
+
+//   return chat;
+// }
+
+async createOrGetPrivateChat(userId: string, targetId: string) {
+  if (userId === targetId) throw new Error("Cannot create chat with yourself");
 
   const userObjectId = new mongoose.Types.ObjectId(userId);
+
+  const populateChat = async (chatId: any) => {
+    return Chat.findById(chatId)
+      .populate("participants", "username avatar isOnline isInvisible lastSeen")
+      .populate("lastMessage")
+      .lean();
+  };
 
   const existing = await Chat.findOne({
     participants: { $all: [userId, targetId] }
   });
 
   if (existing) {
-
-    if (existing.deletedFor?.some(id => id.equals(userObjectId))) {
-
+    // لو محذوفة عندي → رجّعها
+    if (existing.deletedFor?.some((id: any) => id.equals(userObjectId))) {
       await Chat.updateOne(
         { _id: existing._id },
-        {
-          $pull: { deletedFor: userObjectId }
-        }
+        { $pull: { deletedFor: userObjectId } }
       );
-
-      const restored = await Chat.findById(existing._id);
-
-      return restored;
     }
 
-    return existing;
+    // ✅ مهم: رجّعها populated
+    return await populateChat(existing._id);
   }
 
   const chat = await Chat.create({
@@ -48,10 +88,9 @@ class ChatService {
     }
   });
 
-  return chat;
+  // ✅ مهم: رجّعها populated
+  return await populateChat(chat._id);
 }
-
-
   /* =====================================================
      GET USER CHATS
   ===================================================== */

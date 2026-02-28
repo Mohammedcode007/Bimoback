@@ -26,71 +26,110 @@ export const chatSocket = (io: Server, socket: Socket) => {
   /* =====================================================
      JOIN CHAT ROOM
   ===================================================== */
-socket.on("chat:join", async ({ chatId }) => {
+// socket.on("chat:join", async ({ chatId }) => {
 
  
 
+//   try {
+
+//     if (!mongoose.Types.ObjectId.isValid(chatId)) {
+//       return;
+//     }
+
+//     const chat = await Chat.findOne({
+//       _id: chatId,
+//       participants: userId
+//     });
+
+//     if (!chat) {
+//       return;
+//     }
+
+//     /* =========================
+//        🔥 إزالة الشات النشط السابق
+//     ========================= */
+
+//     activeChats.delete(userId);
+
+//     /* =========================
+//        🔥 تسجيل الشات الحالي كنشط
+//     ========================= */
+
+// activeChats.set(userId, chatId.toString());
+
+//     /* =========================
+//        Join Room
+//     ========================= */
+
+//     socket.join(`chat:${chatId}`);
+
+
+//     /* =========================
+//        Delivery Only
+//     ========================= */
+
+//     await messageService.markAsDelivered(
+//       chatId,
+//       userId
+//     );
+
+
+//     /* =========================
+//        🔥 Seen لأن المستخدم فعلاً فتح المحادثة
+//     ========================= */
+
+//     await messageService.markAsSeen(
+//       chatId,
+//       userId
+//     );
+
+
+//   } catch (error) {
+//     console.error("❌ chat:join error:", error);
+//   }
+
+// });
+
+socket.on("chat:join", async ({ chatId }) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(chatId)) return;
 
-    if (!mongoose.Types.ObjectId.isValid(chatId)) {
-      return;
-    }
-
+    // ✅ عضوية
     const chat = await Chat.findOne({
       _id: chatId,
       participants: userId
     });
 
-    if (!chat) {
-      return;
-    }
+    if (!chat) return;
 
-    /* =========================
-       🔥 إزالة الشات النشط السابق
-    ========================= */
-
+    // 🔥 تسجيل active
     activeChats.delete(userId);
+    activeChats.set(userId, chatId.toString());
 
-    /* =========================
-       🔥 تسجيل الشات الحالي كنشط
-    ========================= */
-
-activeChats.set(userId, chatId.toString());
-
-    /* =========================
-       Join Room
-    ========================= */
-
+    // ✅ Join room
     socket.join(`chat:${chatId}`);
 
+    // ✅ Delivery + Seen
+    await messageService.markAsDelivered(chatId, userId);
+    await messageService.markAsSeen(chatId, userId);
 
-    /* =========================
-       Delivery Only
-    ========================= */
+    // =====================================================
+    // ✅ الأهم: أرسل Chat Snapshot populated للعميل
+    // =====================================================
+    const chatPopulated = await Chat.findById(chatId)
+      .populate("participants", "username avatar isOnline isInvisible lastSeen atUsername")
+      .populate("lastMessage")
+      .lean();
 
-    await messageService.markAsDelivered(
-      chatId,
-      userId
-    );
+    socket.emit("chat:snapshot", { chat: chatPopulated });
 
-
-    /* =========================
-       🔥 Seen لأن المستخدم فعلاً فتح المحادثة
-    ========================= */
-
-    await messageService.markAsSeen(
-      chatId,
-      userId
-    );
-
+    // (اختياري) لو تحب تُحدّث الـ inbox فورًا
+    // socket.emit("chat:inbox:upsert", { chat: chatPopulated, unreadCount: chatPopulated?.unreadCounts?.[userId] ?? 0 });
 
   } catch (error) {
     console.error("❌ chat:join error:", error);
   }
-
 });
-
-
 
 /* =====================================================
    SEND MESSAGE

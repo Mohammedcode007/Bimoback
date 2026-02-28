@@ -20,6 +20,7 @@ import roomRoutes from "./routes/room.routes"; // ✅ Rooms
 import roomControlRoutes from "./routes/room.control.routes"; // ✅ Rooms
 import storeRoutes from "./routes/store.routes";
 import { errorHandler } from "./middlewares/error.middleware";
+import storyRoutes from "./routes/story.routes"; // ✅ NEW
 
 dotenv.config();
 
@@ -56,6 +57,7 @@ app.use("/api/room/control", roomControlRoutes);
 /* 🔥 Tweets */
 app.use("/api/tweets", tweetRoutes);
 app.use("/api/store", storeRoutes);
+app.use("/api/stories", storyRoutes); // ✅ تم إضافة نظام الحالات
 
 /* 🔥 Chat & Messages */
 app.use("/api/chats", chatRoutes);

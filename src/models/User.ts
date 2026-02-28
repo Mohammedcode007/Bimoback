@@ -243,7 +243,27 @@ import mongoose, { Schema, Document } from "mongoose";
 
 export type UserRole = "user" | "admin";
 export type VerificationType = "none" | "blue" | "gold" | "business";
+export type StoryType = "image" | "video" | "text";
+export type StoryPrivacy = "public" | "followers" | "private";
 
+export type UserStory = {
+  _id?: mongoose.Types.ObjectId;
+
+  type: StoryType;
+  text?: string;         // لو type = text أو كـ caption
+  mediaUrl?: string;     // صورة/فيديو
+  thumbUrl?: string;     // اختياري للفيديو
+  durationMs?: number;   // مدة عرض القصة (للـ text/image)
+
+  privacy: StoryPrivacy; // public | followers | private
+  isArchived?: boolean;  // لو حبيت أرشفة بدل الحذف
+
+  viewsCount: number;
+  viewers?: mongoose.Types.ObjectId[]; // اختياري (قد يكبر الحجم)
+
+  createdAt: Date;
+  expiresAt: Date;       // عادة createdAt + 24h
+};
 export type ActiveCustomization = {
   avatarFrame?: string;
   messageEffect?: string;
@@ -307,7 +327,7 @@ export interface IUser extends Document {
   avatarFrame?: string; // frameId
   badges: string[]; // badgeIds
   verificationType: VerificationType; // none | blue | gold | business
-
+  stories: UserStory[];
   ownedMessageEffects: string[]; // effectIds
   ownedGifts: string[]; // giftIds
 
@@ -345,7 +365,51 @@ export interface IUser extends Document {
   createdAt: Date;
   updatedAt: Date;
 }
+const UserStorySchema = new Schema<UserStory>(
+  {
+    type: {
+      type: String,
+      enum: ["image", "video", "text"],
+      required: true,
+      index: true,
+    },
 
+    text: { type: String, trim: true, maxlength: 4000, default: "" },
+
+    mediaUrl: { type: String, trim: true, default: "" },
+    thumbUrl: { type: String, trim: true, default: "" },
+
+    durationMs: { type: Number, default: 6000, min: 1000, max: 60000 },
+
+    privacy: {
+      type: String,
+      enum: ["public", "followers", "private"],
+      default: "public",
+      index: true,
+    },
+
+    isArchived: { type: Boolean, default: false, index: true },
+
+    viewsCount: { type: Number, default: 0 },
+
+    viewers: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
+
+    createdAt: { type: Date, default: Date.now, index: true },
+
+    expiresAt: {
+      type: Date,
+      required: true,
+      index: true,
+      // لا يوجد TTL هنا لأنّه subdocument، لكن نستخدمه للفلترة والتنظيف
+    },
+  },
+  { _id: true }
+);
 const UserSchema = new Schema<IUser>(
   {
     username: {
@@ -380,7 +444,10 @@ const UserSchema = new Schema<IUser>(
       default: "user",
       index: true,
     },
-
+    stories: {
+      type: [UserStorySchema],
+      default: [],
+    },
     /* ===== Basic Info ===== */
 
     dateOfBirth: Date,
@@ -581,5 +648,20 @@ UserSchema.index({ isOnline: 1, lastSeen: -1 });
 UserSchema.index({ verificationType: 1 });
 UserSchema.index({ "privacy.profileVisible": 1 });
 UserSchema.index({ tags: 1 });
+UserSchema.index({ "stories.expiresAt": 1 });
+UserSchema.index({ "stories.createdAt": -1 });
+UserSchema.index({ "stories.privacy": 1 });
+const MODEL_NAME = "User";
 
-export default mongoose.model<IUser>("User", UserSchema);
+// ✅ في التطوير: امسح الموديل القديم إن كان متسجل بسكيما قديمة (بدون stories)
+if (process.env.NODE_ENV !== "production") {
+  if (mongoose.models[MODEL_NAME]) {
+    delete mongoose.models[MODEL_NAME];
+
+    // أحيانًا تُخزن السكيما داخليًا أيضًا
+    const ms = (mongoose as any).modelSchemas;
+    if (ms?.[MODEL_NAME]) delete ms[MODEL_NAME];
+  }
+}
+
+export default mongoose.model<IUser>(MODEL_NAME, UserSchema);

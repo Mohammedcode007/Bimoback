@@ -4,7 +4,21 @@ import notificationService from "./notification.service";
 import mongoose from "mongoose";
 
 class FriendService {
+  async getFriendIds(userId: string): Promise<string[]> {
+    const rels = await Friend.find({
+      status: "accepted",
+      $or: [{ requester: userId }, { recipient: userId }],
+    }).select("requester recipient");
 
+    const ids = rels.map((r: any) => {
+      const a = String(r.requester);
+      const b = String(r.recipient);
+      return a === String(userId) ? b : a;
+    });
+
+    // unique
+    return Array.from(new Set(ids));
+  }
   /* =====================================================
      SEND FRIEND REQUEST
   ===================================================== */
