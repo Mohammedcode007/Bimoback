@@ -259,36 +259,70 @@ export const roomsSocket = (socket: Socket) => {
      GET ROOMS BY TYPE
   ===================================================== */
 
+  // socket.on(
+  //   "rooms:get",
+  //   async (payload: { type: "public" | "private" | "protected" | "subscription"; limit?: number; page?: number }) => {
+  //     try {
+  //       const data = await roomService.getRoomsByType(payload?.type as any, {
+  //         limit: payload?.limit,
+  //         page: payload?.page
+  //       });
+  //       socket.emit("rooms:list", data);
+  //     } catch (error) {
+  //       safeError("rooms:get", error, "Fetch rooms failed");
+  //     }
+  //   }
+  // );
   socket.on(
-    "rooms:get",
-    async (payload: { type: "public" | "private" | "protected" | "subscription"; limit?: number; page?: number }) => {
-      try {
-        const data = await roomService.getRoomsByType(payload?.type as any, {
-          limit: payload?.limit,
-          page: payload?.page
-        });
-        socket.emit("rooms:list", data);
-      } catch (error) {
-        safeError("rooms:get", error, "Fetch rooms failed");
-      }
+  "rooms:get",
+  async (payload: { type: "public" | "private" | "protected" | "subscription"; limit?: number; page?: number }) => {
+    try {
+      const type = payload?.type as any;
+      const limit = payload?.limit;
+      const page = payload?.page;
+
+      // ✅ بدلاً من تمرير object كـ argument ثاني (يسبب الخطأ)
+      // نفترض أن توقيع الدالة في RoomService هو: (type, limit?, page?)
+      const data = await (roomService as any).getRoomsByType(type, limit, page);
+
+      socket.emit("rooms:list", data);
+    } catch (error) {
+      safeError("rooms:get", error, "Fetch rooms failed");
     }
-  );
+  }
+);
 
   /* =====================================================
      SEARCH ROOMS
   ===================================================== */
 
+  // socket.on(
+  //   "rooms:search",
+  //   async (payload: { q: string; type?: "public" | "private" | "protected" | "subscription"; limit?: number }) => {
+  //     try {
+  //       const rooms = await roomService.searchRooms(payload?.q, payload?.type as any, payload?.limit ?? 30);
+  //       socket.emit("rooms:search:results", rooms);
+  //     } catch (error) {
+  //       safeError("rooms:search", error, "Search failed");
+  //     }
+  //   }
+  // );
   socket.on(
-    "rooms:search",
-    async (payload: { q: string; type?: "public" | "private" | "protected" | "subscription"; limit?: number }) => {
-      try {
-        const rooms = await roomService.searchRooms(payload?.q, payload?.type as any, payload?.limit ?? 30);
-        socket.emit("rooms:search:results", rooms);
-      } catch (error) {
-        safeError("rooms:search", error, "Search failed");
-      }
+  "rooms:search",
+  async (payload: { q: string; type?: "public" | "private" | "protected" | "subscription"; limit?: number }) => {
+    try {
+      const q = payload?.q;
+      const type = payload?.type as any; // ✅ لضمان تطابق RoomType
+      const limit = payload?.limit ?? 30;
+
+      const rooms = await (roomService as any).searchRooms(q, type, limit);
+
+      socket.emit("rooms:search:results", rooms);
+    } catch (error) {
+      safeError("rooms:search", error, "Search failed");
     }
-  );
+  }
+);
 
   /* =====================================================
      ROOM INFO / SETTINGS (الدوال الناقصة من RoomService)
