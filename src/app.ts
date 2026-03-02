@@ -34,7 +34,15 @@ const app = express();
    Global Middlewares
 ========================= */
 
-app.use(cors());
+app.use(
+  cors({
+    origin: [
+      "https://te-bot.site",
+      "https://api.te-bot.site"
+    ],
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 /* =========================
