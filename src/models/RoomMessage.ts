@@ -36,7 +36,7 @@ export type RoomSystemAction =
 export interface IRoomMessage extends Document {
   room: Types.ObjectId;
   sender?: Types.ObjectId;
-
+  clientId?: string; // ✅ لتوحيد optimistic message مع رسالة السيرفر ومنع التكرار
   type: RoomMessageType;
   content: string;
   senderSnapshot?: {
@@ -191,7 +191,12 @@ const RoomMessageSchema = new Schema<IRoomMessage>(
       ref: "User",
       index: true
     },
-
+clientId: {
+  type: String,
+  trim: true,
+  default: undefined,
+  index: true
+},
     type: {
       type: String,
       enum: [
@@ -408,7 +413,16 @@ RoomMessageSchema.pre("validate", function () {
 ===================================================== */
 
 RoomMessageSchema.index({ room: 1, createdAt: -1 }, { partialFilterExpression: { deletedForEveryone: false } });
-
+// ✅ يمنع إنشاء نفس الرسالة مرتين لنفس (room + sender + clientId)
+RoomMessageSchema.index(
+  { room: 1, sender: 1, clientId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      clientId: { $type: "string" }
+    }
+  }
+);
 RoomMessageSchema.index(
   { room: 1, isPinned: 1, createdAt: -1 },
   {
@@ -467,7 +481,9 @@ RoomMessageSchema.pre("save", function () {
   this.$locals = this.$locals || {};
   // @ts-ignore
   this.$locals.wasNew = this.isNew;
-
+  if (this.isNew && !this.expiresAt) {
+    this.expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  }
   // ✅ DEBUG: اطبع فقط رسائل النظام/الترقية
   const t = String((this as any).type || "");
   if (["promotion", "join", "leave", "ban", "announcement", "system"].includes(t)) {

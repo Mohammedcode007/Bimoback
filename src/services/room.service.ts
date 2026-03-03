@@ -24,6 +24,8 @@ const USER_PUBLIC_FIELDS =
 type SendMessageInput = {
   roomId: string;
   senderId: string;
+    clientId : string;
+
   content?: string;
   type?: string;
   replyTo?: string;
@@ -34,19 +36,19 @@ type SendMessageInput = {
     fileSize?: number;
     mimeType?: string;
   };
- gift?: {
-  key?: string;
-  icon?: string;
-  count?: number;
+  gift?: {
+    key?: string;
+    icon?: string;
+    count?: number;
 
-  targetId?: string;
-  targetName?: string;
+    targetId?: string;
+    targetName?: string;
 
-  // للتوافق القديم إن وُجد
-  name?: string;
-  value?: number;
-  animation?: string;
-};
+    // للتوافق القديم إن وُجد
+    name?: string;
+    value?: number;
+    animation?: string;
+  };
 };
 
 type Pagination = {
@@ -66,82 +68,104 @@ class RoomService {
   private isValidObjectId(id: string) {
     return Types.ObjectId.isValid(id);
   }
-private buildMessagePreviewForNotification(message: any) {
-  const msgType = String(message?.type || "text");
+  private buildMessagePreviewForNotification(message: any) {
+    const msgType = String(message?.type || "text");
 
-  // لو عندك media
-  const hasMedia = Boolean(message?.media?.url);
+    // لو عندك media
+    const hasMedia = Boolean(message?.media?.url);
 
-  // حاول تمييز فيديو/صورة
-  const mime = String(message?.media?.mimeType || "").toLowerCase();
-  const url = String(message?.media?.url || "").toLowerCase();
+    // حاول تمييز فيديو/صورة
+    const mime = String(message?.media?.mimeType || "").toLowerCase();
+    const url = String(message?.media?.url || "").toLowerCase();
 
-  const isVideo =
-    mime.startsWith("video/") ||
-    url.endsWith(".mp4") ||
-    url.endsWith(".mov") ||
-    url.endsWith(".mkv") ||
-    url.endsWith(".webm");
+    const isVideo =
+      mime.startsWith("video/") ||
+      url.endsWith(".mp4") ||
+      url.endsWith(".mov") ||
+      url.endsWith(".mkv") ||
+      url.endsWith(".webm");
 
-  const isImage =
-    mime.startsWith("image/") ||
-    url.endsWith(".jpg") ||
-    url.endsWith(".jpeg") ||
-    url.endsWith(".png") ||
-    url.endsWith(".gif") ||
-    url.endsWith(".webp");
+    const isImage =
+      mime.startsWith("image/") ||
+      url.endsWith(".jpg") ||
+      url.endsWith(".jpeg") ||
+      url.endsWith(".png") ||
+      url.endsWith(".gif") ||
+      url.endsWith(".webp");
 
-  if (hasMedia || msgType === "image" || msgType === "video") {
-    if (isVideo || msgType === "video") return { kind: "video", labelAr: "فيديو", preview: "" };
-    return { kind: "image", labelAr: "صورة", preview: "" };
+    if (hasMedia || msgType === "image" || msgType === "video") {
+      if (isVideo || msgType === "video") return { kind: "video", labelAr: "فيديو", preview: "" };
+      return { kind: "image", labelAr: "صورة", preview: "" };
+    }
+
+    // رسالة نصية
+    const text = String(message?.content || "").trim();
+    const preview = text.length > 80 ? text.slice(0, 80) + "…" : text;
+
+    return { kind: "text", labelAr: "رسالة", preview };
   }
-
-  // رسالة نصية
-  const text = String(message?.content || "").trim();
-  const preview = text.length > 80 ? text.slice(0, 80) + "…" : text;
-
-  return { kind: "text", labelAr: "رسالة", preview };
-}
   // ✅ إصلاح: المقارنة تكون دائمًا عبر toString()
   private isInside(room: any, userId: string) {
     const uid = userId.toString();
     return (room.activeUsers || []).some((u: any) => u?.toString?.() === uid);
   }
   private oidOrNull(id?: string) {
-  const s = String(id || "");
-  return this.isValidObjectId(s) ? new Types.ObjectId(s) : null;
-}
-private async applyGiftOncePolicy(
-  roomId: string,
-  userId: string,
-  state: any,
-  messages: any[],
-  pagination: { before?: string }
-) {
-  if (!Array.isArray(messages) || !messages.length) return messages;
+    const s = String(id || "");
+    return this.isValidObjectId(s) ? new Types.ObjectId(s) : null;
+  }
+  private async applyGiftOncePolicy(
+    roomId: string,
+    userId: string,
+    state: any,
+    messages: any[],
+    pagination: { before?: string }
+  ) {
+    if (!Array.isArray(messages) || !messages.length) return messages;
 
-  const lastGiftSeenAt = state?.lastGiftSeenAt ? new Date(state.lastGiftSeenAt) : new Date(0);
+    const lastGiftSeenAt = state?.lastGiftSeenAt ? new Date(state.lastGiftSeenAt) : new Date(0);
 
-  // مرة واحدة = أول صفحة فقط
-  const isFirstPage = !pagination?.before;
+    // مرة واحدة = أول صفحة فقط
+    const isFirstPage = !pagination?.before;
 
-  // ✅ فلترة Boost فقط وليس كل gift
-  const isBoost = (m: any) => {
-    const key = String(m?.gift?.key || m?.content || "").trim();
-    return key.startsWith("boost_");
-  };
+    // ✅ فلترة Boost فقط وليس كل gift
+    const isBoost = (m: any) => {
+      const key = String(m?.gift?.key || m?.content || "").trim();
+      return key.startsWith("boost_");
+    };
 
-  // ✅ boosts unseen داخل الصفحة
-  const unseenBoosts = messages
-    .filter((m: any) => m?.type === "gift" && isBoost(m) && m?.createdAt && new Date(m.createdAt).getTime() > lastGiftSeenAt.getTime())
-    .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    // ✅ boosts unseen داخل الصفحة
+    const unseenBoosts = messages
+      .filter((m: any) => m?.type === "gift" && isBoost(m) && m?.createdAt && new Date(m.createdAt).getTime() > lastGiftSeenAt.getTime())
+      .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  // ✅ لو لا يوجد Boost جديد: حوّل boosts القديمة فقط إلى system حتى لا تعمل overlay
-  if (!unseenBoosts.length) {
-    return messages.map((m: any) => {
+    // ✅ لو لا يوجد Boost جديد: حوّل boosts القديمة فقط إلى system حتى لا تعمل overlay
+    if (!unseenBoosts.length) {
+      return messages.map((m: any) => {
+        if (m?.type !== "gift") return m;
+        if (!isBoost(m)) return m; // ✅ لا تلمس الهدايا العادية
+
+        return {
+          ...(m.toObject?.() ?? m),
+          type: "system",
+          content: "🚀 Boost",
+          systemType: "gift"
+        };
+      });
+    }
+
+    // ✅ اختر Boost واحدة فقط (الأحدث unseen)
+    const chosenId = String(unseenBoosts[0]._id);
+
+    const patched = messages.map((m: any) => {
       if (m?.type !== "gift") return m;
-      if (!isBoost(m)) return m; // ✅ لا تلمس الهدايا العادية
 
+      // ✅ لا تلمس الهدايا العادية
+      if (!isBoost(m)) return m;
+
+      const isChosen = String(m._id) === chosenId;
+      if (isChosen) return m;
+
+      // ✅ boosts الأخرى تتحول system لتمنع overlay المتكرر
       return {
         ...(m.toObject?.() ?? m),
         type: "system",
@@ -149,43 +173,21 @@ private async applyGiftOncePolicy(
         systemType: "gift"
       };
     });
-  }
 
-  // ✅ اختر Boost واحدة فقط (الأحدث unseen)
-  const chosenId = String(unseenBoosts[0]._id);
-
-  const patched = messages.map((m: any) => {
-    if (m?.type !== "gift") return m;
-
-    // ✅ لا تلمس الهدايا العادية
-    if (!isBoost(m)) return m;
-
-    const isChosen = String(m._id) === chosenId;
-    if (isChosen) return m;
-
-    // ✅ boosts الأخرى تتحول system لتمنع overlay المتكرر
-    return {
-      ...(m.toObject?.() ?? m),
-      type: "system",
-      content: "🚀 Boost",
-      systemType: "gift"
-    };
-  });
-
-  // ✅ تحديث lastGiftSeenAt مرة واحدة عند أول صفحة فقط
-  if (isFirstPage) {
-    const newestSeen = new Date(unseenBoosts[0].createdAt);
-    if (!Number.isNaN(newestSeen.getTime())) {
-      await RoomUserState.updateOne(
-        { room: roomId, user: userId },
-        { $set: { lastGiftSeenAt: newestSeen } },
-        { upsert: true }
-      );
+    // ✅ تحديث lastGiftSeenAt مرة واحدة عند أول صفحة فقط
+    if (isFirstPage) {
+      const newestSeen = new Date(unseenBoosts[0].createdAt);
+      if (!Number.isNaN(newestSeen.getTime())) {
+        await RoomUserState.updateOne(
+          { room: roomId, user: userId },
+          { $set: { lastGiftSeenAt: newestSeen } },
+          { upsert: true }
+        );
+      }
     }
-  }
 
-  return patched;
-}
+    return patched;
+  }
   private async setClearedAt(
     roomId: string,
     userId: string,
@@ -233,90 +235,90 @@ private async applyGiftOncePolicy(
 
     return lastPinned?._id ? String(lastPinned._id) : null;
   }
-private async getUserPublicSnapshot(userId: string) {
-  const User = mongoose.model("User");
+  private async getUserPublicSnapshot(userId: string) {
+    const User = mongoose.model("User");
 
-  const u = await User.findById(userId).select(USER_PUBLIC_FIELDS);
+    const u = await User.findById(userId).select(USER_PUBLIC_FIELDS);
 
-  // ✅ Default safe snapshot
-  const base = {
-    _id: String(userId),
-    username: "مستخدم",
-    atUsername: "",
-    avatar: "",
-    coverImage: "",
-    isOnline: false,
-    lastSeen: null as any,
-    role: "user",
+    // ✅ Default safe snapshot
+    const base = {
+      _id: String(userId),
+      username: "مستخدم",
+      atUsername: "",
+      avatar: "",
+      coverImage: "",
+      isOnline: false,
+      lastSeen: null as any,
+      role: "user",
 
-    activeCustomization: {
+      activeCustomization: {
+        avatarFrame: "",
+        messageEffect: "",
+        profileEntryAnimation: "",
+        badges: [],
+        verificationType: "none"
+      },
+
+      verificationType: "none",
       avatarFrame: "",
-      messageEffect: "",
+      badges: [] as string[],
+      ownedMessageEffects: [] as string[],
+      ownedGifts: [] as string[],
       profileEntryAnimation: "",
-      badges: [],
-      verificationType: "none"
-    },
 
-    verificationType: "none",
-    avatarFrame: "",
-    badges: [] as string[],
-    ownedMessageEffects: [] as string[],
-    ownedGifts: [] as string[],
-    profileEntryAnimation: "",
+      followersCount: 0,
+      followingCount: 0,
+      totalLikesReceived: 0,
+      totalRetweetsReceived: 0,
+      profileViews: 0
+    };
 
-    followersCount: 0,
-    followingCount: 0,
-    totalLikesReceived: 0,
-    totalRetweetsReceived: 0,
-    profileViews: 0
-  };
+    if (!u) return base;
 
-  if (!u) return base;
+    return {
+      ...base,
+      _id: String(u._id),
 
-  return {
-    ...base,
-    _id: String(u._id),
+      username: u.username || base.username,
+      atUsername: u.atUsername || base.atUsername,
+      avatar: u.avatar || base.avatar,
+      coverImage: u.coverImage || base.coverImage,
 
-    username: u.username || base.username,
-    atUsername: u.atUsername || base.atUsername,
-    avatar: u.avatar || base.avatar,
-    coverImage: u.coverImage || base.coverImage,
+      isOnline: Boolean(u.isOnline),
+      lastSeen: u.lastSeen || null,
+      role: u.role || base.role,
 
-    isOnline: Boolean(u.isOnline),
-    lastSeen: u.lastSeen || null,
-    role: u.role || base.role,
+      activeCustomization: u.activeCustomization || base.activeCustomization,
 
-    activeCustomization: u.activeCustomization || base.activeCustomization,
+      verificationType: u.verificationType || base.verificationType,
+      avatarFrame: u.avatarFrame || base.avatarFrame,
+      badges: Array.isArray(u.badges) ? u.badges : base.badges,
+      ownedMessageEffects: Array.isArray(u.ownedMessageEffects) ? u.ownedMessageEffects : base.ownedMessageEffects,
+      ownedGifts: Array.isArray(u.ownedGifts) ? u.ownedGifts : base.ownedGifts,
+      profileEntryAnimation: u.profileEntryAnimation || base.profileEntryAnimation,
 
-    verificationType: u.verificationType || base.verificationType,
-    avatarFrame: u.avatarFrame || base.avatarFrame,
-    badges: Array.isArray(u.badges) ? u.badges : base.badges,
-    ownedMessageEffects: Array.isArray(u.ownedMessageEffects) ? u.ownedMessageEffects : base.ownedMessageEffects,
-    ownedGifts: Array.isArray(u.ownedGifts) ? u.ownedGifts : base.ownedGifts,
-    profileEntryAnimation: u.profileEntryAnimation || base.profileEntryAnimation,
-
-    followersCount: Number(u.followersCount || 0),
-    followingCount: Number(u.followingCount || 0),
-    totalLikesReceived: Number(u.totalLikesReceived || 0),
-    totalRetweetsReceived: Number(u.totalRetweetsReceived || 0),
-    profileViews: Number(u.profileViews || 0)
-  };
-}
-async getUserState(roomId: string, userId: string): Promise<RoomUserStateLean> {
-  const state = await RoomUserState.findOne({ room: roomId, user: userId }).lean();
-
-  if (!state) {
-    const created = await RoomUserState.create({
-      room: roomId,
-      user: userId,
-      lastGiftSeenAt: new Date(0),
-    });
-
-    return created.toObject() as RoomUserStateLean;
+      followersCount: Number(u.followersCount || 0),
+      followingCount: Number(u.followingCount || 0),
+      totalLikesReceived: Number(u.totalLikesReceived || 0),
+      totalRetweetsReceived: Number(u.totalRetweetsReceived || 0),
+      profileViews: Number(u.profileViews || 0)
+    };
   }
+  async getUserState(roomId: string, userId: string): Promise<RoomUserStateLean> {
+    const state = await RoomUserState.findOne({ room: roomId, user: userId }).lean();
 
-  return state as RoomUserStateLean;
-}
+    if (!state) {
+      const created = await RoomUserState.create({
+        room: roomId,
+        user: userId,
+        lastGiftSeenAt: new Date(0),
+      });
+
+      return created.toObject() as RoomUserStateLean;
+    }
+
+    return state as RoomUserStateLean;
+  }
   private oid(id: string) {
     if (!this.isValidObjectId(id)) throw new Error("Invalid id");
     return new Types.ObjectId(id);
@@ -812,7 +814,7 @@ async getUserState(roomId: string, userId: string): Promise<RoomUserStateLean> {
     const methods = Object.getOwnPropertyNames(proto).filter(
       (k) => k !== "constructor" && typeof (this as any)[k] === "function"
     );
-   
+
   }
 
   /* =====================================================
@@ -915,150 +917,150 @@ async getUserState(roomId: string, userId: string): Promise<RoomUserStateLean> {
    * - (اختياري) يضاف members لو كان none
    * - ثم يبث العدد الحقيقي عبر room:activeCount:update
    */
- async joinRoom(roomId: string, userId: string, password?: string) {
-  const uid = userId.toString();
-  const joinAt = new Date();
+  async joinRoom(roomId: string, userId: string, password?: string) {
+    const uid = userId.toString();
+    const joinAt = new Date();
 
-  const { joined } = await this.withTx(async (session) => {
-    const room = await Room.findById(roomId).session(session);
+    const { joined } = await this.withTx(async (session) => {
+      const room = await Room.findById(roomId).session(session);
+      if (!room) throw new Error("Room not found");
+
+      this.ensureArrays(room);
+
+      if (room.isLocked) throw new Error("Room is locked");
+      if (this.isBanned(room, uid)) throw new Error("You are banned");
+      if ((room.usersCount || 0) >= (room.maxUsers || 50)) throw new Error("Room is full");
+
+      const alreadyActive = room.activeUsers.some((u: any) => u?.toString?.() === uid);
+      if (alreadyActive) return { joined: false };
+
+      // ✅ 1) احسب الدور قبل التحقق من الباسورد
+      const role = this.getRole(room, uid);
+
+      // ✅ 2) شرط الغرفة المحمية
+      if (room.type === RoomType.PROTECTED) {
+        const bypass = role === "creator" || role === "owner" || role === "admin";
+
+        if (!bypass) {
+          const pass = String(password || "").trim();
+
+          // لا تقبل الدخول بدون باسورد
+          if (!pass) throw new Error("Password required");
+
+          // تحقق من التطابق (بسيطة لأنك تخزنها نصًا عندك)
+          // لو عندك hashing عدلها كما بالأسفل في ملاحظة رقم (2)
+          if (pass !== String(room.password || "")) throw new Error("Invalid password");
+        }
+      }
+
+      // ✅ لو كان none: ضمه للأعضاء (كما عندك)
+      if (role === "none") {
+        const alreadyMember = room.members.some((m: any) => m?.toString?.() === uid);
+        if (!alreadyMember) room.members.push(userId as any);
+      }
+
+      room.activeUsers.push(userId as any);
+      room.usersCount = (room.usersCount || 0) + 1;
+
+      await room.save({ session });
+      return { joined: true };
+    });
+
+    if (!joined) return { success: true };
+
+    const keepPinnedId = await this.getLastPinnedBefore(roomId, joinAt);
+
+    this.io().to(`room:${roomId}`).emit("room:user:joined", { roomId, userId });
+
+    await this.system(roomId, "دخل", "join", { sender: userId, mentions: [userId] });
+
+    const afterJoinSystem = new Date();
+    await this.setClearedAt(roomId, userId, afterJoinSystem, keepPinnedId);
+
+    await this.emitActiveCount(roomId);
+
+    return { success: true };
+  }
+
+  /* =====================================================
+     ROOM DETAILS (FULL) - PERMISSIONED
+  ===================================================== */
+
+  async getRoomDetails(roomId: string, userId?: string) {
+    if (!this.isValidObjectId(roomId)) throw new Error("Invalid roomId");
+
+    const uid = userId && this.isValidObjectId(userId) ? String(userId) : "";
+
+    // ✅ لا نريد إرجاع password نفسه
+    // نقرأه فقط لمعرفة هل الغرفة محمية بكلمة مرور أم لا
+    const room = await Room.findById(roomId).select("+password").lean();
     if (!room) throw new Error("Room not found");
 
-    this.ensureArrays(room);
+    // ✅ Safe clone
+    const safeRoom: any = { ...room };
+    safeRoom.owners ||= [];
+    safeRoom.admins ||= [];
+    safeRoom.members ||= [];
+    safeRoom.blockeds ||= [];
+    safeRoom.activeUsers ||= [];
+    safeRoom.voiceQueue ||= [];
+    safeRoom.raisedHands ||= [];
+    safeRoom.voiceSpeakers ||= [];
+    safeRoom.vipUsers ||= [];
+    safeRoom.mutedUsers ||= [];
+    safeRoom.tags ||= [];
 
-    if (room.isLocked) throw new Error("Room is locked");
-    if (this.isBanned(room, uid)) throw new Error("You are banned");
-    if ((room.usersCount || 0) >= (room.maxUsers || 50)) throw new Error("Room is full");
+    // ✅ صلاحيات (لو userId غير موجود -> زائر)
+    const myRole = uid ? this.getRole(safeRoom, uid) : ("none" as const);
+    const isInside = uid ? this.isInside(safeRoom, uid) : false;
 
-    const alreadyActive = room.activeUsers.some((u: any) => u?.toString?.() === uid);
-    if (alreadyActive) return { joined: false };
+    const isManager = myRole === "creator" || myRole === "owner" || myRole === "admin";
+    const isMember = isInside || myRole === "member" || isManager;
 
-    // ✅ 1) احسب الدور قبل التحقق من الباسورد
-    const role = this.getRole(room, uid);
+    // ✅ بيانات مشتقة
+    const passwordProtected = Boolean(safeRoom.password);
+    delete safeRoom.password;
 
-    // ✅ 2) شرط الغرفة المحمية
-    if (room.type === RoomType.PROTECTED) {
-      const bypass = role === "creator" || role === "owner" || role === "admin";
+    // membersCount: إجمالي الناس اللي لهم membership/roles (تقريبي)
+    const membersCount =
+      (safeRoom.members?.length || 0) +
+      (safeRoom.owners?.length || 0) +
+      (safeRoom.admins?.length || 0) +
+      1; // creator
 
-      if (!bypass) {
-        const pass = String(password || "").trim();
+    // ✅ الجزء العام (يظهر للجميع)
+    const publicRoom = {
+      _id: String(safeRoom._id),
+      name: safeRoom.name,
+      description: safeRoom.description || "",
 
-        // لا تقبل الدخول بدون باسورد
-        if (!pass) throw new Error("Password required");
+      avatar: safeRoom.avatar || "",
+      cover: safeRoom.cover || "",
 
-        // تحقق من التطابق (بسيطة لأنك تخزنها نصًا عندك)
-        // لو عندك hashing عدلها كما بالأسفل في ملاحظة رقم (2)
-        if (pass !== String(room.password || "")) throw new Error("Invalid password");
-      }
-    }
+      type: safeRoom.type,
+      premiumLevel: safeRoom.premiumLevel,
 
-    // ✅ لو كان none: ضمه للأعضاء (كما عندك)
-    if (role === "none") {
-      const alreadyMember = room.members.some((m: any) => m?.toString?.() === uid);
-      if (!alreadyMember) room.members.push(userId as any);
-    }
+      maxUsers: Number(safeRoom.maxUsers || 0),
+      maxVoiceSeats: Number(safeRoom.maxVoiceSeats || 0),
 
-    room.activeUsers.push(userId as any);
-    room.usersCount = (room.usersCount || 0) + 1;
+      isVerified: Boolean(safeRoom.isVerified),
+      tags: Array.isArray(safeRoom.tags) ? safeRoom.tags : [],
 
-    await room.save({ session });
-    return { joined: true };
-  });
+      // Stats (آمنة)
+      usersCount: Number(safeRoom.usersCount || 0),       // active count
+      membersCount,
+      messagesCount: Number(safeRoom.messagesCount || 0),
 
-  if (!joined) return { success: true };
+      // Boost (ممكن عرض جزء منه للعامة بدون نقاط/إيراد)
+      boostLevel: Number(safeRoom.boostLevel || 0),
 
-  const keepPinnedId = await this.getLastPinnedBefore(roomId, joinAt);
+      createdAt: safeRoom.createdAt,
+      updatedAt: safeRoom.updatedAt
+    };
 
-  this.io().to(`room:${roomId}`).emit("room:user:joined", { roomId, userId });
-
-  await this.system(roomId, "دخل", "join", { sender: userId, mentions: [userId] });
-
-  const afterJoinSystem = new Date();
-  await this.setClearedAt(roomId, userId, afterJoinSystem, keepPinnedId);
-
-  await this.emitActiveCount(roomId);
-
-  return { success: true };
-}
-
-/* =====================================================
-   ROOM DETAILS (FULL) - PERMISSIONED
-===================================================== */
-
-async getRoomDetails(roomId: string, userId?: string) {
-  if (!this.isValidObjectId(roomId)) throw new Error("Invalid roomId");
-
-  const uid = userId && this.isValidObjectId(userId) ? String(userId) : "";
-
-  // ✅ لا نريد إرجاع password نفسه
-  // نقرأه فقط لمعرفة هل الغرفة محمية بكلمة مرور أم لا
-  const room = await Room.findById(roomId).select("+password").lean();
-  if (!room) throw new Error("Room not found");
-
-  // ✅ Safe clone
-  const safeRoom: any = { ...room };
-  safeRoom.owners ||= [];
-  safeRoom.admins ||= [];
-  safeRoom.members ||= [];
-  safeRoom.blockeds ||= [];
-  safeRoom.activeUsers ||= [];
-  safeRoom.voiceQueue ||= [];
-  safeRoom.raisedHands ||= [];
-  safeRoom.voiceSpeakers ||= [];
-  safeRoom.vipUsers ||= [];
-  safeRoom.mutedUsers ||= [];
-  safeRoom.tags ||= [];
-
-  // ✅ صلاحيات (لو userId غير موجود -> زائر)
-  const myRole = uid ? this.getRole(safeRoom, uid) : ("none" as const);
-  const isInside = uid ? this.isInside(safeRoom, uid) : false;
-
-  const isManager = myRole === "creator" || myRole === "owner" || myRole === "admin";
-  const isMember = isInside || myRole === "member" || isManager;
-
-  // ✅ بيانات مشتقة
-  const passwordProtected = Boolean(safeRoom.password);
-  delete safeRoom.password;
-
-  // membersCount: إجمالي الناس اللي لهم membership/roles (تقريبي)
-  const membersCount =
-    (safeRoom.members?.length || 0) +
-    (safeRoom.owners?.length || 0) +
-    (safeRoom.admins?.length || 0) +
-    1; // creator
-
-  // ✅ الجزء العام (يظهر للجميع)
-  const publicRoom = {
-    _id: String(safeRoom._id),
-    name: safeRoom.name,
-    description: safeRoom.description || "",
-
-    avatar: safeRoom.avatar || "",
-    cover: safeRoom.cover || "",
-
-    type: safeRoom.type,
-    premiumLevel: safeRoom.premiumLevel,
-
-    maxUsers: Number(safeRoom.maxUsers || 0),
-    maxVoiceSeats: Number(safeRoom.maxVoiceSeats || 0),
-
-    isVerified: Boolean(safeRoom.isVerified),
-    tags: Array.isArray(safeRoom.tags) ? safeRoom.tags : [],
-
-    // Stats (آمنة)
-    usersCount: Number(safeRoom.usersCount || 0),       // active count
-    membersCount,
-    messagesCount: Number(safeRoom.messagesCount || 0),
-
-    // Boost (ممكن عرض جزء منه للعامة بدون نقاط/إيراد)
-    boostLevel: Number(safeRoom.boostLevel || 0),
-
-    createdAt: safeRoom.createdAt,
-    updatedAt: safeRoom.updatedAt
-  };
-
-  // ✅ تفاصيل إضافية للأعضاء/داخل الغرفة (غير حساسة)
-  const memberRoomExtra = isMember
-    ? {
+    // ✅ تفاصيل إضافية للأعضاء/داخل الغرفة (غير حساسة)
+    const memberRoomExtra = isMember
+      ? {
         isLocked: Boolean(safeRoom.isLocked),
 
         // لو تحب تخليها boolean فقط للأعضاء بدل الأرقام
@@ -1068,15 +1070,15 @@ async getRoomDetails(roomId: string, userId?: string) {
 
         activePoll: safeRoom.activePoll || null
       }
-    : {
+      : {
         // للزائر: ممكن تعرض الحالة بشكل عام فقط
         isLocked: Boolean(safeRoom.isLocked),
         activePoll: null as any
       };
 
-  // ✅ تفاصيل الإدارة (حساسة)
-  const managerRoomExtra = isManager
-    ? {
+    // ✅ تفاصيل الإدارة (حساسة)
+    const managerRoomExtra = isManager
+      ? {
         subscriptionPrice: Number(safeRoom.subscriptionPrice || 0),
         totalRevenue: Number(safeRoom.totalRevenue || 0),
 
@@ -1088,81 +1090,81 @@ async getRoomDetails(roomId: string, userId?: string) {
 
         passwordProtected
       }
-    : {
+      : {
         // للغير إدارة: لا نعرض السعر ولا الإيراد ولا نقاط البوست ولا passwordProtected
         subscriptionPrice: safeRoom.type === "subscription" ? Number(safeRoom.subscriptionPrice || 0) : 0
       };
 
-  // ✅ Lists بناءً على المستوى
-  // creator يظهر للجميع كملف عام (آمن عادة)
-  const creatorSnap = await this.getUserPublicSnapshot(String(safeRoom.creator));
+    // ✅ Lists بناءً على المستوى
+    // creator يظهر للجميع كملف عام (آمن عادة)
+    const creatorSnap = await this.getUserPublicSnapshot(String(safeRoom.creator));
 
-  const lists: any = {
-    creator: creatorSnap
-  };
+    const lists: any = {
+      creator: creatorSnap
+    };
 
-  // Owners/Admins: تُعرض للأعضاء فقط أو للإدارة (حسب رغبتك)
-  // أنا هنا: للأعضاء نعم، للزائر لا
-  if (isMember) {
-    lists.owners = await Promise.all(
-      (safeRoom.owners as any[]).map((id) => this.getUserPublicSnapshot(String(id)))
-    );
-    lists.admins = await Promise.all(
-      (safeRoom.admins as any[]).map((id) => this.getUserPublicSnapshot(String(id)))
-    );
-  }
-
-  // Active/Voice: للأعضاء فقط
-  if (isMember) {
-    lists.activeUsers = await Promise.all(
-      (safeRoom.activeUsers as any[]).map((id) => this.getUserPublicSnapshot(String(id)))
-    );
-
-    lists.voiceSpeakers = await Promise.all(
-      (safeRoom.voiceSpeakers as any[]).map((id) => this.getUserPublicSnapshot(String(id)))
-    );
-    lists.voiceQueue = await Promise.all(
-      (safeRoom.voiceQueue as any[]).map((id) => this.getUserPublicSnapshot(String(id)))
-    );
-    lists.raisedHands = await Promise.all(
-      (safeRoom.raisedHands as any[]).map((id) => this.getUserPublicSnapshot(String(id)))
-    );
-  }
-
-  // VIP/Muted: للإدارة فقط
-  if (isManager) {
-    lists.vipUsers = await Promise.all(
-      (safeRoom.vipUsers as any[]).map(async (v) => ({
-        user: await this.getUserPublicSnapshot(String(v.user)),
-        expiresAt: v.expiresAt
-      }))
-    );
-
-    lists.mutedUsers = await Promise.all(
-      (safeRoom.mutedUsers as any[]).map(async (m) => ({
-        user: await this.getUserPublicSnapshot(String(m.user)),
-        until: m.until,
-        reason: m.reason || ""
-      }))
-    );
-  }
-
-  return {
-    room: {
-      ...publicRoom,
-      ...memberRoomExtra,
-      ...managerRoomExtra
-    },
-    lists,
-    my: {
-      userId: uid || null,
-      role: myRole,
-      isInside,
-      isMember,
-      canManage: isManager
+    // Owners/Admins: تُعرض للأعضاء فقط أو للإدارة (حسب رغبتك)
+    // أنا هنا: للأعضاء نعم، للزائر لا
+    if (isMember) {
+      lists.owners = await Promise.all(
+        (safeRoom.owners as any[]).map((id) => this.getUserPublicSnapshot(String(id)))
+      );
+      lists.admins = await Promise.all(
+        (safeRoom.admins as any[]).map((id) => this.getUserPublicSnapshot(String(id)))
+      );
     }
-  };
-}
+
+    // Active/Voice: للأعضاء فقط
+    if (isMember) {
+      lists.activeUsers = await Promise.all(
+        (safeRoom.activeUsers as any[]).map((id) => this.getUserPublicSnapshot(String(id)))
+      );
+
+      lists.voiceSpeakers = await Promise.all(
+        (safeRoom.voiceSpeakers as any[]).map((id) => this.getUserPublicSnapshot(String(id)))
+      );
+      lists.voiceQueue = await Promise.all(
+        (safeRoom.voiceQueue as any[]).map((id) => this.getUserPublicSnapshot(String(id)))
+      );
+      lists.raisedHands = await Promise.all(
+        (safeRoom.raisedHands as any[]).map((id) => this.getUserPublicSnapshot(String(id)))
+      );
+    }
+
+    // VIP/Muted: للإدارة فقط
+    if (isManager) {
+      lists.vipUsers = await Promise.all(
+        (safeRoom.vipUsers as any[]).map(async (v) => ({
+          user: await this.getUserPublicSnapshot(String(v.user)),
+          expiresAt: v.expiresAt
+        }))
+      );
+
+      lists.mutedUsers = await Promise.all(
+        (safeRoom.mutedUsers as any[]).map(async (m) => ({
+          user: await this.getUserPublicSnapshot(String(m.user)),
+          until: m.until,
+          reason: m.reason || ""
+        }))
+      );
+    }
+
+    return {
+      room: {
+        ...publicRoom,
+        ...memberRoomExtra,
+        ...managerRoomExtra
+      },
+      lists,
+      my: {
+        userId: uid || null,
+        role: myRole,
+        isInside,
+        isMember,
+        canManage: isManager
+      }
+    };
+  }
   /**
    * ✅ leave:
    * نفس الفكرة: حتى لو دخل مرة أخرى لاحقًا، لا يرى الرسائل قبل (آخر Leave)
@@ -1300,33 +1302,33 @@ async getRoomDetails(roomId: string, userId?: string) {
     return room;
   }
 
-async getRoomsByType(
-  type: RoomType,
-  viewerId?: string,
-  pagination: { limit?: number; page?: number } = {}
-) {
-  const t: RoomType = Object.values(RoomType).includes(type) ? type : RoomType.PUBLIC;
+  async getRoomsByType(
+    type: RoomType,
+    viewerId?: string,
+    pagination: { limit?: number; page?: number } = {}
+  ) {
+    const t: RoomType = Object.values(RoomType).includes(type) ? type : RoomType.PUBLIC;
 
-  const limit = Math.max(1, Math.min(100, Number(pagination.limit) || 30));
-  const page = Math.max(1, Number(pagination.page) || 1);
-  const skip = (page - 1) * limit;
+    const limit = Math.max(1, Math.min(100, Number(pagination.limit) || 30));
+    const page = Math.max(1, Number(pagination.page) || 1);
+    const skip = (page - 1) * limit;
 
-  const filter: any = {};
-  if (t === RoomType.PUBLIC) {
-    filter.type = { $in: [RoomType.PUBLIC, RoomType.PROTECTED] };
-  } else {
-    filter.type = t;
-  }
+    const filter: any = {};
+    if (t === RoomType.PUBLIC) {
+      filter.type = { $in: [RoomType.PUBLIC, RoomType.PROTECTED] };
+    } else {
+      filter.type = t;
+    }
 
-  const viewerStr = viewerId ? String(viewerId).trim() : "";
+    const viewerStr = viewerId ? String(viewerId).trim() : "";
 
-  const pipeline: any[] = [
-    { $match: filter },
+    const pipeline: any[] = [
+      { $match: filter },
 
-    {
-      $addFields: {
-        isActive: viewerStr
-          ? {
+      {
+        $addFields: {
+          isActive: viewerStr
+            ? {
               $in: [
                 viewerStr,
                 {
@@ -1338,139 +1340,171 @@ async getRoomsByType(
                 }
               ]
             }
-          : false
-      }
-    },
+            : false
+        }
+      },
 
-    // لا نرجع password ولا activeUsers
-    { $project: { password: 0, activeUsers: 0 } },
+      // لا نرجع password ولا activeUsers
+      { $project: { password: 0, activeUsers: 0 } },
 
-    // ✅ يُفضّل إضافة _id لضمان ترتيب ثابت
-    { $sort: { boostPoints: -1, usersCount: -1, createdAt: -1, _id: -1 } },
+      // ✅ يُفضّل إضافة _id لضمان ترتيب ثابت
+      { $sort: { boostPoints: -1, usersCount: -1, createdAt: -1, _id: -1 } },
 
-    { $skip: skip },
-    { $limit: limit }
-  ];
+      { $skip: skip },
+      { $limit: limit }
+    ];
 
-  const [items, total] = await Promise.all([
-    Room.aggregate(pipeline),
-    Room.countDocuments(filter)
-  ]);
+    const [items, total] = await Promise.all([
+      Room.aggregate(pipeline),
+      Room.countDocuments(filter)
+    ]);
 
-  return {
-    type: t,
-    page,
-    limit,
-    total,
-    pages: Math.ceil(total / limit),
-    items
-  };
-}
-// async getRoomsByType(
-//   type: RoomType,
-//   pagination: { limit?: number; page?: number } = {}
-// ) {
-//   const t: RoomType = Object.values(RoomType).includes(type)
-//     ? type
-//     : RoomType.PUBLIC;
+    return {
+      type: t,
+      page,
+      limit,
+      total,
+      pages: Math.ceil(total / limit),
+      items
+    };
+  }
+  // async getRoomsByType(
+  //   type: RoomType,
+  //   pagination: { limit?: number; page?: number } = {}
+  // ) {
+  //   const t: RoomType = Object.values(RoomType).includes(type)
+  //     ? type
+  //     : RoomType.PUBLIC;
 
-//   const limit = Math.max(1, Math.min(100, Number(pagination.limit) || 30));
-//   const page = Math.max(1, Number(pagination.page) || 1);
-//   const skip = (page - 1) * limit;
+  //   const limit = Math.max(1, Math.min(100, Number(pagination.limit) || 30));
+  //   const page = Math.max(1, Number(pagination.page) || 1);
+  //   const skip = (page - 1) * limit;
 
-//   const filter: any = {};
+  //   const filter: any = {};
 
-//   // ✅ لو Public → اعرض Public + Protected فقط
-//   if (t === RoomType.PUBLIC) {
-//     filter.type = { $in: [RoomType.PUBLIC, RoomType.PROTECTED] };
-//   } else {
-//     // ✅ باقي الأنواع كما هي
-//     filter.type = t;
-//   }
+  //   // ✅ لو Public → اعرض Public + Protected فقط
+  //   if (t === RoomType.PUBLIC) {
+  //     filter.type = { $in: [RoomType.PUBLIC, RoomType.PROTECTED] };
+  //   } else {
+  //     // ✅ باقي الأنواع كما هي
+  //     filter.type = t;
+  //   }
 
-//   const [items, total] = await Promise.all([
-//     Room.find(filter)
-//       .select("-password")
-//       .sort({ boostPoints: -1, usersCount: -1, createdAt: -1 })
-//       .skip(skip)
-//       .limit(limit)
-//       .lean(),
-//     Room.countDocuments(filter),
-//   ]);
+  //   const [items, total] = await Promise.all([
+  //     Room.find(filter)
+  //       .select("-password")
+  //       .sort({ boostPoints: -1, usersCount: -1, createdAt: -1 })
+  //       .skip(skip)
+  //       .limit(limit)
+  //       .lean(),
+  //     Room.countDocuments(filter),
+  //   ]);
 
-//   return {
-//     type: t,
-//     page,
-//     limit,
-//     total,
-//     pages: Math.ceil(total / limit),
-//     items,
-//   };
-// }
+  //   return {
+  //     type: t,
+  //     page,
+  //     limit,
+  //     total,
+  //     pages: Math.ceil(total / limit),
+  //     items,
+  //   };
+  // }
 
-async searchRooms(query: string, viewerId?: string, type?: RoomType, limit = 30) {
-  const q = String(query || "").trim();
-  if (!q) return [];
+  async searchRooms(query: string, viewerId?: string, type?: RoomType, limit = 30) {
+    const q = String(query || "").trim();
+    if (!q) return [];
 
-  const l = Math.max(1, Math.min(100, Number(limit) || 30));
-  const safe = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const rx = new RegExp(safe, "i");
+    const l = Math.max(1, Math.min(100, Number(limit) || 30));
+    const safe = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const rx = new RegExp(safe, "i");
 
-  const filter: any = { $or: [{ name: rx }, { description: rx }, { tags: rx }] };
-  if (type && Object.values(RoomType).includes(type)) filter.type = type;
+    const filter: any = { $or: [{ name: rx }, { description: rx }, { tags: rx }] };
+    if (type && Object.values(RoomType).includes(type)) filter.type = type;
 
-  const viewerOid = this.oidOrNull(viewerId);
+    const viewerOid = this.oidOrNull(viewerId);
 
-  const pipeline: any[] = [
-    { $match: filter },
-    ...(viewerOid
-      ? [{ $addFields: { isActive: { $in: [viewerOid, "$activeUsers"] } } }]
-      : [{ $addFields: { isActive: false } }]),
-    { $project: { password: 0, activeUsers: 0 } },
-    { $sort: { usersCount: -1, boostLevel: -1, createdAt: -1 } },
-    { $limit: l }
-  ];
+    const pipeline: any[] = [
+      { $match: filter },
+      ...(viewerOid
+        ? [{ $addFields: { isActive: { $in: [viewerOid, "$activeUsers"] } } }]
+        : [{ $addFields: { isActive: false } }]),
+      { $project: { password: 0, activeUsers: 0 } },
+      { $sort: { usersCount: -1, boostLevel: -1, createdAt: -1 } },
+      { $limit: l }
+    ];
 
-  return Room.aggregate(pipeline);
-}
+    return Room.aggregate(pipeline);
+  }
 
   /* =====================================================
      MESSAGES
   ===================================================== */
+async sendMessage(input: SendMessageInput) {
+  const {
+    roomId,
+    senderId,
+    content = "",
+    type = "text",
+    replyTo,
+    mentions = [],
+    media,
+    gift,
+    clientId // ✅ جديد
+  } = input;
 
-  async sendMessage(input: SendMessageInput) {
-    const { roomId, senderId, content = "", type = "text", replyTo, mentions = [], media, gift } = input;
+  const room = await Room.findById(roomId);
+  if (!room) throw new Error("Room not found");
+  this.ensureArrays(room);
 
-    const room = await Room.findById(roomId);
-    if (!room) throw new Error("Room not found");
-    this.ensureArrays(room);
+  if (!this.isInside(room, senderId)) throw new Error("Not inside room");
+  if (this.isBanned(room, senderId)) throw new Error("You are banned");
+  if (this.isMuted(room, senderId)) throw new Error("You are muted");
 
-    if (!this.isInside(room, senderId)) throw new Error("Not inside room");
-    if (this.isBanned(room, senderId)) throw new Error("You are banned");
-    if (this.isMuted(room, senderId)) throw new Error("You are muted");
-const hasGift =
-  Boolean(String(gift?.key || "").trim()) ||
-  Boolean(String(gift?.name || "").trim());
-    const cleanMentions = Array.from(new Set((mentions || []).filter((x) => this.isValidObjectId(x))));
-    const senderSnapshot = await this.getUserPublicSnapshot(senderId);
+  const cleanMentions = Array.from(
+    new Set((mentions || []).filter((x) => this.isValidObjectId(x)))
+  );
+
+  const hasGift =
+    Boolean(String(gift?.key || "").trim()) ||
+    Boolean(String(gift?.name || "").trim());
+
+  // ✅ نظّف clientId (مهم)
+  const cid = String(clientId || "").trim();
+  const hasClientId = Boolean(cid);
+
+  // ✅ 1) DEDUP قبل الإنشاء (الأهم)
+  if (hasClientId) {
+    const existing = await RoomMessage.findOne({
+      room: roomId,
+      sender: senderId,
+      clientId: cid
+    });
+
+    if (existing) {
+      // ✅ لا تعيد بث socket مرة أخرى لتفادي duplicate في الفرونت
+      return existing;
+    }
+  }
+
+  const senderSnapshot = await this.getUserPublicSnapshot(senderId);
+
+  try {
     const message = await RoomMessage.create({
       room: roomId,
       sender: senderId,
-      senderSnapshot, // ✅ هنا
+      senderSnapshot,
+
+      clientId: hasClientId ? cid : undefined, // ✅ جديد
 
       content,
       type,
       replyTo: replyTo && this.isValidObjectId(replyTo) ? replyTo : undefined,
       mentions: cleanMentions,
       media: media?.url ? media : undefined,
+      gift: hasGift ? gift : undefined
+    });
 
-
-gift: hasGift ? gift : undefined    });
-
-    try {
-      // await message.populate("sender", USER_PUBLIC_FIELDS);
-    } catch { }
-
+    // ✅ بث مرة واحدة فقط بعد إنشاء فعلي
     this.io().to(`room:${roomId}`).emit("room:message:new", message);
 
     if (cleanMentions.length) {
@@ -1480,7 +1514,65 @@ gift: hasGift ? gift : undefined    });
     }
 
     return message;
+  } catch (e: any) {
+    // ✅ 2) حماية من duplicate key لو حصلت race
+    // Mongo duplicate key error code = 11000
+    if (hasClientId && (e?.code === 11000 || String(e?.message || "").includes("E11000"))) {
+      const existing = await RoomMessage.findOne({
+        room: roomId,
+        sender: senderId,
+        clientId: cid
+      });
+      if (existing) return existing;
+    }
+    throw e;
   }
+}
+  // async sendMessage(input: SendMessageInput) {
+  //   const { roomId, senderId, content = "", type = "text", replyTo, mentions = [], media, gift, clientId
+  //   } = input;
+
+  //   const room = await Room.findById(roomId);
+  //   if (!room) throw new Error("Room not found");
+  //   this.ensureArrays(room);
+
+  //   if (!this.isInside(room, senderId)) throw new Error("Not inside room");
+  //   if (this.isBanned(room, senderId)) throw new Error("You are banned");
+  //   if (this.isMuted(room, senderId)) throw new Error("You are muted");
+  //   const hasGift =
+  //     Boolean(String(gift?.key || "").trim()) ||
+  //     Boolean(String(gift?.name || "").trim());
+  //   const cleanMentions = Array.from(new Set((mentions || []).filter((x) => this.isValidObjectId(x))));
+  //   const senderSnapshot = await this.getUserPublicSnapshot(senderId);
+  //   const message = await RoomMessage.create({
+  //     room: roomId,
+  //     sender: senderId,
+  //     senderSnapshot, // ✅ هنا
+
+  //     content,
+  //     type,
+  //     replyTo: replyTo && this.isValidObjectId(replyTo) ? replyTo : undefined,
+  //     mentions: cleanMentions,
+  //     media: media?.url ? media : undefined,
+
+
+  //     gift: hasGift ? gift : undefined
+  //   });
+
+  //   try {
+  //     // await message.populate("sender", USER_PUBLIC_FIELDS);
+  //   } catch { }
+
+  //   this.io().to(`room:${roomId}`).emit("room:message:new", message);
+
+  //   if (cleanMentions.length) {
+  //     for (const uid of cleanMentions) {
+  //       this.io().to(uid).emit("room:mention", { roomId, messageId: message._id });
+  //     }
+  //   }
+
+  //   return message;
+  // }
 
   /* =====================================================
      VIP SYSTEM
@@ -1848,196 +1940,196 @@ gift: hasGift ? gift : undefined    });
   /* =====================================================
      MODERATION (Ban / Unban / Mute / Unmute / Kick)
   ===================================================== */
-// ✅ أضف هذه الدوال داخل class RoomService (بنفس الملف الذي أرسلته)
-// ملاحظة: الدوال تستخدم نفس أسلوبك: ensureArrays + require + systemActorTarget + emitUsersUpdate
+  // ✅ أضف هذه الدوال داخل class RoomService (بنفس الملف الذي أرسلته)
+  // ملاحظة: الدوال تستخدم نفس أسلوبك: ensureArrays + require + systemActorTarget + emitUsersUpdate
 
-/* =====================================================
-   ✅ BANNED USERS (Get / Unban one / many / all)
-===================================================== */
+  /* =====================================================
+     ✅ BANNED USERS (Get / Unban one / many / all)
+  ===================================================== */
 
-// ✅ جلب قائمة المحظورين (مع snapshot إن أحببت)
-async getBannedUsers(roomId: string, actorId: string) {
-  const room = await Room.findById(roomId);
-  if (!room) throw new Error("Room not found");
-  this.ensureArrays(room);
+  // ✅ جلب قائمة المحظورين (مع snapshot إن أحببت)
+  async getBannedUsers(roomId: string, actorId: string) {
+    const room = await Room.findById(roomId);
+    if (!room) throw new Error("Room not found");
+    this.ensureArrays(room);
 
-  // فقط الإدارة
-  this.require(room, actorId, ["creator", "owner", "admin"]);
+    // فقط الإدارة
+    this.require(room, actorId, ["creator", "owner", "admin"]);
 
-  const ids = (room.blockeds || []).map((x: any) => String(x?.toString?.() ?? x)).filter(Boolean);
+    const ids = (room.blockeds || []).map((x: any) => String(x?.toString?.() ?? x)).filter(Boolean);
 
-  // snapshots للعرض في الفرونت
-  const users = await Promise.all(
-    ids
-      .filter((id) => this.isValidObjectId(id))
-      .map(async (id) => this.getUserPublicSnapshot(id))
-  );
+    // snapshots للعرض في الفرونت
+    const users = await Promise.all(
+      ids
+        .filter((id) => this.isValidObjectId(id))
+        .map(async (id) => this.getUserPublicSnapshot(id))
+    );
 
-  return {
-    roomId: String(roomId),
-    total: ids.length,
-    users
-  };
-}
+    return {
+      roomId: String(roomId),
+      total: ids.length,
+      users
+    };
+  }
 
-// ✅ رفع الحظر عن مستخدم واحد
-async unbanOne(roomId: string, actorId: string, targetId: string, reason = "تم فك الحظر") {
-  const room = await Room.findById(roomId);
-  if (!room) throw new Error("Room not found");
-  this.ensureArrays(room);
+  // ✅ رفع الحظر عن مستخدم واحد
+  async unbanOne(roomId: string, actorId: string, targetId: string, reason = "تم فك الحظر") {
+    const room = await Room.findById(roomId);
+    if (!room) throw new Error("Room not found");
+    this.ensureArrays(room);
 
-  // unban: admin/owner/creator
-  this.require(room, actorId, ["creator", "owner", "admin"]);
+    // unban: admin/owner/creator
+    this.require(room, actorId, ["creator", "owner", "admin"]);
 
-  const tid = String(targetId || "");
-  if (!this.isValidObjectId(tid)) throw new Error("Invalid targetId");
+    const tid = String(targetId || "");
+    if (!this.isValidObjectId(tid)) throw new Error("Invalid targetId");
 
-  const before = (room.blockeds || []).length;
+    const before = (room.blockeds || []).length;
 
-  room.blockeds = (room.blockeds || []).filter((x: any) => x?.toString?.() !== tid);
+    room.blockeds = (room.blockeds || []).filter((x: any) => x?.toString?.() !== tid);
 
-  const after = (room.blockeds || []).length;
-  const removed = before !== after;
+    const after = (room.blockeds || []).length;
+    const removed = before !== after;
 
-  await room.save();
+    await room.save();
 
-  // events
-  this.io().to(`room:${roomId}`).emit("room:user:unbanned", { roomId, targetId: tid, reason });
-  this.io().to(tid).emit("room:unbanned", { roomId, reason });
+    // events
+    this.io().to(`room:${roomId}`).emit("room:user:unbanned", { roomId, targetId: tid, reason });
+    this.io().to(tid).emit("room:unbanned", { roomId, reason });
 
-  // system message
-  if (removed) {
+    // system message
+    if (removed) {
+      const actor = await this.getUserBasic(actorId);
+      const target = await this.getUserBasic(tid);
+
+      await this.systemActorTarget(
+        roomId,
+        actorId,
+        tid,
+        `✅ ${actor.username} فك الحظر عن ${target.username}${reason ? ` (${reason})` : ""}`,
+        "system", // ✅ بدل "unban"
+        {
+          systemType: "unban", // ✅ تمييز الحدث هنا
+          action: "unban:one",
+          meta: { actorId, targetId: tid, reason }
+        }
+      );
+    }
+
+    this.emitUsersUpdate(roomId);
+
+    return {
+      success: true,
+      removed
+    };
+  }
+
+  // ✅ رفع الحظر عن مجموعة (IDs)
+  async unbanMany(
+    roomId: string,
+    actorId: string,
+    targetIds: string[],
+    reason = "تم فك الحظر"
+  ) {
+    const room = await Room.findById(roomId);
+    if (!room) throw new Error("Room not found");
+    this.ensureArrays(room);
+
+    this.require(room, actorId, ["creator", "owner", "admin"]);
+
+    const ids = Array.from(new Set((targetIds || []).map((x) => String(x || "")).filter(Boolean)));
+
+    const valid = ids.filter((id) => this.isValidObjectId(id));
+    if (!valid.length) throw new Error("No valid target ids");
+
+    const beforeSet = new Set((room.blockeds || []).map((x: any) => x?.toString?.()));
+    const removedIds = valid.filter((id) => beforeSet.has(id));
+
+    if (!removedIds.length) {
+      return { success: true, removed: 0, removedIds: [] as string[] };
+    }
+
+    room.blockeds = (room.blockeds || []).filter((x: any) => !removedIds.includes(x?.toString?.()));
+    await room.save();
+
+    // events per user
+    for (const id of removedIds) {
+      this.io().to(`room:${roomId}`).emit("room:user:unbanned", { roomId, targetId: id, reason });
+      this.io().to(id).emit("room:unbanned", { roomId, reason });
+    }
+
+    // system message (واحدة فقط لتقليل spam)
     const actor = await this.getUserBasic(actorId);
-    const target = await this.getUserBasic(tid);
-
-    await this.systemActorTarget(
+    await this.system(
       roomId,
-      actorId,
-      tid,
-      `✅ ${actor.username} فك الحظر عن ${target.username}${reason ? ` (${reason})` : ""}`,
-      "system", // ✅ بدل "unban"
+      `✅ ${actor.username} فك الحظر عن ${removedIds.length} مستخدم${removedIds.length === 1 ? "" : "ين"}${reason ? ` (${reason})` : ""}`,
+      "unban",
       {
-        systemType: "unban", // ✅ تمييز الحدث هنا
-        action: "unban:one",
-        meta: { actorId, targetId: tid, reason }
+        sender: actorId,
+        mentions: [actorId, ...removedIds],
+        action: "unban:many",
+        meta: { actorId, removedIds, reason }
       }
     );
+
+    this.emitUsersUpdate(roomId);
+
+    return {
+      success: true,
+      removed: removedIds.length,
+      removedIds
+    };
   }
 
-  this.emitUsersUpdate(roomId);
+  // ✅ رفع الحظر عن الجميع
+  async unbanAll(roomId: string, actorId: string, reason = "تم فك الحظر عن الجميع") {
+    const room = await Room.findById(roomId);
+    if (!room) throw new Error("Room not found");
+    this.ensureArrays(room);
 
-  return {
-    success: true,
-    removed
-  };
-}
+    this.require(room, actorId, ["creator", "owner", "admin"]);
 
-// ✅ رفع الحظر عن مجموعة (IDs)
-async unbanMany(
-  roomId: string,
-  actorId: string,
-  targetIds: string[],
-  reason = "تم فك الحظر"
-) {
-  const room = await Room.findById(roomId);
-  if (!room) throw new Error("Room not found");
-  this.ensureArrays(room);
+    const removedIds = (room.blockeds || []).map((x: any) => x?.toString?.()).filter(Boolean);
 
-  this.require(room, actorId, ["creator", "owner", "admin"]);
-
-  const ids = Array.from(new Set((targetIds || []).map((x) => String(x || "")).filter(Boolean)));
-
-  const valid = ids.filter((id) => this.isValidObjectId(id));
-  if (!valid.length) throw new Error("No valid target ids");
-
-  const beforeSet = new Set((room.blockeds || []).map((x: any) => x?.toString?.()));
-  const removedIds = valid.filter((id) => beforeSet.has(id));
-
-  if (!removedIds.length) {
-    return { success: true, removed: 0, removedIds: [] as string[] };
-  }
-
-  room.blockeds = (room.blockeds || []).filter((x: any) => !removedIds.includes(x?.toString?.()));
-  await room.save();
-
-  // events per user
-  for (const id of removedIds) {
-    this.io().to(`room:${roomId}`).emit("room:user:unbanned", { roomId, targetId: id, reason });
-    this.io().to(id).emit("room:unbanned", { roomId, reason });
-  }
-
-  // system message (واحدة فقط لتقليل spam)
-  const actor = await this.getUserBasic(actorId);
-  await this.system(
-    roomId,
-    `✅ ${actor.username} فك الحظر عن ${removedIds.length} مستخدم${removedIds.length === 1 ? "" : "ين"}${reason ? ` (${reason})` : ""}`,
-    "unban",
-    {
-      sender: actorId,
-      mentions: [actorId, ...removedIds],
-      action: "unban:many",
-      meta: { actorId, removedIds, reason }
+    if (!removedIds.length) {
+      return { success: true, removed: 0, removedIds: [] as string[] };
     }
-  );
 
-  this.emitUsersUpdate(roomId);
+    room.blockeds = [];
+    await room.save();
 
-  return {
-    success: true,
-    removed: removedIds.length,
-    removedIds
-  };
-}
+    // events (broadcast + individual)
+    this.io().to(`room:${roomId}`).emit("room:unban:all", { roomId, reason });
 
-// ✅ رفع الحظر عن الجميع
-async unbanAll(roomId: string, actorId: string, reason = "تم فك الحظر عن الجميع") {
-  const room = await Room.findById(roomId);
-  if (!room) throw new Error("Room not found");
-  this.ensureArrays(room);
-
-  this.require(room, actorId, ["creator", "owner", "admin"]);
-
-  const removedIds = (room.blockeds || []).map((x: any) => x?.toString?.()).filter(Boolean);
-
-  if (!removedIds.length) {
-    return { success: true, removed: 0, removedIds: [] as string[] };
-  }
-
-  room.blockeds = [];
-  await room.save();
-
-  // events (broadcast + individual)
-  this.io().to(`room:${roomId}`).emit("room:unban:all", { roomId, reason });
-
-  for (const id of removedIds) {
-    this.io().to(`room:${roomId}`).emit("room:user:unbanned", { roomId, targetId: id, reason });
-    this.io().to(id).emit("room:unbanned", { roomId, reason });
-  }
-
-  const actor = await this.getUserBasic(actorId);
-  await this.system(
-    roomId,
-    `✅ ${actor.username} فك الحظر عن الجميع (${removedIds.length})`,
-    "unban",
-    {
-      sender: actorId,
-      mentions: [actorId, ...removedIds],
-      action: "unban:all",
-      meta: { actorId, removedIdsCount: removedIds.length, reason }
+    for (const id of removedIds) {
+      this.io().to(`room:${roomId}`).emit("room:user:unbanned", { roomId, targetId: id, reason });
+      this.io().to(id).emit("room:unbanned", { roomId, reason });
     }
-  );
 
-  this.emitUsersUpdate(roomId);
+    const actor = await this.getUserBasic(actorId);
+    await this.system(
+      roomId,
+      `✅ ${actor.username} فك الحظر عن الجميع (${removedIds.length})`,
+      "unban",
+      {
+        sender: actorId,
+        mentions: [actorId, ...removedIds],
+        action: "unban:all",
+        meta: { actorId, removedIdsCount: removedIds.length, reason }
+      }
+    );
 
-  return {
-    success: true,
-    removed: removedIds.length,
-    removedIds
-  };
-}
-async unbanUser(roomId: string, actorId: string, targetId: string) {
-  return this.unbanOne(roomId, actorId, targetId, "تم فك الحظر");
-}
+    this.emitUsersUpdate(roomId);
+
+    return {
+      success: true,
+      removed: removedIds.length,
+      removedIds
+    };
+  }
+  async unbanUser(roomId: string, actorId: string, targetId: string) {
+    return this.unbanOne(roomId, actorId, targetId, "تم فك الحظر");
+  }
 
   async muteUser(roomId: string, actorId: string, targetId: string, minutes: number, reason = "Muted") {
     const room = await Room.findById(roomId);
@@ -2250,113 +2342,150 @@ async unbanUser(roomId: string, actorId: string, targetId: string) {
 
     return message;
   }
-// async getMessages(roomId: string, userId: string, pagination: Pagination = {}) {
-//   const room = await Room.findById(roomId);
-//   if (!room) throw new Error("Room not found");
-//   this.ensureArrays(room);
+  // async getMessages(roomId: string, userId: string, pagination: Pagination = {}) {
+  //   const room = await Room.findById(roomId);
+  //   if (!room) throw new Error("Room not found");
+  //   this.ensureArrays(room);
 
-//   const role = this.getRole(room, userId);
-//   const isInside = this.isInside(room, userId);
-//   if (!isInside && role === "none") throw new Error("Not allowed");
+  //   const role = this.getRole(room, userId);
+  //   const isInside = this.isInside(room, userId);
+  //   if (!isInside && role === "none") throw new Error("Not allowed");
 
-//   const limit = Math.max(1, Math.min(100, Number(pagination.limit) || 30));
-//   const state = await this.getUserState(roomId, userId);
+  //   const limit = Math.max(1, Math.min(100, Number(pagination.limit) || 30));
+  //   const state = await this.getUserState(roomId, userId);
 
-//   // ✅ beforeDate from cursor
-//   let beforeDate: Date | null = null;
-//   if (pagination.before && this.isValidObjectId(pagination.before)) {
-//     const beforeMsg = await RoomMessage.findById(pagination.before).select("createdAt");
-//     if (beforeMsg?.createdAt) beforeDate = beforeMsg.createdAt;
-//   }
+  //   // ✅ beforeDate from cursor
+  //   let beforeDate: Date | null = null;
+  //   if (pagination.before && this.isValidObjectId(pagination.before)) {
+  //     const beforeMsg = await RoomMessage.findById(pagination.before).select("createdAt");
+  //     if (beforeMsg?.createdAt) beforeDate = beforeMsg.createdAt;
+  //   }
 
-//   const query: any = { room: roomId };
+  //   const query: any = { room: roomId };
 
-//   // ✅ بدون clearedAt
-//   if (!state.clearedAt) {
-//     if (beforeDate) query.createdAt = { $lt: beforeDate };
+  //   // ✅ بدون clearedAt
+  //   if (!state.clearedAt) {
+  //     if (beforeDate) query.createdAt = { $lt: beforeDate };
 
-//     const messages = await RoomMessage.find(query)
-//       .sort({ createdAt: -1 })
-//       .limit(limit)
-//       .populate("replyTo"); // ✅ فقط replyTo
+  //     const messages = await RoomMessage.find(query)
+  //       .sort({ createdAt: -1 })
+  //       .limit(limit)
+  //       .populate("replyTo"); // ✅ فقط replyTo
 
-//     // ✅ Backfill senderSnapshot للرسائل القديمة (اختياري لكن مفيد)
-//     await this.backfillSenderSnapshots(messages);
+  //     // ✅ Backfill senderSnapshot للرسائل القديمة (اختياري لكن مفيد)
+  //     await this.backfillSenderSnapshots(messages);
 
-//     return messages;
-//   }
+  //     return messages;
+  //   }
 
-//   // ✅ مع clearedAt
-//   const createdCond: any = { $gt: state.clearedAt };
-//   if (beforeDate) createdCond.$lt = beforeDate;
+  //   // ✅ مع clearedAt
+  //   const createdCond: any = { $gt: state.clearedAt };
+  //   if (beforeDate) createdCond.$lt = beforeDate;
 
-//   const or: any[] = [{ createdAt: createdCond }];
+  //   const or: any[] = [{ createdAt: createdCond }];
 
-//   if (state.pinnedMessageIdAtClear) {
-//     const pinCond: any = { _id: state.pinnedMessageIdAtClear };
-//     if (beforeDate) pinCond.createdAt = { $lt: beforeDate };
-//     or.push(pinCond);
-//   }
+  //   if (state.pinnedMessageIdAtClear) {
+  //     const pinCond: any = { _id: state.pinnedMessageIdAtClear };
+  //     if (beforeDate) pinCond.createdAt = { $lt: beforeDate };
+  //     or.push(pinCond);
+  //   }
 
-//   query.$or = or;
+  //   query.$or = or;
 
-//   const messages = await RoomMessage.find(query)
-//     .sort({ createdAt: -1 })
-//     .limit(limit)
-//     .populate("replyTo"); // ✅ فقط replyTo
+  //   const messages = await RoomMessage.find(query)
+  //     .sort({ createdAt: -1 })
+  //     .limit(limit)
+  //     .populate("replyTo"); // ✅ فقط replyTo
 
-//   // ✅ Backfill senderSnapshot للرسائل القديمة (اختياري)
-//   await this.backfillSenderSnapshots(messages);
+  //   // ✅ Backfill senderSnapshot للرسائل القديمة (اختياري)
+  //   await this.backfillSenderSnapshots(messages);
 
-//   return messages;
-// }
-async getMessages(roomId: string, userId: string, pagination: Pagination = {}) {
-  console.log("══════════════════════════════════════");
-  console.log("📩 getMessages START");
-  console.log("roomId:", roomId);
-  console.log("userId:", userId);
-  console.log("pagination:", pagination);
+  //   return messages;
+  // }
+  async getMessages(roomId: string, userId: string, pagination: Pagination = {}) {
+    console.log("══════════════════════════════════════");
+    console.log("📩 getMessages START");
+    console.log("roomId:", roomId);
+    console.log("userId:", userId);
+    console.log("pagination:", pagination);
 
-  const room = await Room.findById(roomId);
-  if (!room) throw new Error("Room not found");
-  this.ensureArrays(room);
+    const room = await Room.findById(roomId);
+    if (!room) throw new Error("Room not found");
+    this.ensureArrays(room);
 
-  const role = this.getRole(room, userId);
-  const isInside = this.isInside(room, userId);
+    const role = this.getRole(room, userId);
+    const isInside = this.isInside(room, userId);
 
-  console.log("role:", role);
-  console.log("isInside:", isInside);
+    console.log("role:", role);
+    console.log("isInside:", isInside);
 
-  if (!isInside && role === "none") throw new Error("Not allowed");
+    if (!isInside && role === "none") throw new Error("Not allowed");
 
-  const limit = Math.max(1, Math.min(100, Number(pagination.limit) || 30));
-  const state = await this.getUserState(roomId, userId);
+    const limit = Math.max(1, Math.min(100, Number(pagination.limit) || 30));
+    const state = await this.getUserState(roomId, userId);
 
-  console.log("lastGiftSeenAt:", state?.lastGiftSeenAt);
-  console.log("clearedAt:", state?.clearedAt);
+    console.log("lastGiftSeenAt:", state?.lastGiftSeenAt);
+    console.log("clearedAt:", state?.clearedAt);
 
-  // beforeDate from cursor
-  let beforeDate: Date | null = null;
-  if (pagination.before && this.isValidObjectId(pagination.before)) {
-    const beforeMsg = await RoomMessage.findById(pagination.before).select("createdAt");
-    if (beforeMsg?.createdAt) beforeDate = beforeMsg.createdAt;
-  }
+    // beforeDate from cursor
+    let beforeDate: Date | null = null;
+    if (pagination.before && this.isValidObjectId(pagination.before)) {
+      const beforeMsg = await RoomMessage.findById(pagination.before).select("createdAt");
+      if (beforeMsg?.createdAt) beforeDate = beforeMsg.createdAt;
+    }
 
-  console.log("beforeDate:", beforeDate);
+    console.log("beforeDate:", beforeDate);
 
-  const query: any = { room: roomId };
-  let messages: any[] = [];
+    const query: any = { room: roomId };
+    let messages: any[] = [];
 
-  // ✅ بدون clearedAt
-  if (!state.clearedAt) {
-    if (beforeDate) query.createdAt = { $lt: beforeDate };
+    // ✅ بدون clearedAt
+    if (!state.clearedAt) {
+      if (beforeDate) query.createdAt = { $lt: beforeDate };
+
+      messages = await RoomMessage.find(query)
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .populate("replyTo");
+
+      console.log("📦 Raw messages count:", messages.length);
+
+      const giftCount = messages.filter((m: any) => m.type === "gift").length;
+      console.log("🎁 Gifts before policy:", giftCount);
+
+      await this.backfillSenderSnapshots(messages);
+
+      messages = await this.applyGiftOncePolicy(roomId, userId, state, messages, pagination);
+
+      const giftCountAfter = messages.filter((m: any) => m.type === "gift").length;
+      console.log("🎁 Gifts after policy:", giftCountAfter);
+
+      console.log("📩 getMessages END");
+      console.log("══════════════════════════════════════");
+
+      return messages;
+    }
+
+    // ✅ مع clearedAt
+    const createdCond: any = { $gt: state.clearedAt };
+    if (beforeDate) createdCond.$lt = beforeDate;
+
+    const or: any[] = [{ createdAt: createdCond }];
+
+    if (state.pinnedMessageIdAtClear) {
+      const pinCond: any = { _id: state.pinnedMessageIdAtClear };
+      if (beforeDate) pinCond.createdAt = { $lt: beforeDate };
+      or.push(pinCond);
+    }
+
+    query.$or = or;
 
     messages = await RoomMessage.find(query)
       .sort({ createdAt: -1 })
       .limit(limit)
       .populate("replyTo");
 
-    console.log("📦 Raw messages count:", messages.length);
+    console.log("📦 Raw messages count (clearedAt mode):", messages.length);
 
     const giftCount = messages.filter((m: any) => m.type === "gift").length;
     console.log("🎁 Gifts before policy:", giftCount);
@@ -2373,95 +2502,58 @@ async getMessages(roomId: string, userId: string, pagination: Pagination = {}) {
 
     return messages;
   }
+  /**
+   * ✅ يملأ senderSnapshot للرسائل القديمة التي لا تحتويه
+   * - يقلل عدد الاستعلامات: يجمع senderIds الفريدة ثم يجلب snapshots في Loop (يمكن تحسينها أكثر)
+   * - لا يكسر الأداء لأن limit عندك 30/100 فقط
+   */
+  private async backfillSenderSnapshots(messages: any[]) {
+    // اجمع الرسائل التي تحتاج backfill
+    const need = messages.filter((m) => m?.sender && !m?.senderSnapshot);
+    if (!need.length) return;
 
-  // ✅ مع clearedAt
-  const createdCond: any = { $gt: state.clearedAt };
-  if (beforeDate) createdCond.$lt = beforeDate;
+    // اجمع senderIds الفريدة
+    const ids = Array.from(
+      new Set(
+        need
+          .map((m) => String(m.sender))
+          .filter((id) => this.isValidObjectId(id))
+      )
+    );
 
-  const or: any[] = [{ createdAt: createdCond }];
+    if (!ids.length) return;
 
-  if (state.pinnedMessageIdAtClear) {
-    const pinCond: any = { _id: state.pinnedMessageIdAtClear };
-    if (beforeDate) pinCond.createdAt = { $lt: beforeDate };
-    or.push(pinCond);
+    // جيب snapshots لكل senderId
+    const snapshotById = new Map<string, any>();
+    for (const id of ids) {
+      const snap = await this.getUserPublicSnapshot(id);
+      snapshotById.set(id, snap);
+    }
+
+    // جهّز bulk update
+    const ops = need
+      .map((m) => {
+        const sid = String(m.sender);
+        const snap = snapshotById.get(sid);
+        if (!snap) return null;
+
+        // حدّث الـ document في الذاكرة (للرد للعميل)
+        m.senderSnapshot = snap;
+
+        // حدّثه في DB مرة واحدة
+        return {
+          updateOne: {
+            filter: { _id: m._id, senderSnapshot: { $exists: false } },
+            update: { $set: { senderSnapshot: snap } }
+          }
+        };
+      })
+      .filter(Boolean);
+
+    if (ops.length) {
+      await RoomMessage.bulkWrite(ops as any, { ordered: false });
+    }
   }
-
-  query.$or = or;
-
-  messages = await RoomMessage.find(query)
-    .sort({ createdAt: -1 })
-    .limit(limit)
-    .populate("replyTo");
-
-  console.log("📦 Raw messages count (clearedAt mode):", messages.length);
-
-  const giftCount = messages.filter((m: any) => m.type === "gift").length;
-  console.log("🎁 Gifts before policy:", giftCount);
-
-  await this.backfillSenderSnapshots(messages);
-
-  messages = await this.applyGiftOncePolicy(roomId, userId, state, messages, pagination);
-
-  const giftCountAfter = messages.filter((m: any) => m.type === "gift").length;
-  console.log("🎁 Gifts after policy:", giftCountAfter);
-
-  console.log("📩 getMessages END");
-  console.log("══════════════════════════════════════");
-
-  return messages;
-}
-/**
- * ✅ يملأ senderSnapshot للرسائل القديمة التي لا تحتويه
- * - يقلل عدد الاستعلامات: يجمع senderIds الفريدة ثم يجلب snapshots في Loop (يمكن تحسينها أكثر)
- * - لا يكسر الأداء لأن limit عندك 30/100 فقط
- */
-private async backfillSenderSnapshots(messages: any[]) {
-  // اجمع الرسائل التي تحتاج backfill
-  const need = messages.filter((m) => m?.sender && !m?.senderSnapshot);
-  if (!need.length) return;
-
-  // اجمع senderIds الفريدة
-  const ids = Array.from(
-    new Set(
-      need
-        .map((m) => String(m.sender))
-        .filter((id) => this.isValidObjectId(id))
-    )
-  );
-
-  if (!ids.length) return;
-
-  // جيب snapshots لكل senderId
-  const snapshotById = new Map<string, any>();
-  for (const id of ids) {
-    const snap = await this.getUserPublicSnapshot(id);
-    snapshotById.set(id, snap);
-  }
-
-  // جهّز bulk update
-  const ops = need
-    .map((m) => {
-      const sid = String(m.sender);
-      const snap = snapshotById.get(sid);
-      if (!snap) return null;
-
-      // حدّث الـ document في الذاكرة (للرد للعميل)
-      m.senderSnapshot = snap;
-
-      // حدّثه في DB مرة واحدة
-      return {
-        updateOne: {
-          filter: { _id: m._id, senderSnapshot: { $exists: false } },
-          update: { $set: { senderSnapshot: snap } }
-        }
-      };
-    })
-    .filter(Boolean);
-
-  if (ops.length) {
-    await RoomMessage.bulkWrite(ops as any, { ordered: false });
-  }
-}
   // async getMessages(roomId: string, userId: string, pagination: Pagination = {}) {
   //   const room = await Room.findById(roomId);
   //   if (!room) throw new Error("Room not found");
@@ -2564,99 +2656,99 @@ private async backfillSenderSnapshots(messages: any[]) {
 
     return messages;
   }
-async toggleReaction(roomId: string, messageId: string, userId: string, emoji: string) {
-  const room = await Room.findById(roomId);
-  if (!room) throw new Error("Room not found");
-  this.ensureArrays(room);
+  async toggleReaction(roomId: string, messageId: string, userId: string, emoji: string) {
+    const room = await Room.findById(roomId);
+    if (!room) throw new Error("Room not found");
+    this.ensureArrays(room);
 
-  const role = this.getRole(room, userId);
-  const isInside = this.isInside(room, userId);
+    const role = this.getRole(room, userId);
+    const isInside = this.isInside(room, userId);
 
-  if (!isInside && role === "none") throw new Error("Not allowed");
+    if (!isInside && role === "none") throw new Error("Not allowed");
 
-  const message = await RoomMessage.findById(messageId);
-  if (!message) throw new Error("Message not found");
-  if (message.room.toString() !== roomId) throw new Error("Invalid room message");
+    const message = await RoomMessage.findById(messageId);
+    if (!message) throw new Error("Message not found");
+    if (message.room.toString() !== roomId) throw new Error("Invalid room message");
 
-  const e = String(emoji || "").trim();
-  if (!e) throw new Error("Invalid emoji");
+    const e = String(emoji || "").trim();
+    if (!e) throw new Error("Invalid emoji");
 
-  const existing = (message.reactions || []).find(
-    (r: any) => r.user.toString() === userId && r.emoji === e
-  );
-
-  // ✅ سنحدد هل تمت الإضافة أم الإزالة
-  let added = false;
-
-  if (existing) {
-    // إزالة
-    message.reactions = message.reactions.filter(
-      (r: any) => !(r.user.toString() === userId && r.emoji === e)
+    const existing = (message.reactions || []).find(
+      (r: any) => r.user.toString() === userId && r.emoji === e
     );
-    added = false;
-  } else {
-    // إضافة
-    message.reactions.push({ user: userId as any, emoji: e, createdAt: new Date() });
-    added = true;
-  }
 
-  await message.save();
+    // ✅ سنحدد هل تمت الإضافة أم الإزالة
+    let added = false;
 
-  // بث تحديث الرياكشن للغرفة
-  this.io().to(`room:${roomId}`).emit("room:reaction:update", {
-    messageId,
-    reactions: message.reactions
-  });
-
-  // =====================================================
-  // ✅ إرسال إشعار لصاحب الرسالة (فقط عند الإضافة)
-  // =====================================================
-  try {
-    const recipientId = message.sender?.toString?.() ? String(message.sender) : "";
-    const actorId = String(userId);
-
-    // لا ترسل لنفسه
-    if (added && recipientId && recipientId !== actorId) {
-      const actor = await this.getUserBasic(actorId);
-
-      const info = this.buildMessagePreviewForNotification(message);
-
-      // نص الإشعار
-      const title = "تفاعل جديد";
-      let body = "";
-
-      if (info.kind === "text") {
-        // "فلان عمل لك رياكشن 😀 على رسالتك: ...."
-        body = `قام ${actor.username} بالتفاعل ${e} على رسالتك${info.preview ? `: ${info.preview}` : ""}`;
-      } else {
-        // "فلان عمل لك رياكشن 😀 على صورة/فيديو"
-        body = `قام ${actor.username} بالتفاعل ${e} على ${info.labelAr}`;
-      }
-
-      await notificationService.create({
-        recipient: recipientId,
-        sender: actorId,
-        type: "reaction", // أي قيمة مناسبة عندك
-        title,
-        body,
-
-        // بيانات إضافية لتوجيه المستخدم عند الضغط على الإشعار
-        data: {
-          roomId: String(roomId),
-          messageId: String(messageId),
-          emoji: e,
-          messageType: String(message.type || "text"),
-          mediaUrl: message?.media?.url || ""
-        }
-      });
+    if (existing) {
+      // إزالة
+      message.reactions = message.reactions.filter(
+        (r: any) => !(r.user.toString() === userId && r.emoji === e)
+      );
+      added = false;
+    } else {
+      // إضافة
+      message.reactions.push({ user: userId as any, emoji: e, createdAt: new Date() });
+      added = true;
     }
-  } catch (err) {
-    // مهم: لا نكسر العملية الأساسية بسبب الإشعار
-    console.error("reaction notification error:", err);
-  }
 
-  return message.reactions;
-}
+    await message.save();
+
+    // بث تحديث الرياكشن للغرفة
+    this.io().to(`room:${roomId}`).emit("room:reaction:update", {
+      messageId,
+      reactions: message.reactions
+    });
+
+    // =====================================================
+    // ✅ إرسال إشعار لصاحب الرسالة (فقط عند الإضافة)
+    // =====================================================
+    try {
+      const recipientId = message.sender?.toString?.() ? String(message.sender) : "";
+      const actorId = String(userId);
+
+      // لا ترسل لنفسه
+      if (added && recipientId && recipientId !== actorId) {
+        const actor = await this.getUserBasic(actorId);
+
+        const info = this.buildMessagePreviewForNotification(message);
+
+        // نص الإشعار
+        const title = "تفاعل جديد";
+        let body = "";
+
+        if (info.kind === "text") {
+          // "فلان عمل لك رياكشن 😀 على رسالتك: ...."
+          body = `قام ${actor.username} بالتفاعل ${e} على رسالتك${info.preview ? `: ${info.preview}` : ""}`;
+        } else {
+          // "فلان عمل لك رياكشن 😀 على صورة/فيديو"
+          body = `قام ${actor.username} بالتفاعل ${e} على ${info.labelAr}`;
+        }
+
+        await notificationService.create({
+          recipient: recipientId,
+          sender: actorId,
+          type: "reaction", // أي قيمة مناسبة عندك
+          title,
+          body,
+
+          // بيانات إضافية لتوجيه المستخدم عند الضغط على الإشعار
+          data: {
+            roomId: String(roomId),
+            messageId: String(messageId),
+            emoji: e,
+            messageType: String(message.type || "text"),
+            mediaUrl: message?.media?.url || ""
+          }
+        });
+      }
+    } catch (err) {
+      // مهم: لا نكسر العملية الأساسية بسبب الإشعار
+      console.error("reaction notification error:", err);
+    }
+
+    return message.reactions;
+  }
   // async toggleReaction(roomId: string, messageId: string, userId: string, emoji: string) {
   //   const room = await Room.findById(roomId);
   //   if (!room) throw new Error("Room not found");

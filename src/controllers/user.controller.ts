@@ -11,8 +11,73 @@ import { comparePassword, hashPassword } from "../utils/hash";
 /* ======================================================
    1️⃣ SEARCH USERS
 ====================================================== */
+// ✅ GET /users/block-status/:targetUserId
+export const checkBlockStatus = async (req: Request, res: Response) => {
+  try {
+    const myId = req.user.id;
 
+    const raw = (req.params as any).targetUserId as string | string[] | undefined;
+    const targetUserId = Array.isArray(raw) ? raw[0] : raw;
 
+    if (!targetUserId || !mongoose.Types.ObjectId.isValid(targetUserId)) {
+      return res.status(400).json({ message: "Invalid targetUserId" });
+    }
+
+    if (String(myId) === String(targetUserId)) {
+      return res.json({ success: true, blockedByMe: false, blockedMe: false, anyBlocked: false });
+    }
+
+    const [blockedByMe, blockedMe] = await Promise.all([
+      User.exists({ _id: myId, blockedUsers: targetUserId }),
+      User.exists({ _id: targetUserId, blockedUsers: myId })
+    ]);
+
+    return res.json({
+      success: true,
+      blockedByMe: !!blockedByMe,
+      blockedMe: !!blockedMe,
+      anyBlocked: !!blockedByMe || !!blockedMe
+    });
+  } catch (e) {
+    console.error("❌ CHECK BLOCK STATUS ERROR:", e);
+    return res.status(500).json({ message: "Failed to check block status" });
+  }
+};
+/* ======================================================
+   DEBIT MY COINZ (User Self Debit)
+====================================================== */
+
+export const debitMyCoinz = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user.id;
+    const { amount, reason } = req.body;
+
+    const debitAmount = Number(amount);
+    if (!Number.isFinite(debitAmount) || debitAmount <= 0) {
+      return res.status(400).json({ message: "Invalid debit amount" });
+    }
+
+    const updated = await User.findOneAndUpdate(
+      { _id: userId, CoinzBalance: { $gte: debitAmount } },
+      { $inc: { CoinzBalance: -debitAmount } },
+      { new: true }
+    ).select("CoinzBalance");
+
+    if (!updated) {
+      return res.status(400).json({ message: "Insufficient coinz balance" });
+    }
+
+    return res.json({
+      success: true,
+      debited: debitAmount,
+      reason: reason || null,
+      coinzBalance: Number(updated.CoinzBalance) || 0, // نرجعه للفرونت بنفس الاسم الصغير
+    });
+  } catch (error) {
+    console.error("❌ DEBIT COINZ ERROR:", error);
+    return res.status(500).json({ message: "Failed to debit coinz" });
+  }
+};
 
 export const changePassword = async (req: Request, res: Response) => {
   try {
