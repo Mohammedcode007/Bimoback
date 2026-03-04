@@ -26,6 +26,7 @@ import storyRoutes from "./routes/story.routes"; // ✅ NEW
 import appConfigRoutes from "./routes/appConfig.routes";
 import { enforceMinVersion } from "./middlewares/enforceMinVersion.middleware";
 import contactUsRoutes from "./routes/contactUs.routes";
+import paymobRoutes from "./routes/paymob.routes";
 // dotenv.config();
 
 const app = express();
@@ -43,8 +44,7 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json());
-
+app.use(express.json({ limit: "1mb" }));
 /* =========================
    Health Check
 ========================= */
@@ -89,7 +89,7 @@ app.use("/api/rooms", roomRoutes);
 /* 🔥 Rooms System */
 app.use("/api/rooms", roomRoutes); // ✅ تمت الإضافة
 app.use("/api/contact-us", contactUsRoutes);
-
+app.use("/api/payments/paymob", paymobRoutes);
 /* =========================
    404 Handler
 ========================= */
