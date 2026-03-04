@@ -229,9 +229,37 @@ class FriendService {
   }
 
 
-async getFriends(userId: string) {
+// async getFriends(userId: string) {
 
  
+
+//   const relations = await Friend.find({
+//     status: "accepted",
+//     $or: [
+//       { requester: userId },
+//       { recipient: userId }
+//     ]
+//   })
+//     // 🔥 إزالة تحديد الحقول لإرجاع كل بيانات اليوزر
+//     .populate("requester")
+//     .populate("recipient")
+//     .lean();
+
+
+//   const friends = relations.map((relation: any) => {
+
+//     const friend =
+//       relation.requester._id.toString() === userId
+//         ? relation.recipient
+//         : relation.requester;
+
+//     return friend;
+//   });
+
+
+//   return friends;
+// }
+async getFriends(userId: string) {
 
   const relations = await Friend.find({
     status: "accepted",
@@ -240,11 +268,9 @@ async getFriends(userId: string) {
       { recipient: userId }
     ]
   })
-    // 🔥 إزالة تحديد الحقول لإرجاع كل بيانات اليوزر
     .populate("requester")
     .populate("recipient")
     .lean();
-
 
   const friends = relations.map((relation: any) => {
 
@@ -256,10 +282,14 @@ async getFriends(userId: string) {
     return friend;
   });
 
+  // 🔥 ترتيب الأصدقاء: المتصلين أولاً
+  friends.sort((a: any, b: any) => {
+    if (a.isOnline === b.isOnline) return 0;
+    return a.isOnline ? -1 : 1;
+  });
 
   return friends;
 }
-
 /* =====================================================
    UNBLOCK USER
 ===================================================== */
