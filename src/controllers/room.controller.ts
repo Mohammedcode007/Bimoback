@@ -331,7 +331,9 @@ export const sendMessage = asyncHandler(async (req, res) => {
     replyTo: req.body?.replyTo,
     mentions: req.body?.mentions,
     media: req.body?.media,
-    gift: req.body?.gift
+    gift: req.body?.gift,
+        clientId: req.body?.clientId // ✅ أضفها
+
   });
 
   return send(res, message, "Message sent");
