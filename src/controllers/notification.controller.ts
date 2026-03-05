@@ -11,12 +11,20 @@ export const saveDeviceToken = async (req: Request, res: Response) => {
     const userId = req.user.id;
     const token = String(req.body?.token || "").trim();
 
+    console.log("📥 /notifications/device-token", {
+      userId,
+      tokenPrefix: token?.slice(0, 20), // لا تطبع التوكن كامل لأمان أفضل
+      platform: req.body?.platform,
+    });
+
     if (!token) return res.status(400).json({ message: "token is required" });
 
-    await User.updateOne(
+    const result = await User.updateOne(
       { _id: userId },
       { $addToSet: { fcmTokens: token } }
     );
+
+    console.log("✅ token saved result:", result);
 
     return res.json({ ok: true });
   } catch (e) {
