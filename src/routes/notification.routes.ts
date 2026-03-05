@@ -6,7 +6,8 @@ import {
   getUnreadCount,
   markAsRead,
   markAllAsRead,
-  deleteNotification
+  deleteNotification,
+  saveDeviceToken
 } from "../controllers/notification.controller";
 
 const router = Router();
@@ -35,5 +36,7 @@ router.patch("/read-all", markAllAsRead);
 
 /* DELETE */
 router.delete("/:id", deleteNotification);
+router.post("/device-token", saveDeviceToken);
+
 
 export default router;

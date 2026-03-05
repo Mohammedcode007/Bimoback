@@ -1,7 +1,29 @@
 import { Request, Response } from "express";
 import notificationService from "../services/notification.service";
 import Notification from "../models/Notification";
+import User from "../models/User";
 
+
+export const saveDeviceToken = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
+
+    const userId = req.user.id;
+    const token = String(req.body?.token || "").trim();
+
+    if (!token) return res.status(400).json({ message: "token is required" });
+
+    await User.updateOne(
+      { _id: userId },
+      { $addToSet: { fcmTokens: token } }
+    );
+
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error("saveDeviceToken error:", e);
+    return res.status(500).json({ message: "Failed to save token" });
+  }
+};
 /* ======================================================
    1️⃣ GET ALL NOTIFICATIONS
 ====================================================== */

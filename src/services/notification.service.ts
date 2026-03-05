@@ -1,31 +1,62 @@
 import Notification from "../models/Notification";
 import notificationGateway from "./notification.gateway";
+import { sendFCMToUser } from "./pushFCM.service";
 
 class NotificationService {
 
   /* =====================================================
      CREATE NOTIFICATION
   ===================================================== */
+ async create(data: any) {
+  const notification = await Notification.create(data);
 
-  async create(data: any) {
+  const populatedNotification = await Notification.findById(notification._id)
+    .populate("sender", "username avatar isVerified");
 
+  // 1) In-app via Socket
+  await notificationGateway.send(
+    data.recipient.toString(),
+    populatedNotification
+  );
 
-    const notification = await Notification.create(data);
+  // 2) Push via FCM (best-effort)
+  const title = "Bimo";
+  const body = data?.message || "لديك إشعار جديد";
 
-
-    // نجلبه مرة أخرى مع populate للتأكد من sender
-    const populatedNotification = await Notification.findById(notification._id)
-      .populate("sender", "username avatar isVerified");
-
-
-    await notificationGateway.send(
-      data.recipient.toString(),
-      populatedNotification
-    );
-
-
-    return populatedNotification;
+  try {
+    await sendFCMToUser(data.recipient.toString(), {
+      title,
+      body,
+      data: {
+        type: String(data?.type || "notification"),
+        notificationId: String(notification._id),
+      },
+    });
+  } catch (e) {
+    console.error("FCM send error:", e);
   }
+
+  return populatedNotification;
+}
+  // async create(data: any) {
+
+
+  //   const notification = await Notification.create(data);
+
+
+  //   // نجلبه مرة أخرى مع populate للتأكد من sender
+  //   const populatedNotification = await Notification.findById(notification._id)
+  //     .populate("sender", "username avatar isVerified");
+
+
+  //   await notificationGateway.send(
+  //     data.recipient.toString(),
+  //     populatedNotification
+  //   );
+
+
+  //   return populatedNotification;
+  // }
 
 
   /* =====================================================

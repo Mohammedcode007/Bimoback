@@ -82,7 +82,7 @@ export interface IUser extends Document {
 
   avatar?: string;
   coverImage?: string;
-
+  fcmTokens: string[];
   /* ===== Purchasable / Customization ===== */
 
   avatarFrame?: string; // frameId
@@ -139,6 +139,7 @@ const UserStorySchema = new Schema<UserStory>(
 
     mediaUrl: { type: String, trim: true, default: "" },
     thumbUrl: { type: String, trim: true, default: "" },
+    // ✅ FCM Device Tokens (Push Notifications)
 
     durationMs: { type: Number, default: 6000, min: 1000, max: 60000 },
 
@@ -208,6 +209,11 @@ const UserSchema = new Schema<IUser>(
     stories: {
       type: [UserStorySchema],
       default: [],
+    },
+        fcmTokens: {
+      type: [String],
+      default: [],
+      index: true,
     },
     /* ===== Basic Info ===== */
 
