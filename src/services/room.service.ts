@@ -24,7 +24,7 @@ const USER_PUBLIC_FIELDS =
 type SendMessageInput = {
   roomId: string;
   senderId: string;
-    clientId : string;
+    clientId? : string;
 
   content?: string;
   type?: string;

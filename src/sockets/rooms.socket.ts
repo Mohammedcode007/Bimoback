@@ -105,7 +105,8 @@ export const roomsSocket = (socket: Socket) => {
           replyTo: payload?.replyTo,
           mentions: Array.isArray(payload?.mentions) ? payload.mentions : [],
           media: payload?.media,
-          gift: payload?.gift
+          gift: payload?.gift,
+          
         });
       } catch (error) {
         safeError("message:send", error, "Send failed");
