@@ -7,7 +7,8 @@ import {
   markAsRead,
   markAllAsRead,
   deleteNotification,
-  saveDeviceToken
+  saveDeviceToken,
+  sendTestNotification
 } from "../controllers/notification.controller";
 
 const router = Router();
@@ -24,7 +25,7 @@ router.use(protect);
 
 /* GET ALL */
 router.get("/", getUserNotifications);
-
+router.post("/test-send", sendTestNotification);
 /* GET UNREAD COUNT */
 router.get("/unread-count", getUnreadCount);
 

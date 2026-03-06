@@ -4,6 +4,58 @@ import Notification from "../models/Notification";
 import User from "../models/User";
 
 
+
+export const sendTestNotification = async (req: Request, res: Response) => {
+  try {
+
+    console.log("📩 TEST NOTIFICATION REQUEST RECEIVED");
+
+    if (!req.user) {
+      console.log("❌ Unauthorized request");
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const recipient = String(req.body?.recipient || req.user.id);
+    const body = String(req.body?.body || "هذا إشعار تجريبي من Postman");
+    const type = String(req.body?.type || "message");
+
+    console.log("📦 Notification payload:", {
+      recipient,
+      sender: req.user.id,
+      body,
+      type
+    });
+
+    console.log("🚀 Creating notification in database...");
+
+    const created = await notificationService.create({
+      recipient,
+      sender: req.user.id,
+      type,
+      body,
+      isRead: false,
+      isDeleted: false,
+    });
+
+    console.log("✅ Notification saved successfully");
+    console.log("🧾 Notification ID:", created?._id);
+
+    console.log("📡 If FCM configured, push should be sent now");
+
+    return res.json({
+      success: true,
+      notification: created,
+    });
+
+  } catch (error) {
+
+    console.error("❌ sendTestNotification error:", error);
+
+    return res.status(500).json({
+      message: "Failed to send test notification"
+    });
+  }
+};
 export const saveDeviceToken = async (req: Request, res: Response) => {
   try {
     if (!req.user) return res.status(401).json({ message: "Unauthorized" });
