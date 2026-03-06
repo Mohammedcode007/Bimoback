@@ -61,6 +61,8 @@ class NotificationService {
         data: {
           type: String(data?.type || "notification"),
           notificationId: String(notification._id),
+          chatId: data?.relatedChat ? String(data.relatedChat) : "",
+    senderId: data?.sender ? String(data.sender) : "",
         },
       });
       console.log("✅ FCM push sent successfully");

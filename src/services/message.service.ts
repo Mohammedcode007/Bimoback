@@ -6,6 +6,7 @@ import { getIO } from "../config/socket";
 import mongoose from "mongoose";
 import User from "../models/User";
 import { activeChats } from "../sockets/socketState";
+import notificationService from "./notification.service";
 
 class MessageService {
 
@@ -377,28 +378,50 @@ async send(
      OFFLINE NOTIFICATION
   ===================================================== */
 
-  if (!isTargetOnline) {
-    await Notification.create({
-      recipient: targetId,
-      sender: senderId,
-      type: "message",
-      body: content,
-      relatedChat: chatId,
-    });
+  // if (!isTargetOnline) {
+  //   await Notification.create({
+  //     recipient: targetId,
+  //     sender: senderId,
+  //     type: "message",
+  //     body: content,
+  //     relatedChat: chatId,
+  //   });
 
-    const chats = await Chat.find({
-      participants: targetId,
-      deletedFor: { $ne: targetId },
-    }).lean();
+  //   const chats = await Chat.find({
+  //     participants: targetId,
+  //     deletedFor: { $ne: targetId },
+  //   }).lean();
 
-    let totalUnread = 0;
-    chats.forEach((c) => {
-      totalUnread += c.unreadCounts?.[targetId] || 0;
-    });
+  //   let totalUnread = 0;
+  //   chats.forEach((c) => {
+  //     totalUnread += c.unreadCounts?.[targetId] || 0;
+  //   });
 
-    io.to(targetId).emit("notification:unreadTotal", totalUnread);
-  }
+  //   io.to(targetId).emit("notification:unreadTotal", totalUnread);
+  // }
+if (!isTargetOnline) {
+  await notificationService.create({
+    recipient: targetId,
+    sender: senderId,
+    type: "message",
+    body: content,
+    relatedChat: chatId,
+    isRead: false,
+    isDeleted: false,
+  });
 
+  const chats = await Chat.find({
+    participants: targetId,
+    deletedFor: { $ne: targetId },
+  }).lean();
+
+  let totalUnread = 0;
+  chats.forEach((c) => {
+    totalUnread += c.unreadCounts?.[targetId] || 0;
+  });
+
+  io.to(targetId).emit("notification:unreadTotal", totalUnread);
+}
   return message;
 }
 
