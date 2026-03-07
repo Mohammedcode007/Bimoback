@@ -6,7 +6,12 @@ export type UserRole = "user" | "admin";
 export type VerificationType = "none" | "blue" | "gold" | "business";
 export type StoryType = "image" | "video" | "text";
 export type StoryPrivacy = "public" | "followers" | "private";
-
+export type CustomEmojiBadge = {
+  emoji: string;
+  isActive: boolean;
+  purchasedAt?: Date | null;
+  expiresAt?: Date | null;
+};
 export type UserStory = {
   _id?: mongoose.Types.ObjectId;
 
@@ -96,7 +101,7 @@ export interface IUser extends Document {
   profileEntryAnimation?: string;
 
   activeCustomization: ActiveCustomization;
-
+  customEmojiBadge?: CustomEmojiBadge;
   /* ===== Counters Only ===== */
 
   followersCount: number;
@@ -305,7 +310,12 @@ const UserSchema = new Schema<IUser>(
         default: "none",
       },
     },
-
+    customEmojiBadge: {
+      emoji: { type: String, trim: true, default: "" },
+      isActive: { type: Boolean, default: false },
+      purchasedAt: { type: Date, default: null },
+      expiresAt: { type: Date, default: null },
+    },
     notificationSound: {
       type: Boolean,
       default: true,

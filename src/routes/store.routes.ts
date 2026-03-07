@@ -28,7 +28,7 @@ router.post("/purchase", protect, StoreController.purchase);
 
 // تفعيل / تبديل عنصر
 router.patch("/activate", protect, StoreController.activate);
-
+router.delete("/items/:id", protect, StoreController.deleteItem);
 /* =========================
    Admin Coinz Control
 ========================= */
@@ -38,5 +38,7 @@ router.patch("/coinz/credit", protect, StoreController.creditCoinz);
 
 // خصم كوينز (Admin فقط)
 router.patch("/coinz/debit", protect, StoreController.debitCoinz);
-
+router.post("/custom-emoji-badge/buy", protect, StoreController.buyCustomEmojiBadge);
+router.patch("/custom-emoji-badge/activate", protect, StoreController.activateCustomEmojiBadge);
+router.get("/custom-emoji-badge/me", protect, StoreController.myCustomEmojiBadge);
 export default router;

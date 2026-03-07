@@ -20,11 +20,12 @@ type Role = "creator" | "owner" | "admin" | "member" | "none";
 const USER_PUBLIC_FIELDS =
   "username atUsername avatar coverImage isOnline lastSeen role " +
   "activeCustomization verificationType avatarFrame badges ownedMessageEffects ownedGifts profileEntryAnimation " +
+  "customEmojiBadge " +
   "followersCount followingCount totalLikesReceived totalRetweetsReceived profileViews";
 type SendMessageInput = {
   roomId: string;
   senderId: string;
-    clientId? : string;
+  clientId?: string;
 
   content?: string;
   type?: string;
@@ -64,7 +65,13 @@ class RoomService {
   private io() {
     return getIO();
   }
-
+private logCustomBadge(tag: string, data: any) {
+  try {
+    console.log(`[CUSTOM_BADGE][${tag}]`, JSON.stringify(data, null, 2));
+  } catch {
+    console.log(`[CUSTOM_BADGE][${tag}]`, data);
+  }
+}
   private isValidObjectId(id: string) {
     return Types.ObjectId.isValid(id);
   }
@@ -235,75 +242,116 @@ class RoomService {
 
     return lastPinned?._id ? String(lastPinned._id) : null;
   }
-  private async getUserPublicSnapshot(userId: string) {
-    const User = mongoose.model("User");
+ private async getUserPublicSnapshot(userId: string) {
+  const User = mongoose.model("User");
 
-    const u = await User.findById(userId).select(USER_PUBLIC_FIELDS);
+  const u = await User.findById(userId).select(USER_PUBLIC_FIELDS);
 
-    // ✅ Default safe snapshot
-    const base = {
-      _id: String(userId),
-      username: "مستخدم",
-      atUsername: "",
-      avatar: "",
-      coverImage: "",
-      isOnline: false,
-      lastSeen: null as any,
-      role: "user",
+  this.logCustomBadge("getUserPublicSnapshot:RAW_USER", {
+    userId,
+    found: !!u,
+    username: u?.username,
+    customEmojiBadge: u?.customEmojiBadge || null,
+    activeCustomization: u?.activeCustomization || null,
+    badges: u?.badges || []
+  });
 
-      activeCustomization: {
-        avatarFrame: "",
-        messageEffect: "",
-        profileEntryAnimation: "",
-        badges: [],
-        verificationType: "none"
-      },
+  const base = {
+    _id: String(userId),
+    username: "مستخدم",
+    atUsername: "",
+    avatar: "",
+    coverImage: "",
+    isOnline: false,
+    lastSeen: null as any,
+    role: "user",
 
-      verificationType: "none",
+    activeCustomization: {
       avatarFrame: "",
-      badges: [] as string[],
-      ownedMessageEffects: [] as string[],
-      ownedGifts: [] as string[],
+      messageEffect: "",
       profileEntryAnimation: "",
+      badges: [],
+      verificationType: "none"
+    },
 
-      followersCount: 0,
-      followingCount: 0,
-      totalLikesReceived: 0,
-      totalRetweetsReceived: 0,
-      profileViews: 0
-    };
+    verificationType: "none",
+    avatarFrame: "",
+    badges: [] as string[],
+    ownedMessageEffects: [] as string[],
+    ownedGifts: [] as string[],
+    profileEntryAnimation: "",
 
-    if (!u) return base;
+    customEmojiBadge: {
+      emoji: "",
+      isActive: false,
+      purchasedAt: null as any,
+      expiresAt: null as any
+    },
 
-    return {
-      ...base,
-      _id: String(u._id),
+    followersCount: 0,
+    followingCount: 0,
+    totalLikesReceived: 0,
+    totalRetweetsReceived: 0,
+    profileViews: 0
+  };
 
-      username: u.username || base.username,
-      atUsername: u.atUsername || base.atUsername,
-      avatar: u.avatar || base.avatar,
-      coverImage: u.coverImage || base.coverImage,
-
-      isOnline: Boolean(u.isOnline),
-      lastSeen: u.lastSeen || null,
-      role: u.role || base.role,
-
-      activeCustomization: u.activeCustomization || base.activeCustomization,
-
-      verificationType: u.verificationType || base.verificationType,
-      avatarFrame: u.avatarFrame || base.avatarFrame,
-      badges: Array.isArray(u.badges) ? u.badges : base.badges,
-      ownedMessageEffects: Array.isArray(u.ownedMessageEffects) ? u.ownedMessageEffects : base.ownedMessageEffects,
-      ownedGifts: Array.isArray(u.ownedGifts) ? u.ownedGifts : base.ownedGifts,
-      profileEntryAnimation: u.profileEntryAnimation || base.profileEntryAnimation,
-
-      followersCount: Number(u.followersCount || 0),
-      followingCount: Number(u.followingCount || 0),
-      totalLikesReceived: Number(u.totalLikesReceived || 0),
-      totalRetweetsReceived: Number(u.totalRetweetsReceived || 0),
-      profileViews: Number(u.profileViews || 0)
-    };
+  if (!u) {
+    this.logCustomBadge("getUserPublicSnapshot:RETURN_BASE", {
+      userId,
+      snapshot: base
+    });
+    return base;
   }
+
+  const snapshot = {
+    ...base,
+    _id: String(u._id),
+
+    username: u.username || base.username,
+    atUsername: u.atUsername || base.atUsername,
+    avatar: u.avatar || base.avatar,
+    coverImage: u.coverImage || base.coverImage,
+
+    isOnline: Boolean(u.isOnline),
+    lastSeen: u.lastSeen || null,
+    role: u.role || base.role,
+
+    activeCustomization: u.activeCustomization || base.activeCustomization,
+
+    verificationType: u.verificationType || base.verificationType,
+    avatarFrame: u.avatarFrame || base.avatarFrame,
+    badges: Array.isArray(u.badges) ? u.badges : base.badges,
+    ownedMessageEffects: Array.isArray(u.ownedMessageEffects) ? u.ownedMessageEffects : base.ownedMessageEffects,
+    ownedGifts: Array.isArray(u.ownedGifts) ? u.ownedGifts : base.ownedGifts,
+    profileEntryAnimation: u.profileEntryAnimation || base.profileEntryAnimation,
+
+    customEmojiBadge:
+      u.customEmojiBadge && typeof u.customEmojiBadge === "object"
+        ? {
+            emoji: String(u.customEmojiBadge.emoji || ""),
+            isActive: Boolean(u.customEmojiBadge.isActive),
+            purchasedAt: u.customEmojiBadge.purchasedAt || null,
+            expiresAt: u.customEmojiBadge.expiresAt || null
+          }
+        : base.customEmojiBadge,
+
+    followersCount: Number(u.followersCount || 0),
+    followingCount: Number(u.followingCount || 0),
+    totalLikesReceived: Number(u.totalLikesReceived || 0),
+    totalRetweetsReceived: Number(u.totalRetweetsReceived || 0),
+    profileViews: Number(u.profileViews || 0)
+  };
+
+  this.logCustomBadge("getUserPublicSnapshot:RETURN_SNAPSHOT", {
+    userId,
+    username: snapshot.username,
+    customEmojiBadge: snapshot.customEmojiBadge,
+    activeCustomization: snapshot.activeCustomization,
+    badges: snapshot.badges
+  });
+
+  return snapshot;
+}
   async getUserState(roomId: string, userId: string): Promise<RoomUserStateLean> {
     const state = await RoomUserState.findOne({ room: roomId, user: userId }).lean();
 
@@ -1439,95 +1487,107 @@ class RoomService {
   /* =====================================================
      MESSAGES
   ===================================================== */
-async sendMessage(input: SendMessageInput) {
-  const {
-    roomId,
-    senderId,
-    content = "",
-    type = "text",
-    replyTo,
-    mentions = [],
-    media,
-    gift,
-    clientId // ✅ جديد
-  } = input;
+  async sendMessage(input: SendMessageInput) {
+    const {
+      roomId,
+      senderId,
+      content = "",
+      type = "text",
+      replyTo,
+      mentions = [],
+      media,
+      gift,
+      clientId // ✅ جديد
+    } = input;
 
-  const room = await Room.findById(roomId);
-  if (!room) throw new Error("Room not found");
-  this.ensureArrays(room);
+    const room = await Room.findById(roomId);
+    if (!room) throw new Error("Room not found");
+    this.ensureArrays(room);
 
-  if (!this.isInside(room, senderId)) throw new Error("Not inside room");
-  if (this.isBanned(room, senderId)) throw new Error("You are banned");
-  if (this.isMuted(room, senderId)) throw new Error("You are muted");
+    if (!this.isInside(room, senderId)) throw new Error("Not inside room");
+    if (this.isBanned(room, senderId)) throw new Error("You are banned");
+    if (this.isMuted(room, senderId)) throw new Error("You are muted");
 
-  const cleanMentions = Array.from(
-    new Set((mentions || []).filter((x) => this.isValidObjectId(x)))
-  );
+    const cleanMentions = Array.from(
+      new Set((mentions || []).filter((x) => this.isValidObjectId(x)))
+    );
 
-  const hasGift =
-    Boolean(String(gift?.key || "").trim()) ||
-    Boolean(String(gift?.name || "").trim());
+    const hasGift =
+      Boolean(String(gift?.key || "").trim()) ||
+      Boolean(String(gift?.name || "").trim());
 
-  // ✅ نظّف clientId (مهم)
-  const cid = String(clientId || "").trim();
-  const hasClientId = Boolean(cid);
+    // ✅ نظّف clientId (مهم)
+    const cid = String(clientId || "").trim();
+    const hasClientId = Boolean(cid);
 
-  // ✅ 1) DEDUP قبل الإنشاء (الأهم)
-  if (hasClientId) {
-    const existing = await RoomMessage.findOne({
-      room: roomId,
-      sender: senderId,
-      clientId: cid
-    });
-
-    if (existing) {
-      // ✅ لا تعيد بث socket مرة أخرى لتفادي duplicate في الفرونت
-      return existing;
-    }
-  }
-
-  const senderSnapshot = await this.getUserPublicSnapshot(senderId);
-
-  try {
-    const message = await RoomMessage.create({
-      room: roomId,
-      sender: senderId,
-      senderSnapshot,
-
-      clientId: hasClientId ? cid : undefined, // ✅ جديد
-
-      content,
-      type,
-      replyTo: replyTo && this.isValidObjectId(replyTo) ? replyTo : undefined,
-      mentions: cleanMentions,
-      media: media?.url ? media : undefined,
-      gift: hasGift ? gift : undefined
-    });
-
-    // ✅ بث مرة واحدة فقط بعد إنشاء فعلي
-    this.io().to(`room:${roomId}`).emit("room:message:new", message);
-
-    if (cleanMentions.length) {
-      for (const uid of cleanMentions) {
-        this.io().to(uid).emit("room:mention", { roomId, messageId: message._id });
-      }
-    }
-
-    return message;
-  } catch (e: any) {
-    // ✅ 2) حماية من duplicate key لو حصلت race
-    // Mongo duplicate key error code = 11000
-    if (hasClientId && (e?.code === 11000 || String(e?.message || "").includes("E11000"))) {
+    // ✅ 1) DEDUP قبل الإنشاء (الأهم)
+    if (hasClientId) {
       const existing = await RoomMessage.findOne({
         room: roomId,
         sender: senderId,
         clientId: cid
       });
-      if (existing) return existing;
+
+      if (existing) {
+        // ✅ لا تعيد بث socket مرة أخرى لتفادي duplicate في الفرونت
+        return existing;
+      }
     }
-    throw e;
+
+    const senderSnapshot = await this.getUserPublicSnapshot(senderId);
+this.logCustomBadge("sendMessage:SENDER_SNAPSHOT", {
+  roomId,
+  senderId,
+  username: senderSnapshot?.username,
+  customEmojiBadge: senderSnapshot?.customEmojiBadge || null,
+  activeCustomization: senderSnapshot?.activeCustomization || null,
+  badges: senderSnapshot?.badges || []
+});
+    try {
+      const message = await RoomMessage.create({
+        room: roomId,
+        sender: senderId,
+        senderSnapshot,
+
+        clientId: hasClientId ? cid : undefined, // ✅ جديد
+
+        content,
+        type,
+        replyTo: replyTo && this.isValidObjectId(replyTo) ? replyTo : undefined,
+        mentions: cleanMentions,
+        media: media?.url ? media : undefined,
+        gift: hasGift ? gift : undefined
+      });
+this.logCustomBadge("sendMessage:MESSAGE_CREATED", {
+  messageId: String(message._id),
+  sender: message.sender,
+  senderSnapshot: message.senderSnapshot || null,
+  customEmojiBadge: (message.senderSnapshot as any)?.customEmojiBadge || null
+});
+      // ✅ بث مرة واحدة فقط بعد إنشاء فعلي
+      this.io().to(`room:${roomId}`).emit("room:message:new", message);
+
+      if (cleanMentions.length) {
+        for (const uid of cleanMentions) {
+          this.io().to(uid).emit("room:mention", { roomId, messageId: message._id });
+        }
+      }
+
+      return message;
+    } catch (e: any) {
+      // ✅ 2) حماية من duplicate key لو حصلت race
+      // Mongo duplicate key error code = 11000
+      if (hasClientId && (e?.code === 11000 || String(e?.message || "").includes("E11000"))) {
+        const existing = await RoomMessage.findOne({
+          room: roomId,
+          sender: senderId,
+          clientId: cid
+        });
+        if (existing) return existing;
+      }
+      throw e;
+    }
   }
-}
   // async sendMessage(input: SendMessageInput) {
   //   const { roomId, senderId, content = "", type = "text", replyTo, mentions = [], media, gift, clientId
   //   } = input;
@@ -2342,66 +2402,7 @@ async sendMessage(input: SendMessageInput) {
 
     return message;
   }
-  // async getMessages(roomId: string, userId: string, pagination: Pagination = {}) {
-  //   const room = await Room.findById(roomId);
-  //   if (!room) throw new Error("Room not found");
-  //   this.ensureArrays(room);
 
-  //   const role = this.getRole(room, userId);
-  //   const isInside = this.isInside(room, userId);
-  //   if (!isInside && role === "none") throw new Error("Not allowed");
-
-  //   const limit = Math.max(1, Math.min(100, Number(pagination.limit) || 30));
-  //   const state = await this.getUserState(roomId, userId);
-
-  //   // ✅ beforeDate from cursor
-  //   let beforeDate: Date | null = null;
-  //   if (pagination.before && this.isValidObjectId(pagination.before)) {
-  //     const beforeMsg = await RoomMessage.findById(pagination.before).select("createdAt");
-  //     if (beforeMsg?.createdAt) beforeDate = beforeMsg.createdAt;
-  //   }
-
-  //   const query: any = { room: roomId };
-
-  //   // ✅ بدون clearedAt
-  //   if (!state.clearedAt) {
-  //     if (beforeDate) query.createdAt = { $lt: beforeDate };
-
-  //     const messages = await RoomMessage.find(query)
-  //       .sort({ createdAt: -1 })
-  //       .limit(limit)
-  //       .populate("replyTo"); // ✅ فقط replyTo
-
-  //     // ✅ Backfill senderSnapshot للرسائل القديمة (اختياري لكن مفيد)
-  //     await this.backfillSenderSnapshots(messages);
-
-  //     return messages;
-  //   }
-
-  //   // ✅ مع clearedAt
-  //   const createdCond: any = { $gt: state.clearedAt };
-  //   if (beforeDate) createdCond.$lt = beforeDate;
-
-  //   const or: any[] = [{ createdAt: createdCond }];
-
-  //   if (state.pinnedMessageIdAtClear) {
-  //     const pinCond: any = { _id: state.pinnedMessageIdAtClear };
-  //     if (beforeDate) pinCond.createdAt = { $lt: beforeDate };
-  //     or.push(pinCond);
-  //   }
-
-  //   query.$or = or;
-
-  //   const messages = await RoomMessage.find(query)
-  //     .sort({ createdAt: -1 })
-  //     .limit(limit)
-  //     .populate("replyTo"); // ✅ فقط replyTo
-
-  //   // ✅ Backfill senderSnapshot للرسائل القديمة (اختياري)
-  //   await this.backfillSenderSnapshots(messages);
-
-  //   return messages;
-  // }
   async getMessages(roomId: string, userId: string, pagination: Pagination = {}) {
     console.log("══════════════════════════════════════");
     console.log("📩 getMessages START");
@@ -2554,65 +2555,7 @@ async sendMessage(input: SendMessageInput) {
       await RoomMessage.bulkWrite(ops as any, { ordered: false });
     }
   }
-  // async getMessages(roomId: string, userId: string, pagination: Pagination = {}) {
-  //   const room = await Room.findById(roomId);
-  //   if (!room) throw new Error("Room not found");
-  //   this.ensureArrays(room);
 
-  //   const role = this.getRole(room, userId);
-  //   const isInside = this.isInside(room, userId);
-  //   if (!isInside && role === "none") throw new Error("Not allowed");
-
-  //   const limit = Math.max(1, Math.min(100, Number(pagination.limit) || 30));
-
-  //   const state = await this.getUserState(roomId, userId);
-
-  //   // ✅ سنحفظ beforeDate لو موجود
-  //   let beforeDate: Date | null = null;
-
-  //   if (pagination.before && this.isValidObjectId(pagination.before)) {
-  //     const beforeMsg = await RoomMessage.findById(pagination.before).select("createdAt");
-  //     if (beforeMsg?.createdAt) beforeDate = beforeMsg.createdAt;
-  //   }
-
-  //   const query: any = { room: roomId };
-
-  //   // ✅ بدون clearedAt: طبّق فقط beforeDate إن وجد
-  //   if (!state.clearedAt) {
-  //     if (beforeDate) query.createdAt = { $lt: beforeDate };
-
-  //     const messages = await RoomMessage.find(query)
-  //       .sort({ createdAt: -1 })
-  //       .limit(limit)
-  //       .populate("sender", "username avatar")
-  //       .populate("replyTo");
-
-  //     return messages;
-  //   }
-
-  //   // ✅ مع clearedAt: (createdAt > clearedAt) + (اختياري createdAt < beforeDate)
-  //   const createdCond: any = { $gt: state.clearedAt };
-  //   if (beforeDate) createdCond.$lt = beforeDate;
-
-  //   const or: any[] = [{ createdAt: createdCond }];
-
-  //   // ✅ استثناء pinned ولكن مع احترام beforeDate إن وجد (حتى لا يفسد pagination)
-  //   if (state.pinnedMessageIdAtClear) {
-  //     const pinCond: any = { _id: state.pinnedMessageIdAtClear };
-  //     if (beforeDate) pinCond.createdAt = { $lt: beforeDate };
-  //     or.push(pinCond);
-  //   }
-
-  //   query.$or = or;
-
-  //   const messages = await RoomMessage.find(query)
-  //     .sort({ createdAt: -1 })
-  //     .limit(limit)
-  //     .populate("sender", USER_PUBLIC_FIELDS)
-  //     .populate("replyTo");
-
-  //   return messages;
-  // }
   async searchMessages(roomId: string, userId: string, q: string, limit = 30) {
     const room = await Room.findById(roomId);
     if (!room) throw new Error("Room not found");
@@ -2749,42 +2692,6 @@ async sendMessage(input: SendMessageInput) {
 
     return message.reactions;
   }
-  // async toggleReaction(roomId: string, messageId: string, userId: string, emoji: string) {
-  //   const room = await Room.findById(roomId);
-  //   if (!room) throw new Error("Room not found");
-  //   this.ensureArrays(room);
-
-  //   const role = this.getRole(room, userId);
-  //   const isInside = this.isInside(room, userId);
-
-  //   if (!isInside && role === "none") throw new Error("Not allowed");
-
-  //   const message = await RoomMessage.findById(messageId);
-  //   if (!message) throw new Error("Message not found");
-  //   if (message.room.toString() !== roomId) throw new Error("Invalid room message");
-
-  //   const e = String(emoji || "").trim();
-  //   if (!e) throw new Error("Invalid emoji");
-
-  //   const existing = (message.reactions || []).find((r: any) => r.user.toString() === userId && r.emoji === e);
-
-  //   if (existing) {
-  //     message.reactions = message.reactions.filter(
-  //       (r: any) => !(r.user.toString() === userId && r.emoji === e)
-  //     );
-  //   } else {
-  //     message.reactions.push({ user: userId as any, emoji: e, createdAt: new Date() });
-  //   }
-
-  //   await message.save();
-
-  //   this.io().to(`room:${roomId}`).emit("room:reaction:update", {
-  //     messageId,
-  //     reactions: message.reactions
-  //   });
-
-  //   return message.reactions;
-  // }
 
   /* =====================================================
      ROOM USERS (WITH ROLES & STATUS)
@@ -2792,10 +2699,10 @@ async sendMessage(input: SendMessageInput) {
 
   async getRoomUsers(roomId: string) {
     const room = await Room.findById(roomId)
-      .populate("creator", "username avatar")
-      .populate("owners", "username avatar")
-      .populate("admins", "username avatar")
-      .populate("members", "username avatar");
+      .populate("creator", USER_PUBLIC_FIELDS)
+      .populate("owners", USER_PUBLIC_FIELDS)
+      .populate("admins", USER_PUBLIC_FIELDS)
+      .populate("members", USER_PUBLIC_FIELDS);
 
     if (!room) throw new Error("Room not found");
     this.ensureArrays(room);
@@ -2816,6 +2723,24 @@ async sendMessage(input: SendMessageInput) {
         avatar: user.avatar,
         role,
         isActive,
+
+        activeCustomization: user.activeCustomization || {
+          avatarFrame: "",
+          messageEffect: "",
+          profileEntryAnimation: "",
+          badges: [],
+          verificationType: "none"
+        },
+
+        customEmojiBadge:
+          user?.customEmojiBadge && typeof user.customEmojiBadge === "object"
+            ? {
+              emoji: String(user.customEmojiBadge.emoji || ""),
+              isActive: Boolean(user.customEmojiBadge.isActive),
+              expiresAt: user.customEmojiBadge.expiresAt || null
+            }
+            : null,
+
         isVip: !!vip,
         vipExpiresAt: vip?.expiresAt || null,
         isMuted: !!muted && muted.until > now,

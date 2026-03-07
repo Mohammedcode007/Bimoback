@@ -39,25 +39,32 @@ export interface IRoomMessage extends Document {
   clientId?: string; // ✅ لتوحيد optimistic message مع رسالة السيرفر ومنع التكرار
   type: RoomMessageType;
   content: string;
-  senderSnapshot?: {
-    _id: string;
-    username: string;
-    atUsername?: string;
-    avatar?: string;
+ senderSnapshot?: {
+  _id: string;
+  username: string;
+  atUsername?: string;
+  avatar?: string;
 
-    activeCustomization?: {
-      avatarFrame?: string;
-      messageEffect?: string;
-      profileEntryAnimation?: string;
-      badges: string[];
-      verificationType: "none" | "blue" | "gold" | "business";
-    };
-
-    verificationType?: "none" | "blue" | "gold" | "business";
+  activeCustomization?: {
     avatarFrame?: string;
-    badges?: string[];
+    messageEffect?: string;
     profileEntryAnimation?: string;
+    badges: string[];
+    verificationType: "none" | "blue" | "gold" | "business";
   };
+
+  customEmojiBadge?: {
+    emoji?: string;
+    isActive?: boolean;
+    purchasedAt?: Date | null;
+    expiresAt?: Date | null;
+  };
+
+  verificationType?: "none" | "blue" | "gold" | "business";
+  avatarFrame?: string;
+  badges?: string[];
+  profileEntryAnimation?: string;
+};
   // ✅ System meta (للترقيات والأحداث)
   action?: RoomSystemAction;
 
@@ -191,6 +198,7 @@ const RoomMessageSchema = new Schema<IRoomMessage>(
       ref: "User",
       index: true
     },
+    
 clientId: {
   type: String,
   trim: true,
@@ -242,7 +250,12 @@ clientId: {
           badges: { type: [String], default: [] },
           verificationType: { type: String, default: "none" }
         },
-
+customEmojiBadge: {
+  emoji: { type: String, default: "" },
+  isActive: { type: Boolean, default: false },
+  purchasedAt: { type: Date, default: null },
+  expiresAt: { type: Date, default: null }
+},
         verificationType: { type: String, default: "none" },
         avatarFrame: { type: String, default: "" },
         badges: { type: [String], default: [] },
