@@ -4,7 +4,8 @@ import {
   registerUser,
   loginUser,
   logoutUser,
-  toggleInvisibleStatus
+  toggleInvisibleStatus,
+  authWithGoogle
 } from "../services/auth.service";
 
 /* =========================
