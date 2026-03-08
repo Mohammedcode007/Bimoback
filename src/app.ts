@@ -27,6 +27,7 @@ import appConfigRoutes from "./routes/appConfig.routes";
 import { enforceMinVersion } from "./middlewares/enforceMinVersion.middleware";
 import contactUsRoutes from "./routes/contactUs.routes";
 import paymobRoutes from "./routes/paymob.routes";
+import path from "path";
 // dotenv.config();
 
 const app = express();
@@ -45,6 +46,19 @@ app.use(
   })
 );
 app.use(express.json({ limit: "1mb" }));
+/* =========================
+   Static Pages
+========================= */
+
+app.use(express.static(path.join(__dirname, "../public")));
+
+app.get("/terms", (_, res) => {
+  res.sendFile(path.join(__dirname, "../public/terms.html"));
+});
+
+app.get("/privacy", (_, res) => {
+  res.sendFile(path.join(__dirname, "../public/privacy.html"));
+});
 /* =========================
    Health Check
 ========================= */
@@ -87,7 +101,7 @@ app.use("/api/chats", chatRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/rooms", roomRoutes);
 /* 🔥 Rooms System */
-app.use("/api/rooms", roomRoutes); // ✅ تمت الإضافة
+// app.use("/api/rooms", roomRoutes); // ✅ تمت الإضافة
 app.use("/api/contact-us", contactUsRoutes);
 app.use("/api/payments/paymob", paymobRoutes);
 /* =========================
