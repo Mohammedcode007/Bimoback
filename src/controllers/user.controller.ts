@@ -104,6 +104,11 @@ export const changePassword = async (req: Request, res: Response) => {
     // ✅ لازم تجيب الباسورد من DB
     const user = await User.findById(userId).select("+password");
     if (!user) return res.status(404).json({ message: "User not found" });
+    if (!user.password) {
+      return res.status(400).json({
+        message: "This account uses Google sign-in and has no password yet",
+      });
+    }
 
     // ✅ نفس طريقة المقارنة المستخدمة في loginUser
     const ok = await comparePassword(oldP, user.password);
