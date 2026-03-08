@@ -28,6 +28,31 @@ export const register = async (req: Request, res: Response) => {
 /* =========================
    LOGIN
 ========================= */
+/* =========================
+   GOOGLE AUTH
+========================= */
+
+export const googleAuth = async (req: Request, res: Response) => {
+  try {
+    const { idToken, username, email, photo } = req.body;
+
+    const data = await authWithGoogle({
+      idToken,
+      username,
+      email,
+      photo
+    });
+
+    return res.status(200).json({
+      ...data,
+      presence: {
+        status: data.user.isInvisible ? "offline" : "online"
+      }
+    });
+  } catch (error: any) {
+    return res.status(401).json({ message: error.message });
+  }
+};
 
 export const login = async (req: Request, res: Response) => {
   try {

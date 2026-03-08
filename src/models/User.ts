@@ -70,14 +70,16 @@ export type PartnerPreferences = {
 export interface IUser extends Document {
   username: string;
   atUsername: string;
-  password: string;
-  email?: string;
+   password?: string | null;
+  email?: string | null;
+  googleUid?: string | null;
+  provider?: "local" | "google";
 
   role: UserRole;
 
   isOnline: boolean;
   isInvisible?: boolean;
-  lastSeen?: Date;
+lastSeen?: Date | null;
   blockedUsers: mongoose.Types.ObjectId[];
   CoinzBalance: number; // 💰 رصيد عملة Coinz
 
@@ -193,17 +195,34 @@ const UserSchema = new Schema<IUser>(
       trim: true,
     },
 
-    password: {
-      type: String,
-      required: true,
-    },
+ password: {
+  type: String,
+  required: function (this: IUser) {
+    return (this.provider || "local") !== "google";
+  },
+  default: null,
+},
 
-    email: {
-      type: String,
-      trim: true,
-      lowercase: true,
-      index: true,
-    },
+email: {
+  type: String,
+  trim: true,
+  lowercase: true,
+  index: true,
+  default: null,
+},
+
+googleUid: {
+  type: String,
+  default: null,
+  index: true,
+},
+
+provider: {
+  type: String,
+  enum: ["local", "google"],
+  default: "local",
+  index: true,
+},
 
     role: {
       type: String,

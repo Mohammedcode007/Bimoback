@@ -4,8 +4,44 @@ import User from "../models/User";
 import { hashPassword, comparePassword } from "../utils/hash";
 import jwt from "jsonwebtoken";
 import Friend from "../models/Friend";
+import { getFirebaseAdmin } from "../config/firebaseAdmin";
 
+type GoogleAuthInput = {
+  idToken: string;
+  username?: string;
+  email?: string;
+  photo?: string;
+};
 
+function makeSafeUsername(value: string) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[^a-z0-9_]/g, "");
+}
+
+async function generateUniqueUsername(base: string) {
+  let candidate = makeSafeUsername(base);
+
+  if (!candidate || candidate.length < 3) {
+    candidate = `user${Date.now().toString().slice(-6)}`;
+  }
+
+  let finalUsername = candidate;
+  let exists = await User.findOne({
+    atUsername: normalizeAtUsername(finalUsername),
+  }).lean();
+
+  while (exists) {
+    finalUsername = `${candidate}${Math.floor(1000 + Math.random() * 9000)}`;
+    exists = await User.findOne({
+      atUsername: normalizeAtUsername(finalUsername),
+    }).lean();
+  }
+
+  return finalUsername;
+}
 /* =====================================================
    TOKEN GENERATOR
 ===================================================== */
@@ -124,23 +160,22 @@ export const registerUser = async (
 /* =====================================================
    LOGIN
 ===================================================== */
-
-export const loginUser = async (
-  username: string,
-  password: string
-) => {
+export const loginUser = async (username: string, password: string) => {
   const rawUsername = String(username || "").trim();
   const atUsername = normalizeAtUsername(rawUsername);
 
-  // ✅ الأفضل الدخول عبر atUsername (لأنه ثابت وفريد)
-  // لو تريد الإبقاء على username حرفيًا: غيّر الاستعلام لـ { username: rawUsername }
   const user = await User.findOne({ atUsername });
 
   if (!user) {
     throw new Error("Invalid credentials");
   }
 
+  if (!user.password) {
+    throw new Error("This account uses Google sign-in");
+  }
+
   const isMatch = await comparePassword(password, user.password);
+
   if (!isMatch) {
     throw new Error("Invalid credentials");
   }
@@ -154,7 +189,7 @@ export const loginUser = async (
       username: user.username,
       atUsername: user.atUsername,
       avatar: user.avatar,
-      role: (user as any).role || "user", // ✅ أضفنا role
+      role: (user as any).role || "user",
       isVerified: user.isVerified,
       bio: user.bio,
       country: user.country,
@@ -164,11 +199,155 @@ export const loginUser = async (
       profileViews: user.profileViews,
       isOnline: user.isOnline,
       isInvisible: user.isInvisible,
-      lastSeen: user.lastSeen
+      lastSeen: user.lastSeen,
     }
   };
 };
+// export const loginUser = async (
+//   username: string,
+//   password: string
+// ) => {
+//   const rawUsername = String(username || "").trim();
+//   const atUsername = normalizeAtUsername(rawUsername);
 
+//   // ✅ الأفضل الدخول عبر atUsername (لأنه ثابت وفريد)
+//   // لو تريد الإبقاء على username حرفيًا: غيّر الاستعلام لـ { username: rawUsername }
+//   const user = await User.findOne({ atUsername });
+
+//   if (!user) {
+//     throw new Error("Invalid credentials");
+//   }
+
+//   const isMatch = await comparePassword(password, user.password);
+//   if (!isMatch) {
+//     throw new Error("Invalid credentials");
+//   }
+
+//   const token = generateToken(user);
+
+//   return {
+//     token,
+//     user: {
+//       _id: user._id,
+//       username: user.username,
+//       atUsername: user.atUsername,
+//       avatar: user.avatar,
+//       role: (user as any).role || "user", // ✅ أضفنا role
+//       isVerified: user.isVerified,
+//       bio: user.bio,
+//       country: user.country,
+//       followersCount: user.followersCount,
+//       followingCount: user.followingCount,
+//       totalLikesReceived: user.totalLikesReceived,
+//       profileViews: user.profileViews,
+//       isOnline: user.isOnline,
+//       isInvisible: user.isInvisible,
+//       lastSeen: user.lastSeen
+//     }
+//   };
+// };
+export const authWithGoogle = async ({
+  idToken,
+  username,
+  email,
+  photo,
+}: GoogleAuthInput) => {
+  if (!idToken || !String(idToken).trim()) {
+    throw new Error("Google token is required");
+  }
+
+  const admin = getFirebaseAdmin();
+  const decoded = await admin.auth().verifyIdToken(idToken);
+
+  const firebaseUid = decoded.uid;
+  const verifiedEmail = String(decoded.email || email || "").trim().toLowerCase();
+  const verifiedName = String(
+    username || decoded.name || verifiedEmail.split("@")[0] || "user"
+  ).trim();
+  const verifiedPhoto = String(photo || decoded.picture || "").trim();
+
+  if (!verifiedEmail) {
+    throw new Error("Google account email is required");
+  }
+
+  let user = await User.findOne({
+    $or: [{ googleUid: firebaseUid }, { email: verifiedEmail }],
+  });
+
+  if (!user) {
+    const uniqueUsername = await generateUniqueUsername(verifiedName);
+
+    user = await User.create({
+      username: uniqueUsername,
+      atUsername: normalizeAtUsername(uniqueUsername),
+      password: null,
+      email: verifiedEmail,
+      googleUid: firebaseUid,
+      provider: "google",
+      avatar: verifiedPhoto || "",
+      isVerified: true,
+      role: "user",
+      isOnline: false,
+      isInvisible: false,
+      lastSeen: null,
+    });
+  } else {
+    let changed = false;
+
+    if (!user.googleUid) {
+      user.googleUid = firebaseUid;
+      changed = true;
+    }
+
+    if (!user.email && verifiedEmail) {
+      user.email = verifiedEmail;
+      changed = true;
+    }
+
+    if ((!user.avatar || user.avatar.trim() === "") && verifiedPhoto) {
+      user.avatar = verifiedPhoto;
+      changed = true;
+    }
+
+    if ((user as any).provider !== "google") {
+      (user as any).provider = "google";
+      changed = true;
+    }
+
+    if (!user.isVerified) {
+      user.isVerified = true;
+      changed = true;
+    }
+
+    if (changed) {
+      await user.save();
+    }
+  }
+
+  const token = generateToken(user);
+
+  return {
+    token,
+    user: {
+      _id: user._id,
+      username: user.username,
+      atUsername: user.atUsername,
+      email: user.email,
+      avatar: user.avatar,
+      role: (user as any).role || "user",
+      isVerified: user.isVerified,
+      bio: user.bio,
+      country: user.country,
+      followersCount: user.followersCount,
+      followingCount: user.followingCount,
+      totalLikesReceived: user.totalLikesReceived,
+      profileViews: user.profileViews,
+      isOnline: user.isOnline,
+      isInvisible: user.isInvisible,
+      lastSeen: user.lastSeen,
+    },
+  };
+};
 /* =====================================================
    LOGOUT
 ===================================================== */
