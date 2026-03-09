@@ -1,234 +1,361 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>Bimo - منصة الدردشة والتواصل</title>
+  <title>Bimo | منصة دردشة وتواصل اجتماعي</title>
 
-<meta name="description" content="Bimo هو تطبيق دردشة حديث يتيح للمستخدمين التواصل وإنشاء غرف محادثة ومشاركة التجارب بطريقة آمنة وسريعة." />
+  <meta name="description" content="Bimo هو تطبيق دردشة وتواصل اجتماعي حديث يتيح للمستخدمين إنشاء غرف محادثة، التواصل الفوري، مشاركة القصص والتفاعل مع الآخرين بسهولة وأمان." />
+  <meta name="keywords" content="Bimo, تطبيق دردشة, دردشة اجتماعية, غرف محادثة, شات, رسائل, غرف صوتية, social chat app" />
+  <meta name="author" content="Bimo" />
+  <meta name="robots" content="index, follow" />
+  <link rel="canonical" href="https://api.te-bot.site/" />
 
-<style>
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Bimo | منصة دردشة وتواصل اجتماعي" />
+  <meta property="og:description" content="تطبيق Bimo يتيح لك التواصل مع الآخرين، إنشاء غرف محادثة، مشاركة القصص والاستمتاع بتجربة اجتماعية حديثة وآمنة." />
+  <meta property="og:url" content="https://api.te-bot.site/" />
+  <meta property="og:site_name" content="Bimo" />
 
-:root{
---bg:#0b1020;
---card:rgba(255,255,255,0.07);
---border:rgba(255,255,255,0.12);
---text:#f8fafc;
---muted:#cbd5e1;
---accent:#7c3aed;
---accent2:#06b6d4;
---radius:22px;
-}
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Bimo | منصة دردشة وتواصل اجتماعي" />
+  <meta name="twitter:description" content="تطبيق دردشة اجتماعية حديث للتواصل، إنشاء غرف محادثة، والتفاعل مع الآخرين بسهولة وأمان." />
 
-*{box-sizing:border-box}
+  <style>
+    :root{
+      --bg:#0b1020;
+      --card:rgba(255,255,255,0.07);
+      --border:rgba(255,255,255,0.12);
+      --text:#f8fafc;
+      --muted:#cbd5e1;
+      --accent:#7c3aed;
+      --accent2:#06b6d4;
+      --radius:22px;
+      --shadow:0 20px 40px rgba(0,0,0,.25);
+    }
 
-body{
-margin:0;
-font-family:Arial,Segoe UI;
-background:
-radial-gradient(circle at top right, rgba(124,58,237,.25), transparent 30%),
-radial-gradient(circle at top left, rgba(6,182,212,.2), transparent 30%),
-linear-gradient(180deg,#0a0f1d,#0b1020);
-color:var(--text);
-}
+    *{box-sizing:border-box}
 
-.container{
-max-width:1100px;
-margin:auto;
-padding:20px;
-}
+    html{
+      scroll-behavior:smooth;
+    }
 
-header{
-display:flex;
-justify-content:space-between;
-align-items:center;
-margin-bottom:40px;
-}
+    body{
+      margin:0;
+      font-family:Arial,Segoe UI,Tahoma,sans-serif;
+      background:
+      radial-gradient(circle at top right, rgba(124,58,237,.25), transparent 30%),
+      radial-gradient(circle at top left, rgba(6,182,212,.2), transparent 30%),
+      linear-gradient(180deg,#0a0f1d,#0b1020);
+      color:var(--text);
+    }
 
-.brand{
-display:flex;
-align-items:center;
-gap:12px;
-font-weight:bold;
-font-size:22px;
-}
+    a{
+      text-decoration:none;
+      color:inherit;
+    }
 
-.logo{
-width:42px;
-height:42px;
-border-radius:14px;
-display:flex;
-align-items:center;
-justify-content:center;
-background:linear-gradient(135deg,var(--accent),var(--accent2));
-}
+    .container{
+      max-width:1100px;
+      margin:auto;
+      padding:20px;
+    }
 
-nav a{
-color:var(--muted);
-margin-right:10px;
-padding:8px 14px;
-border-radius:999px;
-border:1px solid transparent;
-transition:.2s;
-}
+    header{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:40px;
+      gap:16px;
+      flex-wrap:wrap;
+    }
 
-nav a:hover{
-border-color:var(--border);
-color:white;
-}
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      font-weight:bold;
+      font-size:22px;
+    }
 
-.hero{
-background:var(--card);
-border:1px solid var(--border);
-padding:60px 30px;
-border-radius:30px;
-text-align:center;
-margin-bottom:40px;
-}
+    .logo{
+      width:42px;
+      height:42px;
+      border-radius:14px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:linear-gradient(135deg,var(--accent),var(--accent2));
+      box-shadow:var(--shadow);
+    }
 
-.hero h1{
-font-size:42px;
-margin-bottom:10px;
-}
+    nav{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+    }
 
-.hero p{
-color:var(--muted);
-max-width:650px;
-margin:auto;
-font-size:18px;
-}
+    nav a{
+      color:var(--muted);
+      padding:8px 14px;
+      border-radius:999px;
+      border:1px solid transparent;
+      transition:.2s;
+    }
 
-.btn{
-display:inline-block;
-margin-top:25px;
-padding:14px 24px;
-border-radius:999px;
-font-weight:bold;
-background:linear-gradient(135deg,var(--accent),var(--accent2));
-}
+    nav a:hover{
+      border-color:var(--border);
+      color:white;
+      background:rgba(255,255,255,0.05);
+    }
 
-.features{
-display:grid;
-grid-template-columns:repeat(auto-fit,minmax(250px,1fr));
-gap:20px;
-margin-top:30px;
-}
+    .hero{
+      background:var(--card);
+      border:1px solid var(--border);
+      padding:60px 30px;
+      border-radius:30px;
+      text-align:center;
+      margin-bottom:40px;
+      box-shadow:var(--shadow);
+    }
 
-.card{
-background:var(--card);
-border:1px solid var(--border);
-padding:24px;
-border-radius:var(--radius);
-}
+    .hero-badge{
+      display:inline-block;
+      padding:8px 14px;
+      border-radius:999px;
+      background:rgba(255,255,255,0.06);
+      border:1px solid var(--border);
+      color:var(--muted);
+      margin-bottom:18px;
+      font-size:14px;
+    }
 
-.card h3{
-margin-top:0;
-}
+    .hero h1{
+      font-size:42px;
+      margin:0 0 14px;
+      line-height:1.3;
+    }
 
-.card p{
-color:var(--muted);
-}
+    .hero p{
+      color:var(--muted);
+      max-width:760px;
+      margin:auto;
+      font-size:18px;
+      line-height:1.9;
+    }
 
-.footer{
-margin-top:40px;
-padding:25px;
-background:var(--card);
-border:1px solid var(--border);
-border-radius:var(--radius);
-display:flex;
-justify-content:space-between;
-flex-wrap:wrap;
-gap:10px;
-}
+    .hero-actions{
+      display:flex;
+      justify-content:center;
+      gap:12px;
+      flex-wrap:wrap;
+      margin-top:25px;
+    }
 
-.footer a{
-color:var(--muted);
-}
+    .btn{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      min-height:48px;
+      padding:14px 24px;
+      border-radius:999px;
+      font-weight:bold;
+      transition:.2s;
+      border:1px solid var(--border);
+    }
 
-</style>
+    .btn-primary{
+      background:linear-gradient(135deg,var(--accent),var(--accent2));
+      color:#fff;
+      border:none;
+    }
+
+    .btn-secondary{
+      background:rgba(255,255,255,0.05);
+      color:var(--text);
+    }
+
+    .btn:hover{
+      transform:translateY(-1px);
+      opacity:.97;
+    }
+
+    .features{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+      gap:20px;
+      margin-top:30px;
+    }
+
+    .card{
+      background:var(--card);
+      border:1px solid var(--border);
+      padding:24px;
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+    }
+
+    .card h2,
+    .card h3{
+      margin-top:0;
+      margin-bottom:10px;
+      font-size:22px;
+    }
+
+    .card p{
+      color:var(--muted);
+      line-height:1.9;
+      margin:0;
+    }
+
+    .about{
+      margin-top:30px;
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      padding:28px;
+      box-shadow:var(--shadow);
+    }
+
+    .about h2{
+      margin-top:0;
+      margin-bottom:12px;
+    }
+
+    .about p{
+      color:var(--muted);
+      line-height:1.9;
+      margin:0;
+    }
+
+    .footer{
+      margin-top:40px;
+      padding:25px;
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      display:flex;
+      justify-content:space-between;
+      flex-wrap:wrap;
+      gap:10px;
+      box-shadow:var(--shadow);
+    }
+
+    .footer a{
+      color:var(--muted);
+    }
+
+    @media (max-width: 768px){
+      .hero{
+        padding:40px 20px;
+      }
+
+      .hero h1{
+        font-size:32px;
+      }
+
+      .hero p{
+        font-size:16px;
+      }
+
+      .card h2,
+      .card h3,
+      .about h2{
+        font-size:20px;
+      }
+    }
+  </style>
 </head>
 
 <body>
+  <div class="container">
 
-<div class="container">
+    <header>
+      <div class="brand">
+        <div class="logo">B</div>
+        <span>Bimo</span>
+      </div>
 
-<header>
+      <nav>
+        <a href="/">الرئيسية</a>
+        <a href="/privacy">سياسة الخصوصية</a>
+        <a href="/terms">اتفاقية المستخدم</a>
+      </nav>
+    </header>
 
-<div class="brand">
-<div class="logo">B</div>
-Bimo
-</div>
+    <main>
+      <section class="hero">
+        <div class="hero-badge">منصة دردشة وتواصل اجتماعي حديثة</div>
 
-<nav>
-<a href="/privacy">سياسة الخصوصية</a>
-<a href="/terms">اتفاقية المستخدم</a>
-</nav>
+        <h1>مرحبًا بك في Bimo</h1>
 
-</header>
+        <p>
+          Bimo هو تطبيق دردشة وتواصل اجتماعي يتيح للمستخدمين إنشاء غرف محادثة،
+          التفاعل مع الآخرين، مشاركة القصص والتواصل الفوري في بيئة حديثة وآمنة
+          وسهلة الاستخدام.
+        </p>
 
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="/terms">استكشاف المزيد</a>
+          <a class="btn btn-secondary" href="/privacy">سياسة الخصوصية</a>
+        </div>
+      </section>
 
-<section class="hero">
+      <section class="features">
+        <article class="card">
+          <h2>غرف محادثة</h2>
+          <p>
+            يمكنك إنشاء غرف محادثة عامة أو خاصة والتواصل مع المستخدمين
+            بسهولة ضمن تجربة اجتماعية مرنة وسريعة.
+          </p>
+        </article>
 
-<h1>مرحبًا بك في Bimo</h1>
+        <article class="card">
+          <h2>تفاعل مباشر</h2>
+          <p>
+            يدعم Bimo الدردشة الفورية والتواصل السلس بما يساعد المستخدمين
+            على البقاء على اتصال في أي وقت.
+          </p>
+        </article>
 
-<p>
-Bimo هو تطبيق دردشة حديث يتيح للمستخدمين التواصل وإنشاء غرف محادثة
-والتفاعل مع الآخرين بسهولة وأمان.
-</p>
+        <article class="card">
+          <h2>تجربة آمنة</h2>
+          <p>
+            نحرص على توفير بيئة استخدام آمنة مع أدوات إدارة وسياسات واضحة
+            لحماية المستخدمين والمنصة.
+          </p>
+        </article>
 
-<a class="btn">تحميل التطبيق قريبًا</a>
+        <article class="card">
+          <h2>واجهة حديثة</h2>
+          <p>
+            تصميم عصري وسريع الاستجابة يمنح المستخدمين تجربة مريحة
+            على مختلف الأجهزة والشاشات.
+          </p>
+        </article>
+      </section>
 
-</section>
+      <section class="about">
+        <h2>ما هو تطبيق Bimo؟</h2>
+        <p>
+          تطبيق Bimo هو منصة اجتماعية مخصصة للدردشة والتواصل، تساعد المستخدمين
+          على بناء علاقات رقمية، الدخول في غرف محادثة، ومشاركة التجارب اليومية
+          في مساحة تفاعلية حديثة. تم تطوير Bimo ليجمع بين البساطة، السرعة، والأمان
+          في تجربة واحدة تناسب الاستخدام اليومي.
+        </p>
+      </section>
+    </main>
 
+    <footer class="footer">
+      <div>© 2026 Bimo. جميع الحقوق محفوظة.</div>
 
-<section class="features">
+      <div>
+        <a href="/privacy">سياسة الخصوصية</a> |
+        <a href="/terms">اتفاقية المستخدم</a>
+      </div>
+    </footer>
 
-<div class="card">
-<h3>غرف محادثة</h3>
-<p>
-يمكنك إنشاء غرف محادثة عامة أو خاصة والتواصل مع المستخدمين بسهولة.
-</p>
-</div>
-
-<div class="card">
-<h3>تفاعل مباشر</h3>
-<p>
-الدردشة الفورية وإرسال الصور والرسائل الصوتية بسهولة.
-</p>
-</div>
-
-<div class="card">
-<h3>تجربة آمنة</h3>
-<p>
-نحرص على توفير بيئة آمنة لجميع المستخدمين مع أدوات إدارة متقدمة.
-</p>
-</div>
-
-<div class="card">
-<h3>واجهة حديثة</h3>
-<p>
-تصميم بسيط وسريع يضمن تجربة استخدام ممتعة على جميع الأجهزة.
-</p>
-</div>
-
-</section>
-
-
-<div class="footer">
-
-<div>
-© 2026 Bimo
-</div>
-
-<div>
-<a href="/privacy">سياسة الخصوصية</a> |
-<a href="/terms">اتفاقية المستخدم</a>
-</div>
-
-</div>
-
-</div>
-
+  </div>
 </body>
 </html>
