@@ -472,7 +472,7 @@ export default class RoomControlController {
         const room = await Room.findById(roomId).select(SAFE_SELECT).session(session);
         if (!room) throw new Error("Room not found");
 
-        requireRole(room, userId, ["creator", "owner"]);
+        // requireRole(room, userId, ["creator", "owner"]);
 
         // ✅ خصم
         await chargeCoinZ(userId, COINZ_PRICES.BOOST, session);
