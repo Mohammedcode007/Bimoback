@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Bimo - منصة الدردشة والتواصل</title>
+
+<meta name="description" content="Bimo هو تطبيق دردشة حديث يتيح للمستخدمين التواصل وإنشاء غرف محادثة ومشاركة التجارب بطريقة آمنة وسريعة." />
+
+<style>
+
+:root{
+--bg:#0b1020;
+--card:rgba(255,255,255,0.07);
+--border:rgba(255,255,255,0.12);
+--text:#f8fafc;
+--muted:#cbd5e1;
+--accent:#7c3aed;
+--accent2:#06b6d4;
+--radius:22px;
+}
+
+*{box-sizing:border-box}
+
+body{
+margin:0;
+font-family:Arial,Segoe UI;
+background:
+radial-gradient(circle at top right, rgba(124,58,237,.25), transparent 30%),
+radial-gradient(circle at top left, rgba(6,182,212,.2), transparent 30%),
+linear-gradient(180deg,#0a0f1d,#0b1020);
+color:var(--text);
+}
+
+.container{
+max-width:1100px;
+margin:auto;
+padding:20px;
+}
+
+header{
+display:flex;
+justify-content:space-between;
+align-items:center;
+margin-bottom:40px;
+}
+
+.brand{
+display:flex;
+align-items:center;
+gap:12px;
+font-weight:bold;
+font-size:22px;
+}
+
+.logo{
+width:42px;
+height:42px;
+border-radius:14px;
+display:flex;
+align-items:center;
+justify-content:center;
+background:linear-gradient(135deg,var(--accent),var(--accent2));
+}
+
+nav a{
+color:var(--muted);
+margin-right:10px;
+padding:8px 14px;
+border-radius:999px;
+border:1px solid transparent;
+transition:.2s;
+}
+
+nav a:hover{
+border-color:var(--border);
+color:white;
+}
+
+.hero{
+background:var(--card);
+border:1px solid var(--border);
+padding:60px 30px;
+border-radius:30px;
+text-align:center;
+margin-bottom:40px;
+}
+
+.hero h1{
+font-size:42px;
+margin-bottom:10px;
+}
+
+.hero p{
+color:var(--muted);
+max-width:650px;
+margin:auto;
+font-size:18px;
+}
+
+.btn{
+display:inline-block;
+margin-top:25px;
+padding:14px 24px;
+border-radius:999px;
+font-weight:bold;
+background:linear-gradient(135deg,var(--accent),var(--accent2));
+}
+
+.features{
+display:grid;
+grid-template-columns:repeat(auto-fit,minmax(250px,1fr));
+gap:20px;
+margin-top:30px;
+}
+
+.card{
+background:var(--card);
+border:1px solid var(--border);
+padding:24px;
+border-radius:var(--radius);
+}
+
+.card h3{
+margin-top:0;
+}
+
+.card p{
+color:var(--muted);
+}
+
+.footer{
+margin-top:40px;
+padding:25px;
+background:var(--card);
+border:1px solid var(--border);
+border-radius:var(--radius);
+display:flex;
+justify-content:space-between;
+flex-wrap:wrap;
+gap:10px;
+}
+
+.footer a{
+color:var(--muted);
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<header>
+
+<div class="brand">
+<div class="logo">B</div>
+Bimo
+</div>
+
+<nav>
+<a href="/privacy">سياسة الخصوصية</a>
+<a href="/terms">اتفاقية المستخدم</a>
+</nav>
+
+</header>
+
+
+<section class="hero">
+
+<h1>مرحبًا بك في Bimo</h1>
+
+<p>
+Bimo هو تطبيق دردشة حديث يتيح للمستخدمين التواصل وإنشاء غرف محادثة
+والتفاعل مع الآخرين بسهولة وأمان.
+</p>
+
+<a class="btn">تحميل التطبيق قريبًا</a>
+
+</section>
+
+
+<section class="features">
+
+<div class="card">
+<h3>غرف محادثة</h3>
+<p>
+يمكنك إنشاء غرف محادثة عامة أو خاصة والتواصل مع المستخدمين بسهولة.
+</p>
+</div>
+
+<div class="card">
+<h3>تفاعل مباشر</h3>
+<p>
+الدردشة الفورية وإرسال الصور والرسائل الصوتية بسهولة.
+</p>
+</div>
+
+<div class="card">
+<h3>تجربة آمنة</h3>
+<p>
+نحرص على توفير بيئة آمنة لجميع المستخدمين مع أدوات إدارة متقدمة.
+</p>
+</div>
+
+<div class="card">
+<h3>واجهة حديثة</h3>
+<p>
+تصميم بسيط وسريع يضمن تجربة استخدام ممتعة على جميع الأجهزة.
+</p>
+</div>
+
+</section>
+
+
+<div class="footer">
+
+<div>
+© 2026 Bimo
+</div>
+
+<div>
+<a href="/privacy">سياسة الخصوصية</a> |
+<a href="/terms">اتفاقية المستخدم</a>
+</div>
+
+</div>
+
+</div>
+
+</body>
+</html>
