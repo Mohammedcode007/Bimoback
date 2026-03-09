@@ -394,12 +394,13 @@ provider: {
       index: true,
     },
 
-    city: {
-      type: String,
-      trim: true,
-      maxlength: 60,
-      default: "",
-    },
+ city: {
+  type: String,
+  trim: true,
+  maxlength: 60,
+  default: "",
+  index: true
+},
 
     // خصوصية
     privacy: {

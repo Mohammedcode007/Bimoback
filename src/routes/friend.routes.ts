@@ -10,12 +10,17 @@ router.use(protect);
    FRIEND ACTIONS
 ========================= */
 
+router.get("/suggested", friendController.suggested);
+
+router.get("/", friendController.list);
+
 router.post("/:id/send", friendController.send);
 router.post("/:id/accept", friendController.accept);
+router.post("/:id/cancel", friendController.cancel);
+
 router.delete("/:id/remove", friendController.remove);
+
 router.post("/:id/block", friendController.block);
 router.post("/:id/unblock", friendController.unblock);
-router.get("/", friendController.list);
-router.post("/:id/cancel", friendController.cancel);
 
 export default router;

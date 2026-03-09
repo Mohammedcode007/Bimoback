@@ -488,3 +488,57 @@ export const updateOnlineStatus = async (req: Request, res: Response) => {
     res.status(500).json({ message: "Failed to update status" });
   }
 };
+
+/* ======================================================
+   UPDATE COUNTRY & CITY
+====================================================== */
+
+export const updateLocation = async (req: Request, res: Response) => {
+  try {
+
+    const userId = req.user.id;
+
+    const { country, city } = req.body;
+
+    if (!country && !city) {
+      return res.status(400).json({
+        message: "Country or city is required"
+      });
+    }
+
+    const updateData: any = {};
+
+    if (country !== undefined) {
+      updateData.country = String(country).trim();
+    }
+
+    if (city !== undefined) {
+      updateData.city = String(city).trim();
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { $set: updateData },
+      { new: true }
+    ).select("country city");
+
+    if (!updatedUser) {
+      return res.status(404).json({
+        message: "User not found"
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Location updated successfully",
+      data: updatedUser
+    });
+
+  } catch (error) {
+    console.error("❌ UPDATE LOCATION ERROR:", error);
+
+    res.status(500).json({
+      message: "Failed to update location"
+    });
+  }
+};

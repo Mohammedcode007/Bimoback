@@ -132,7 +132,20 @@ class FriendController {
     }
   }
 
+/* ================= SUGGESTED FRIENDS ================= */
 
+async suggested(req: Request, res: Response) {
+  try {
+    const currentUserId = req.user!.id;
+    const limit = Number(req.query.limit) || 20;
+
+    const data = await friendService.getSuggestedFriends(currentUserId, limit);
+
+    res.json(data);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message || "Failed to load suggested friends" });
+  }
+}
   /* ================= UNBLOCK USER ================= */
 
   async unblock(req: Request<Params>, res: Response) {

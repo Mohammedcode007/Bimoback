@@ -4,6 +4,121 @@ import notificationService from "./notification.service";
 import mongoose from "mongoose";
 
 class FriendService {
+    async getSuggestedFriends(currentUserId: string, limit = 20) {
+    const me = await User.findById(currentUserId).select(
+      "_id country city tags blockedUsers"
+    );
+
+    if (!me) {
+      throw new Error("User not found");
+    }
+
+    // جميع العلاقات الحالية أو المعلقة
+    const relations = await Friend.find({
+      $or: [{ requester: currentUserId }, { recipient: currentUserId }],
+    }).select("requester recipient status");
+
+    const excludedIds = new Set<string>();
+    excludedIds.add(String(currentUserId));
+
+    for (const rel of relations) {
+      excludedIds.add(String(rel.requester));
+      excludedIds.add(String(rel.recipient));
+    }
+
+    // المحظورون من جهتي
+    for (const id of me.blockedUsers || []) {
+      excludedIds.add(String(id));
+    }
+
+    // من قاموا بحظري
+    const blockedMeUsers = await User.find({
+      blockedUsers: new mongoose.Types.ObjectId(currentUserId),
+    }).select("_id");
+
+    for (const u of blockedMeUsers) {
+      excludedIds.add(String(u._id));
+    }
+
+    const excludedObjectIds = Array.from(excludedIds).map(
+      (id) => new mongoose.Types.ObjectId(id)
+    );
+
+    const myTags = Array.isArray(me.tags) ? me.tags : [];
+
+    const suggestions = await User.aggregate([
+      {
+        $match: {
+          _id: { $nin: excludedObjectIds },
+          "privacy.profileVisible": { $ne: false },
+        },
+      },
+      {
+        $addFields: {
+          sameCountryScore: {
+            $cond: [{ $eq: ["$country", me.country || null] }, 30, 0],
+          },
+          sameCityScore: {
+            $cond: [{ $eq: ["$city", me.city || null] }, 40, 0],
+          },
+          commonTagsCount: {
+            $size: {
+              $setIntersection: ["$tags", myTags],
+            },
+          },
+        },
+      },
+      {
+        $addFields: {
+          tagsScore: { $multiply: ["$commonTagsCount", 10] },
+          activityScore: {
+            $add: [
+              { $min: ["$followersCount", 20] },
+              { $cond: ["$isOnline", 5, 0] },
+            ],
+          },
+        },
+      },
+      {
+        $addFields: {
+          totalScore: {
+            $add: [
+              "$sameCountryScore",
+              "$sameCityScore",
+              "$tagsScore",
+              "$activityScore",
+            ],
+          },
+        },
+      },
+      {
+        $sort: {
+          totalScore: -1,
+          isOnline: -1,
+          followersCount: -1,
+          createdAt: -1,
+        },
+      },
+      {
+        $project: {
+          password: 0,
+          fcmTokens: 0,
+          blockedUsers: 0,
+          notifications: 0,
+          partnerPreferences: 0,
+        },
+      },
+      {
+        $limit: limit,
+      },
+    ]);
+
+    return {
+      success: true,
+      count: suggestions.length,
+      data: suggestions,
+    };
+  }
   async getFriendIds(userId: string): Promise<string[]> {
     const rels = await Friend.find({
       status: "accepted",
