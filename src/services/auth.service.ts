@@ -54,7 +54,7 @@ const generateToken = (user: any) => {
       atUsername: user.atUsername
     },
     process.env.JWT_SECRET as string,
-    { expiresIn: "7d" }
+    { expiresIn: "30d" }
   );
 };
 
