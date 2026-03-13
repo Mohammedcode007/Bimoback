@@ -5,7 +5,10 @@ import {
   loginUser,
   logoutUser,
   toggleInvisibleStatus,
-  authWithGoogle
+  authWithGoogle,
+  verifyResetOtpService,
+  resetPasswordService,
+  forgotPasswordService
 } from "../services/auth.service";
 
 /* =========================
@@ -141,5 +144,62 @@ export const toggleInvisible = async (req: Request, res: Response) => {
    
 
     return res.status(400).json({ message: error.message });
+  }
+};
+
+/* =========================
+   FORGOT PASSWORD
+========================= */
+export const forgotPassword = async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+
+    const data = await forgotPasswordService(email);
+
+    return res.status(200).json(data);
+  } catch (error: any) {
+    const statusCode = error.statusCode || 400;
+    return res.status(statusCode).json({
+      success: false,
+      message: error.message || "Failed to send reset code",
+    });
+  }
+};
+
+/* =========================
+   VERIFY RESET OTP
+========================= */
+export const verifyResetOtp = async (req: Request, res: Response) => {
+  try {
+    const { email, otp } = req.body;
+
+    const data = await verifyResetOtpService(email, otp);
+
+    return res.status(200).json(data);
+  } catch (error: any) {
+    const statusCode = error.statusCode || 400;
+    return res.status(statusCode).json({
+      success: false,
+      message: error.message || "Invalid or expired code",
+    });
+  }
+};
+
+/* =========================
+   RESET PASSWORD
+========================= */
+export const resetPassword = async (req: Request, res: Response) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+
+    const data = await resetPasswordService(email, otp, newPassword);
+
+    return res.status(200).json(data);
+  } catch (error: any) {
+    const statusCode = error.statusCode || 400;
+    return res.status(statusCode).json({
+      success: false,
+      message: error.message || "Failed to reset password",
+    });
   }
 };

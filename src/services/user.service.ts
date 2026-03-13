@@ -181,6 +181,49 @@ async updateFullProfileSettings(
 
   return updated;
 }
+async changeMyEmail(userId: string, newEmail: string): Promise<IUser> {
+  if (!Types.ObjectId.isValid(userId)) {
+    throw new Error("Invalid user id");
+  }
+
+  if (typeof newEmail !== "string" || !newEmail.trim()) {
+    throw new Error("Email is required");
+  }
+
+  const email = newEmail.trim().toLowerCase();
+
+  // فحص بسيط لصيغة البريد
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    throw new Error("Invalid email format");
+  }
+
+  // تأكد أن المستخدم موجود
+  const currentUser = await User.findById(userId);
+  if (!currentUser) {
+    throw new Error("User not found");
+  }
+
+  // لو هو نفس البريد الحالي
+  if ((currentUser.email || "").trim().toLowerCase() === email) {
+    throw new Error("This email is already your current email");
+  }
+
+  // التأكد أن البريد unique
+  const existingUser = await User.findOne({
+    email,
+    _id: { $ne: userId },
+  });
+
+  if (existingUser) {
+    throw new Error("Email already in use");
+  }
+
+  currentUser.email = email;
+  await currentUser.save();
+
+  return currentUser;
+}
   async search(currentUserId: string, query: string) {
 
     const currentObjectId = new mongoose.Types.ObjectId(currentUserId);

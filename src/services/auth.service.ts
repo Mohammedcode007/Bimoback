@@ -5,7 +5,9 @@ import { hashPassword, comparePassword } from "../utils/hash";
 import jwt from "jsonwebtoken";
 import Friend from "../models/Friend";
 import { getFirebaseAdmin } from "../config/firebaseAdmin";
-
+import { hashOtp, compareOtp } from "../utils/otpHash";
+import { sendResetOtpEmail } from "./email.service";
+import { generateOtp } from "../utils/generateOtp";
 type GoogleAuthInput = {
   idToken: string;
   username?: string;
@@ -436,5 +438,220 @@ export const toggleInvisibleStatus = async (
 
   return {
     isInvisible: user.isInvisible
+  };
+};
+
+function getOtpExpiresMs() {
+  const minutes = Number(process.env.OTP_EXPIRES_MINUTES || 15);
+  return minutes * 60 * 1000;
+}
+
+function getOtpCooldownMs() {
+  const seconds = Number(process.env.OTP_RESEND_COOLDOWN_SECONDS || 30);
+  return seconds * 1000;
+}
+
+function getOtpMaxAttempts() {
+  return Number(process.env.OTP_MAX_VERIFY_ATTEMPTS || 5);
+}
+export const forgotPasswordService = async (email: string) => {
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+
+  if (!normalizedEmail) {
+    const err: any = new Error("Email is required");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const user = await User.findOne({
+    email: normalizedEmail,
+    provider: "local",
+  });
+
+  // لا نكشف هل البريد موجود أم لا
+  if (!user) {
+    return {
+      success: true,
+      message: "If the email exists, a verification code has been sent.",
+    };
+  }
+
+  const now = Date.now();
+  const cooldownMs = getOtpCooldownMs();
+
+  if (
+    user.resetPasswordOtpRequestedAt &&
+    now - new Date(user.resetPasswordOtpRequestedAt).getTime() < cooldownMs
+  ) {
+    const remainingSeconds = Math.ceil(
+      (cooldownMs - (now - new Date(user.resetPasswordOtpRequestedAt).getTime())) / 1000
+    );
+
+    const err: any = new Error(
+      `Please wait ${remainingSeconds} seconds before requesting another code.`
+    );
+    err.statusCode = 429;
+    throw err;
+  }
+
+  const otp = generateOtp(6);
+  const hashedOtp = await hashOtp(otp);
+
+  user.resetPasswordOtpHash = hashedOtp;
+  user.resetPasswordOtpExpiresAt = new Date(now + getOtpExpiresMs());
+  user.resetPasswordOtpRequestedAt = new Date(now);
+  user.resetPasswordOtpVerifyAttempts = 0;
+  user.resetPasswordOtpLastAttemptAt = null;
+
+  await user.save();
+
+  await sendResetOtpEmail(user.email as string, otp);
+
+  return {
+    success: true,
+    message: "If the email exists, a verification code has been sent.",
+  };
+};
+
+export const verifyResetOtpService = async (email: string, otp: string) => {
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  const normalizedOtp = String(otp || "").trim();
+
+  if (!normalizedEmail || !normalizedOtp) {
+    const err: any = new Error("Email and OTP are required");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const user = await User.findOne({
+    email: normalizedEmail,
+    provider: "local",
+  });
+
+  if (
+    !user ||
+    !user.resetPasswordOtpHash ||
+    !user.resetPasswordOtpExpiresAt
+  ) {
+    const err: any = new Error("Invalid or expired code");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (new Date(user.resetPasswordOtpExpiresAt).getTime() < Date.now()) {
+    const err: any = new Error("Invalid or expired code");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if ((user.resetPasswordOtpVerifyAttempts || 0) >= getOtpMaxAttempts()) {
+    const err: any = new Error("Too many invalid attempts. Please request a new code.");
+    err.statusCode = 429;
+    throw err;
+  }
+
+  const isMatch = await compareOtp(normalizedOtp, user.resetPasswordOtpHash);
+
+  user.resetPasswordOtpLastAttemptAt = new Date();
+
+  if (!isMatch) {
+    user.resetPasswordOtpVerifyAttempts =
+      (user.resetPasswordOtpVerifyAttempts || 0) + 1;
+
+    await user.save();
+
+    const err: any = new Error("Invalid or expired code");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  await user.save();
+
+  return {
+    success: true,
+    message: "OTP verified successfully",
+  };
+};
+
+export const resetPasswordService = async (
+  email: string,
+  otp: string,
+  newPassword: string
+) => {
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  const normalizedOtp = String(otp || "").trim();
+  const cleanPassword = String(newPassword || "").trim();
+
+  if (!normalizedEmail || !normalizedOtp || !cleanPassword) {
+    const err: any = new Error("Email, OTP and new password are required");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (cleanPassword.length < 6) {
+    const err: any = new Error("Password must be at least 6 characters");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const user = await User.findOne({
+    email: normalizedEmail,
+    provider: "local",
+  });
+
+  if (
+    !user ||
+    !user.resetPasswordOtpHash ||
+    !user.resetPasswordOtpExpiresAt
+  ) {
+    const err: any = new Error("Invalid or expired code");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (new Date(user.resetPasswordOtpExpiresAt).getTime() < Date.now()) {
+    const err: any = new Error("Invalid or expired code");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if ((user.resetPasswordOtpVerifyAttempts || 0) >= getOtpMaxAttempts()) {
+    const err: any = new Error("Too many invalid attempts. Please request a new code.");
+    err.statusCode = 429;
+    throw err;
+  }
+
+  const isMatch = await compareOtp(normalizedOtp, user.resetPasswordOtpHash);
+
+  if (!isMatch) {
+    user.resetPasswordOtpVerifyAttempts =
+      (user.resetPasswordOtpVerifyAttempts || 0) + 1;
+    user.resetPasswordOtpLastAttemptAt = new Date();
+
+    await user.save();
+
+    const err: any = new Error("Invalid or expired code");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // هنا نستخدم hashPassword الموجودة أصلًا في مشروعك
+  const hashedNewPassword = await hashPassword(cleanPassword);
+
+  user.password = hashedNewPassword;
+  user.provider = "local";
+
+  // تنظيف بيانات OTP بعد النجاح
+  user.resetPasswordOtpHash = null;
+  user.resetPasswordOtpExpiresAt = null;
+  user.resetPasswordOtpRequestedAt = null;
+  user.resetPasswordOtpVerifyAttempts = 0;
+  user.resetPasswordOtpLastAttemptAt = null;
+
+  await user.save();
+
+  return {
+    success: true,
+    message: "Password reset successfully",
   };
 };

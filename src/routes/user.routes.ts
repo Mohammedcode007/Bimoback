@@ -15,7 +15,8 @@ import {
   changePassword,
   debitMyCoinz,
   checkBlockStatus,
-  updateLocation
+  updateLocation,
+  changeMyEmail
 } from "../controllers/user.controller";
 
 const router = Router();
@@ -34,5 +35,6 @@ router.post("/status", protect, updateOnlineStatus);
 router.patch("/password", protect, changePassword);
 router.put("/update-location", protect, updateLocation);
 router.patch("/coinz/debit-me", protect, debitMyCoinz);
+router.patch("/me/change-email", protect, changeMyEmail);
 router.get("/block-status/:targetUserId", protect, checkBlockStatus);
 export default router;

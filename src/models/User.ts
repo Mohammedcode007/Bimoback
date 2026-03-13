@@ -70,16 +70,20 @@ export type PartnerPreferences = {
 export interface IUser extends Document {
   username: string;
   atUsername: string;
-   password?: string | null;
+  password?: string | null;
   email?: string | null;
   googleUid?: string | null;
   provider?: "local" | "google";
 
   role: UserRole;
-
+  resetPasswordOtpHash?: string | null;
+  resetPasswordOtpExpiresAt?: Date | null;
+  resetPasswordOtpRequestedAt?: Date | null;
+  resetPasswordOtpVerifyAttempts?: number;
+  resetPasswordOtpLastAttemptAt?: Date | null;
   isOnline: boolean;
   isInvisible?: boolean;
-lastSeen?: Date | null;
+  lastSeen?: Date | null;
   blockedUsers: mongoose.Types.ObjectId[];
   CoinzBalance: number; // 💰 رصيد عملة Coinz
 
@@ -195,34 +199,36 @@ const UserSchema = new Schema<IUser>(
       trim: true,
     },
 
- password: {
-  type: String,
-  required: function (this: IUser) {
-    return (this.provider || "local") !== "google";
-  },
-  default: null,
-},
+    password: {
+      type: String,
+      required: function (this: IUser) {
+        return (this.provider || "local") !== "google";
+      },
+      default: null,
+    },
 
-email: {
-  type: String,
+    email: {
+      type: String,
   trim: true,
   lowercase: true,
-  index: true,
-  default: null,
-},
+  unique: true,
+  sparse: true,
+      index: true,
+      default: null,
+    },
 
-googleUid: {
-  type: String,
-  default: null,
-  index: true,
-},
+    googleUid: {
+      type: String,
+      default: null,
+      index: true,
+    },
 
-provider: {
-  type: String,
-  enum: ["local", "google"],
-  default: "local",
-  index: true,
-},
+    provider: {
+      type: String,
+      enum: ["local", "google"],
+      default: "local",
+      index: true,
+    },
 
     role: {
       type: String,
@@ -234,7 +240,7 @@ provider: {
       type: [UserStorySchema],
       default: [],
     },
-        fcmTokens: {
+    fcmTokens: {
       type: [String],
       default: [],
       index: true,
@@ -263,7 +269,32 @@ provider: {
       type: Boolean,
       default: false,
     },
+        resetPasswordOtpHash: {
+      type: String,
+      default: null,
+    },
 
+    resetPasswordOtpExpiresAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+
+    resetPasswordOtpRequestedAt: {
+      type: Date,
+      default: null,
+    },
+
+    resetPasswordOtpVerifyAttempts: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    resetPasswordOtpLastAttemptAt: {
+      type: Date,
+      default: null,
+    },
     isInvisible: {
       type: Boolean,
       default: false,
@@ -394,13 +425,13 @@ provider: {
       index: true,
     },
 
- city: {
-  type: String,
-  trim: true,
-  maxlength: 60,
-  default: "",
-  index: true
-},
+    city: {
+      type: String,
+      trim: true,
+      maxlength: 60,
+      default: "",
+      index: true
+    },
 
     // خصوصية
     privacy: {

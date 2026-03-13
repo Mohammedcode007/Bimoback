@@ -125,6 +125,62 @@ export const changePassword = async (req: Request, res: Response) => {
     return res.status(500).json({ message: "Failed to change password" });
   }
 };
+export const changeMyEmail = async (req: Request, res: Response) => {
+  try {
+    const userId =
+      (req as any).user?.id ||
+      (req as any).user?._id?.toString();
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { email } = req.body as { email?: string };
+
+    const updatedUser = await userService.changeMyEmail(
+      userId,
+      String(email || "")
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Email changed successfully",
+      data: updatedUser,
+    });
+  } catch (error: any) {
+    console.error("❌ CHANGE EMAIL ERROR:", error);
+
+    const msg = error?.message || "Failed to change email";
+
+    if (
+      msg === "Invalid user id" ||
+      msg === "Email is required" ||
+      msg === "Invalid email format" ||
+      msg === "This email is already your current email" ||
+      msg === "Email already in use"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: msg,
+      });
+    }
+
+    if (msg === "User not found") {
+      return res.status(404).json({
+        success: false,
+        message: msg,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to change email",
+    });
+  }
+};
 export const searchUsers = async (req: Request, res: Response) => {
   try {
 
