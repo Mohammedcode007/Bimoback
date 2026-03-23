@@ -164,23 +164,43 @@ export const registerUser = async (
 ===================================================== */
 export const loginUser = async (username: string, password: string) => {
   const rawUsername = String(username || "").trim();
+  const cleanPassword = String(password || "").trim();
   const atUsername = normalizeAtUsername(rawUsername);
+
+  console.log("===== LOGIN DEBUG START =====");
+  console.log("RAW USERNAME:", rawUsername);
+  console.log("NORMALIZED USERNAME:", atUsername);
+  console.log("ENTERED PASSWORD:", cleanPassword);
 
   const user = await User.findOne({ atUsername });
 
+  console.log("USER FOUND:", !!user);
+
   if (!user) {
+    console.log("❌ USER NOT FOUND");
     throw new Error("Invalid credentials");
   }
 
+  console.log("USER ID:", user._id.toString());
+  console.log("STORED HASH:", user.password);
+
   if (!user.password) {
+    console.log("❌ NO PASSWORD (GOOGLE ACCOUNT)");
     throw new Error("This account uses Google sign-in");
   }
 
-  const isMatch = await comparePassword(password, user.password);
+  const isMatch = await comparePassword(cleanPassword, user.password);
+
+  console.log("PASSWORD MATCH RESULT:", isMatch);
 
   if (!isMatch) {
+    console.log("❌ PASSWORD NOT MATCH");
+    console.log("===== LOGIN DEBUG END =====");
     throw new Error("Invalid credentials");
   }
+
+  console.log("✅ LOGIN SUCCESS");
+  console.log("===== LOGIN DEBUG END =====");
 
   const token = generateToken(user);
 
