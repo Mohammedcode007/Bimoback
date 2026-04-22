@@ -1,0 +1,34 @@
+// // config/appVersionConfig.ts
+// export const APP_VERSION_CONFIG = {
+//   android: {
+//    latestVersion: "1.1.1",
+//     minSupportedVersion: "1.1.1",
+// storeUrl: "https://play.google.com/store/apps/details?id=com.mohammed007007.Bimo",
+//   },
+//   ios: {
+//     latestVersion: "1.0.0",
+//     minSupportedVersion: "1.0.0",
+//     storeUrl: "https://apps.apple.com/app/idXXXXXXXXX",
+//   },
+//   message: {
+//     ar: "يوجد تحديث إلزامي لتطبيق بيمو شات. يرجى التحديث للمتابعة.",
+//     en: "A mandatory update is required. Please update to continue.",
+//   },
+// };
+
+export const APP_VERSION_CONFIG = {
+  android: {
+    latestVersion: "1.1.2",
+    minSupportedVersion: "1.1.2",
+    storeUrl: "https://play.google.com/store/apps/details?id=com.mohammed007007.Bimo",
+  },
+  ios: {
+    latestVersion: "1.1.2",
+    minSupportedVersion: "1.1.2",
+    storeUrl: "https://apps.apple.com/app/idXXXXXXXXX",
+  },
+  message: {
+    ar: "يوجد تحديث إلزامي لتطبيق بيمو شات. يرجى التحديث للمتابعة.",
+    en: "A mandatory update is required. Please update to continue.",
+  },
+};

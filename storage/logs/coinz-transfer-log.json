@@ -1,0 +1,208 @@
+[
+  {
+    "id": "tx_1776777537050_x8e13xvn",
+    "createdAt": "2026-04-21T13:18:56.814Z",
+    "createdAtMs": 1776777536814,
+    "sender": {
+      "userId": "69e1ea5544e49c91ab425a7b",
+      "username": "tamer",
+      "atUsername": "tamer",
+      "role": "user",
+      "isUnlimited": false
+    },
+    "target": {
+      "userId": "69d7d7492462eaa6bea69a57",
+      "username": "admin",
+      "atUsername": "admin"
+    },
+    "transfer": {
+      "requestedAmount": 1000,
+      "appliedAmount": 1000,
+      "targetBalanceBefore": 26500,
+      "targetBalanceAfter": 27500
+    },
+    "dailyWindow": {
+      "limit": 1000000,
+      "sentLast24hBefore": 0,
+      "sentLast24hAfter": 1000,
+      "remainingBefore": 1000000,
+      "remainingAfter": 999000
+    },
+    "status": "success",
+    "reason": "ok",
+    "meta": {
+      "senderNameBypass": false
+    }
+  },
+  {
+    "id": "tx_1776777595104_6htoynpq",
+    "createdAt": "2026-04-21T13:19:54.880Z",
+    "createdAtMs": 1776777594880,
+    "sender": {
+      "userId": "69d7d7492462eaa6bea69a57",
+      "username": "admin",
+      "atUsername": "admin",
+      "role": "admin",
+      "isUnlimited": true
+    },
+    "target": {
+      "userId": "69e1ea5544e49c91ab425a7b",
+      "username": "tamer",
+      "atUsername": "tamer"
+    },
+    "transfer": {
+      "requestedAmount": 400,
+      "appliedAmount": 400,
+      "targetBalanceBefore": 87000,
+      "targetBalanceAfter": 87400
+    },
+    "dailyWindow": {
+      "limit": 1000000,
+      "sentLast24hBefore": 0,
+      "sentLast24hAfter": 0,
+      "remainingBefore": 9007199254740991,
+      "remainingAfter": 9007199254740991
+    },
+    "status": "success",
+    "reason": "unlimited_sender",
+    "meta": {
+      "senderNameBypass": true
+    }
+  },
+  {
+    "id": "tx_1776777941656_c8zjubgu",
+    "createdAt": "2026-04-21T13:25:41.416Z",
+    "createdAtMs": 1776777941416,
+    "sender": {
+      "userId": "69d7d7492462eaa6bea69a57",
+      "username": "admin",
+      "atUsername": "admin",
+      "role": "admin",
+      "isUnlimited": true
+    },
+    "target": {
+      "userId": "69e1ea5544e49c91ab425a7b",
+      "username": "tamer",
+      "atUsername": "tamer"
+    },
+    "transfer": {
+      "requestedAmount": 400,
+      "appliedAmount": 400,
+      "targetBalanceBefore": 87400,
+      "targetBalanceAfter": 87800
+    },
+    "dailyWindow": {
+      "limit": 1000000,
+      "sentLast24hBefore": 0,
+      "sentLast24hAfter": 0,
+      "remainingBefore": 9007199254740991,
+      "remainingAfter": 9007199254740991
+    },
+    "status": "success",
+    "reason": "unlimited_sender",
+    "meta": {
+      "senderNameBypass": true,
+      "senderRole": "admin"
+    }
+  },
+  {
+    "id": "tx_1776777987902_7po7zwsq",
+    "createdAt": "2026-04-21T13:26:27.832Z",
+    "createdAtMs": 1776777987832,
+    "sender": {
+      "userId": "69e1ea5544e49c91ab425a7b",
+      "username": "tamer",
+      "atUsername": "tamer",
+      "role": "user",
+      "isUnlimited": false
+    },
+    "target": {
+      "atUsername": "admin"
+    },
+    "transfer": {
+      "requestedAmount": 1000,
+      "appliedAmount": 0
+    },
+    "dailyWindow": {
+      "limit": 1000000,
+      "sentLast24hBefore": 0,
+      "sentLast24hAfter": 0,
+      "remainingBefore": 1000000,
+      "remainingAfter": 1000000
+    },
+    "status": "rejected",
+    "reason": "sender_not_admin",
+    "meta": {
+      "requiredRole": "admin",
+      "actualRole": "user"
+    }
+  },
+  {
+    "id": "tx_1776778063526_ceq7fukc",
+    "createdAt": "2026-04-21T13:27:43.455Z",
+    "createdAtMs": 1776778063455,
+    "sender": {
+      "userId": "69e1ea5544e49c91ab425a7b",
+      "username": "tamer",
+      "atUsername": "tamer",
+      "role": "user",
+      "isUnlimited": false
+    },
+    "target": {
+      "atUsername": "admin"
+    },
+    "transfer": {
+      "requestedAmount": 1000,
+      "appliedAmount": 0
+    },
+    "dailyWindow": {
+      "limit": 1000000,
+      "sentLast24hBefore": 0,
+      "sentLast24hAfter": 0,
+      "remainingBefore": 1000000,
+      "remainingAfter": 1000000
+    },
+    "status": "rejected",
+    "reason": "sender_not_admin",
+    "meta": {
+      "requiredRole": "admin",
+      "actualRole": "user"
+    }
+  },
+  {
+    "id": "tx_1776778227585_fkfmlp3u",
+    "createdAt": "2026-04-21T13:30:27.369Z",
+    "createdAtMs": 1776778227369,
+    "sender": {
+      "userId": "69d7d7492462eaa6bea69a57",
+      "username": "admin",
+      "atUsername": "admin",
+      "role": "admin",
+      "isUnlimited": true
+    },
+    "target": {
+      "userId": "69e1ea5544e49c91ab425a7b",
+      "username": "tamer",
+      "atUsername": "tamer"
+    },
+    "transfer": {
+      "requestedAmount": 400,
+      "appliedAmount": 400,
+      "targetBalanceBefore": 87800,
+      "targetBalanceAfter": 88200
+    },
+    "dailyWindow": {
+      "limit": 1000000,
+      "sentLast24hBefore": 0,
+      "sentLast24hAfter": 0,
+      "remainingBefore": 9007199254740991,
+      "remainingAfter": 9007199254740991
+    },
+    "status": "success",
+    "reason": "unlimited_sender",
+    "meta": {
+      "senderNameBypass": true,
+      "senderRole": "admin"
+    }
+  }
+]
