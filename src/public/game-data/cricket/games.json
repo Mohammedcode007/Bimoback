@@ -1,0 +1,96 @@
+{
+  "games": [
+    {
+      "gameId": "cr_23511fcc",
+      "hostUserId": "69ce260036d8133aa1806b2d",
+      "hostUsername": "⭏⭎𝗜𝃛𝗖̶𝗮̶𝗻̶⇣›♔𝗗̶𝗼⇣›♔𝗶𝗧̶⭏⭎",
+      "createdFromRoomId": "69e966b6fd939be46f66ee4e",
+      "playersRequired": 4,
+      "players": [
+        {
+          "userId": "69ce260036d8133aa1806b2d",
+          "username": "⭏⭎𝗜𝃛𝗖̶𝗮̶𝗻̶⇣›♔𝗗̶𝗼⇣›♔𝗶𝗧̶⭏⭎",
+          "roomId": "69e966b6fd939be46f66ee4e",
+          "joinedAt": "2026-04-23T09:44:28.054Z"
+        }
+      ],
+      "status": "waiting",
+      "createdAt": "2026-04-23T09:44:28.054Z",
+      "joinDeadlineAt": "2026-04-23T09:46:28.054Z",
+      "broadcastRoomIds": [
+        "69ccda2dc2a11ae5b657c36e",
+        "69cced9f637c5a5a95736256",
+        "69cceda6637c5a5a95736259",
+        "69ccedf7637c5a5a95736263",
+        "69ccedfc637c5a5a95736266",
+        "69d62c8c2059258e1c4cf6b3",
+        "69d64a052059258e1c4d0874",
+        "69d782b4750b6b8e36af4238",
+        "69d783251e897b37b011edef",
+        "69d783b382858210e3ea960c",
+        "69da1789cef3e11b80c62c67",
+        "69e79d15fd939be46f66e433",
+        "69e966b6fd939be46f66ee4e",
+        "69e9cd4a30d032fc6debbd36"
+      ],
+      "innings": {
+        "strikerUserId": null,
+        "currentPlayerIndex": 0,
+        "wickets": 0,
+        "totalRuns": 0,
+        "totalBalls": 0,
+        "overBalls": 0,
+        "overNumber": 0,
+        "battingOrder": [],
+        "playerScores": [],
+        "timeline": []
+      }
+    },
+    {
+      "gameId": "cr_8e4270d8",
+      "hostUserId": "69ce260036d8133aa1806b2d",
+      "hostUsername": "⭏⭎𝗜𝃛𝗖̶𝗮̶𝗻̶⇣›♔𝗗̶𝗼⇣›♔𝗶𝗧̶⭏⭎",
+      "createdFromRoomId": "69d62c8c2059258e1c4cf6b3",
+      "playersRequired": 4,
+      "players": [
+        {
+          "userId": "69ce260036d8133aa1806b2d",
+          "username": "⭏⭎𝗜𝃛𝗖̶𝗮̶𝗻̶⇣›♔𝗗̶𝗼⇣›♔𝗶𝗧̶⭏⭎",
+          "roomId": "69d62c8c2059258e1c4cf6b3",
+          "joinedAt": "2026-04-23T10:13:55.548Z"
+        }
+      ],
+      "status": "waiting",
+      "createdAt": "2026-04-23T10:13:55.548Z",
+      "joinDeadlineAt": "2026-04-23T10:15:55.548Z",
+      "broadcastRoomIds": [
+        "69ccda2dc2a11ae5b657c36e",
+        "69cced9f637c5a5a95736256",
+        "69cceda6637c5a5a95736259",
+        "69ccedf7637c5a5a95736263",
+        "69ccedfc637c5a5a95736266",
+        "69d62c8c2059258e1c4cf6b3",
+        "69d64a052059258e1c4d0874",
+        "69d782b4750b6b8e36af4238",
+        "69d783251e897b37b011edef",
+        "69d783b382858210e3ea960c",
+        "69da1789cef3e11b80c62c67",
+        "69e79d15fd939be46f66e433",
+        "69e966b6fd939be46f66ee4e",
+        "69e9cd4a30d032fc6debbd36"
+      ],
+      "innings": {
+        "strikerUserId": null,
+        "currentPlayerIndex": 0,
+        "wickets": 0,
+        "totalRuns": 0,
+        "totalBalls": 0,
+        "overBalls": 0,
+        "overNumber": 0,
+        "battingOrder": [],
+        "playerScores": [],
+        "timeline": []
+      }
+    }
+  ]
+}

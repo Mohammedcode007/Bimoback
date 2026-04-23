@@ -9,6 +9,8 @@ import Message from "../models/Message";
 import roomBotService from "./bot/room-bot/roomBot.service";
 import { executeRoomBotCommand } from "./bot/room-bot/roomBot.commands";
 import { executeRoomMusicCommand } from "./bot/room-bot/roomMusic.command";
+import { handleCricketCommand } from "./cricket/commands-runner";
+import User from "../models/User";
 /**
  * ملاحظة مهمة جدًا:
  * - في RoomMessageSchema عندك يوجد Hook يقوم بزيادة messagesCount تلقائيًا عند إنشاء الرسالة.
@@ -128,71 +130,71 @@ class RoomService {
     return Types.ObjectId.isValid(id);
   }
   private buildMessagePreviewForNotification(message: any) {
-  const msgType = String(message?.type || "text");
+    const msgType = String(message?.type || "text");
 
-  if (msgType === "song") {
-    const title = String(message?.song?.title || message?.content || "").trim();
-    return {
-      kind: "song",
-      labelAr: "أغنية",
-      preview: title || "🎵 أغنية"
-    };
-  }
-
-  if (msgType === "game") {
-    const gt = String(message?.gameType || "").trim();
-    const label =
-      gt === "cricket"
-        ? "لعبة كريكت"
-        : gt === "chess"
-        ? "لعبة شطرنج"
-        : gt === "quiz"
-        ? "لعبة أسئلة"
-        : gt === "xo"
-        ? "لعبة XO"
-        : gt === "cards"
-        ? "لعبة ورق"
-        : "لعبة";
-
-    return {
-      kind: "game",
-      labelAr: label,
-      preview: String(message?.content || label).trim()
-    };
-  }
-
-  const hasMedia = Boolean(message?.media?.url);
-
-  const mime = String(message?.media?.mimeType || "").toLowerCase();
-  const url = String(message?.media?.url || "").toLowerCase();
-
-  const isVideo =
-    mime.startsWith("video/") ||
-    url.endsWith(".mp4") ||
-    url.endsWith(".mov") ||
-    url.endsWith(".mkv") ||
-    url.endsWith(".webm");
-
-  const isImage =
-    mime.startsWith("image/") ||
-    url.endsWith(".jpg") ||
-    url.endsWith(".jpeg") ||
-    url.endsWith(".png") ||
-    url.endsWith(".gif") ||
-    url.endsWith(".webp");
-
-  if (hasMedia || msgType === "image" || msgType === "video") {
-    if (isVideo || msgType === "video") {
-      return { kind: "video", labelAr: "فيديو", preview: "" };
+    if (msgType === "song") {
+      const title = String(message?.song?.title || message?.content || "").trim();
+      return {
+        kind: "song",
+        labelAr: "أغنية",
+        preview: title || "🎵 أغنية"
+      };
     }
-    return { kind: "image", labelAr: "صورة", preview: "" };
+
+    if (msgType === "game") {
+      const gt = String(message?.gameType || "").trim();
+      const label =
+        gt === "cricket"
+          ? "لعبة كريكت"
+          : gt === "chess"
+            ? "لعبة شطرنج"
+            : gt === "quiz"
+              ? "لعبة أسئلة"
+              : gt === "xo"
+                ? "لعبة XO"
+                : gt === "cards"
+                  ? "لعبة ورق"
+                  : "لعبة";
+
+      return {
+        kind: "game",
+        labelAr: label,
+        preview: String(message?.content || label).trim()
+      };
+    }
+
+    const hasMedia = Boolean(message?.media?.url);
+
+    const mime = String(message?.media?.mimeType || "").toLowerCase();
+    const url = String(message?.media?.url || "").toLowerCase();
+
+    const isVideo =
+      mime.startsWith("video/") ||
+      url.endsWith(".mp4") ||
+      url.endsWith(".mov") ||
+      url.endsWith(".mkv") ||
+      url.endsWith(".webm");
+
+    const isImage =
+      mime.startsWith("image/") ||
+      url.endsWith(".jpg") ||
+      url.endsWith(".jpeg") ||
+      url.endsWith(".png") ||
+      url.endsWith(".gif") ||
+      url.endsWith(".webp");
+
+    if (hasMedia || msgType === "image" || msgType === "video") {
+      if (isVideo || msgType === "video") {
+        return { kind: "video", labelAr: "فيديو", preview: "" };
+      }
+      return { kind: "image", labelAr: "صورة", preview: "" };
+    }
+
+    const text = String(message?.content || "").trim();
+    const preview = text.length > 80 ? text.slice(0, 80) + "…" : text;
+
+    return { kind: "text", labelAr: "رسالة", preview };
   }
-
-  const text = String(message?.content || "").trim();
-  const preview = text.length > 80 ? text.slice(0, 80) + "…" : text;
-
-  return { kind: "text", labelAr: "رسالة", preview };
-}
   // private buildMessagePreviewForNotification(message: any) {
   //   const msgType = String(message?.type || "text");
 
@@ -449,35 +451,35 @@ class RoomService {
       isOnline: Boolean((u as any).isOnline),
       lastSeen: (u as any).lastSeen || null,
       role: (u as any).role || base.role,
-activeCustomization: {
-  avatarFrame:
-    (u as any)?.activeCustomization?.avatarFrame || base.activeCustomization.avatarFrame,
-  avatarGif:
-    (u as any)?.activeCustomization?.avatarGif ||
-    (u as any)?.avatarGif ||
-    base.activeCustomization.avatarGif,
-  usernameColor:
-    (u as any)?.activeCustomization?.usernameColor ||
-    (u as any)?.usernameColor ||
-    base.activeCustomization.usernameColor,
-  messageTextColor:
-    (u as any)?.activeCustomization?.messageTextColor ||
-    (u as any)?.messageTextColor ||
-    base.activeCustomization.messageTextColor,
-  messageEffect:
-    (u as any)?.activeCustomization?.messageEffect || base.activeCustomization.messageEffect,
-  profileEntryAnimation:
-    (u as any)?.activeCustomization?.profileEntryAnimation ||
-    (u as any)?.profileEntryAnimation ||
-    base.activeCustomization.profileEntryAnimation,
-  badges: Array.isArray((u as any)?.activeCustomization?.badges)
-    ? (u as any).activeCustomization.badges
-    : base.activeCustomization.badges,
-  verificationType:
-    (u as any)?.activeCustomization?.verificationType ||
-    (u as any)?.verificationType ||
-    base.activeCustomization.verificationType,
-},
+      activeCustomization: {
+        avatarFrame:
+          (u as any)?.activeCustomization?.avatarFrame || base.activeCustomization.avatarFrame,
+        avatarGif:
+          (u as any)?.activeCustomization?.avatarGif ||
+          (u as any)?.avatarGif ||
+          base.activeCustomization.avatarGif,
+        usernameColor:
+          (u as any)?.activeCustomization?.usernameColor ||
+          (u as any)?.usernameColor ||
+          base.activeCustomization.usernameColor,
+        messageTextColor:
+          (u as any)?.activeCustomization?.messageTextColor ||
+          (u as any)?.messageTextColor ||
+          base.activeCustomization.messageTextColor,
+        messageEffect:
+          (u as any)?.activeCustomization?.messageEffect || base.activeCustomization.messageEffect,
+        profileEntryAnimation:
+          (u as any)?.activeCustomization?.profileEntryAnimation ||
+          (u as any)?.profileEntryAnimation ||
+          base.activeCustomization.profileEntryAnimation,
+        badges: Array.isArray((u as any)?.activeCustomization?.badges)
+          ? (u as any).activeCustomization.badges
+          : base.activeCustomization.badges,
+        verificationType:
+          (u as any)?.activeCustomization?.verificationType ||
+          (u as any)?.verificationType ||
+          base.activeCustomization.verificationType,
+      },
       // activeCustomization: (u as any).activeCustomization || base.activeCustomization,
 
       verificationType: (u as any).verificationType || base.verificationType,
@@ -523,7 +525,7 @@ activeCustomization: {
 
     return snapshot;
   }
- 
+
   async getUserState(roomId: string, userId: string): Promise<RoomUserStateLean> {
     const state = await RoomUserState.findOne({ room: roomId, user: userId }).lean();
 
@@ -649,7 +651,68 @@ activeCustomization: {
 
     throw new Error("Not allowed");
   }
+  async sendCricketGameMessage(input: {
+    roomId: string;
+    content: string;
+    gameType?: "cricket";
+    game?: {
+      gameId?: string;
+      title?: string;
+      state?: string;
+      turnUserId?: string;
+      winnerUserId?: string;
+      payload?: any;
+    };
+  }) {
+    const { roomId, content, gameType = "cricket", game } = input;
 
+    const room = await Room.findById(roomId);
+    if (!room) throw new Error("Room not found");
+
+    const message = await RoomMessage.create({
+      room: roomId,
+      type: "game",
+      content,
+      gameType,
+      game: game
+        ? {
+          gameId: String(game.gameId || ""),
+          title: String(game.title || "Cricket"),
+          state: String(game.state || ""),
+          turnUserId: String(game.turnUserId || ""),
+          winnerUserId: String(game.winnerUserId || ""),
+          payload: game.payload,
+        }
+        : undefined,
+      senderSnapshot: {
+        _id: "cricket-bot",
+        username: "cricket",
+        atUsername: "cricket",
+        avatar: "",
+        activeCustomization: {
+          avatarFrame: "",
+          messageEffect: "",
+          profileEntryAnimation: "",
+          badges: [],
+          verificationType: "none",
+        },
+        customEmojiBadge: {
+          emoji: "",
+          isActive: false,
+          purchasedAt: null,
+          expiresAt: null,
+        },
+        verificationType: "none",
+        avatarFrame: "",
+        badges: [],
+        profileEntryAnimation: "",
+      },
+    });
+
+    this.io().to(`room:${roomId}`).emit("room:message:new", message);
+
+    return message;
+  }
   // ================================
   // SYSTEM MESSAGE: actor did action to target
   // ✅ تعديل: نرسل actorName/targetName/role لكي الفرونت يبني نص موحد
@@ -1981,20 +2044,20 @@ activeCustomization: {
      MESSAGES
   ===================================================== */
   async sendMessage(input: SendMessageInput) {
- const {
-  roomId,
-  senderId,
-  content = "",
-  type = "text",
-  replyTo,
-  mentions = [],
-  media,
-  song,
-  gameType = "",
-  game,
-  gift,
-  clientId
-} = input;
+    const {
+      roomId,
+      senderId,
+      content = "",
+      type = "text",
+      replyTo,
+      mentions = [],
+      media,
+      song,
+      gameType = "",
+      game,
+      gift,
+      clientId
+    } = input;
 
     const room = await Room.findById(roomId);
     if (!room) throw new Error("Room not found");
@@ -2041,32 +2104,32 @@ activeCustomization: {
     });
     try {
       const message = await RoomMessage.create({
-  room: roomId,
-  sender: senderId,
-  senderSnapshot,
+        room: roomId,
+        sender: senderId,
+        senderSnapshot,
 
-  clientId: hasClientId ? cid : undefined,
+        clientId: hasClientId ? cid : undefined,
 
-  content,
-  type,
-  replyTo: replyTo && this.isValidObjectId(replyTo) ? replyTo : undefined,
-  mentions: cleanMentions,
-  media: media?.url ? media : undefined,
-  song: song && (song.audioUrl || song.title || song.youtubeUrl) ? song : undefined,
-  gameType: type === "game" ? String(gameType || "") : "",
-  game:
-    type === "game" && game
-      ? {
-          gameId: String(game.gameId || ""),
-          title: String(game.title || ""),
-          state: String(game.state || ""),
-          turnUserId: String(game.turnUserId || ""),
-          winnerUserId: String(game.winnerUserId || ""),
-          payload: game.payload
-        }
-      : undefined,
-  gift: hasGift ? gift : undefined
-});
+        content,
+        type,
+        replyTo: replyTo && this.isValidObjectId(replyTo) ? replyTo : undefined,
+        mentions: cleanMentions,
+        media: media?.url ? media : undefined,
+        song: song && (song.audioUrl || song.title || song.youtubeUrl) ? song : undefined,
+        gameType: type === "game" ? String(gameType || "") : "",
+        game:
+          type === "game" && game
+            ? {
+              gameId: String(game.gameId || ""),
+              title: String(game.title || ""),
+              state: String(game.state || ""),
+              turnUserId: String(game.turnUserId || ""),
+              winnerUserId: String(game.winnerUserId || ""),
+              payload: game.payload
+            }
+            : undefined,
+        gift: hasGift ? gift : undefined
+      });
       // const message = await RoomMessage.create({
       //   room: roomId,
       //   sender: senderId,
@@ -2081,18 +2144,18 @@ activeCustomization: {
       //   media: media?.url ? media : undefined,
       //   gift: hasGift ? gift : undefined
       // });
-if (type === "gift" && hasGift && gift?.targetId && this.isValidObjectId(gift.targetId)) {
-  await Promise.all([
-    mongoose.model("User").updateOne(
-      { _id: senderId },
-      { $inc: { giftsSentCount: 1 } }
-    ),
-    mongoose.model("User").updateOne(
-      { _id: gift.targetId },
-      { $inc: { giftsReceivedCount: 1 } }
-    )
-  ]);
-}
+      if (type === "gift" && hasGift && gift?.targetId && this.isValidObjectId(gift.targetId)) {
+        await Promise.all([
+          mongoose.model("User").updateOne(
+            { _id: senderId },
+            { $inc: { giftsSentCount: 1 } }
+          ),
+          mongoose.model("User").updateOne(
+            { _id: gift.targetId },
+            { $inc: { giftsReceivedCount: 1 } }
+          )
+        ]);
+      }
       this.logCustomBadge("sendMessage:MESSAGE_CREATED", {
         messageId: String(message._id),
         sender: message.sender,
@@ -2101,7 +2164,56 @@ if (type === "gift" && hasGift && gift?.targetId && this.isValidObjectId(gift.ta
       });
       // ✅ بث مرة واحدة فقط بعد إنشاء فعلي
       this.io().to(`room:${roomId}`).emit("room:message:new", message);
+/* =====================================================
+  CRICKET COMMANDS FIRST
+===================================================== */
+try {
+  const text = String(content || "").trim();
 
+  if (type === "text" && text.startsWith("!cricket")) {
+    const roomBotEnabled = Boolean(room?.roomBot?.enabled);
+
+    if (!roomBotEnabled) {
+      await this.system(
+        roomId,
+        "بوت الغرفة غير مفعل. يجب تفعيله أولاً لتشغيل لعبة الكريكت.",
+        "announcement",
+        { systemType: "announcement" }
+      );
+
+      return message;
+    }
+
+    const senderUser = await User.findById(senderId).select("username").lean();
+    const username = String((senderUser as any)?.username || "مستخدم");
+
+    const rooms = await Room.find({}).select("_id").lean();
+    const allRoomIds = rooms.map((r: any) => String(r._id));
+
+    const result = await handleCricketCommand({
+      text,
+      userId: String(senderId),
+      username,
+      roomId: String(roomId),
+      allRoomIds,
+    });
+
+    if (Array.isArray(result) && result.length) {
+      for (const item of result) {
+        await this.sendCricketGameMessage({
+          roomId: item.roomId,
+          content: item.content,
+          gameType: "cricket",
+          game: item.game,
+        });
+      }
+    }
+
+    return message;
+  }
+} catch (error) {
+  console.log("❌ cricket command error:", error);
+}
       /* =====================================================
         ROOM BOT AUTO REPLY
      ===================================================== */
@@ -2117,109 +2229,109 @@ if (type === "gift" && hasGift && gift?.targetId && this.isValidObjectId(gift.ta
           const musicReply = await executeRoomMusicCommand(text);
 
           console.log("🎵 Music reply:", JSON.stringify(musicReply, null, 2));
-if (musicReply?.handled) {
-  console.log("✅ Music command handled");
+          if (musicReply?.handled) {
+            console.log("✅ Music command handled");
 
-  if (musicReply?.success) {
-    console.log("✅ Music command success");
+            if (musicReply?.success) {
+              console.log("✅ Music command success");
 
-    const title = String(musicReply?.meta?.youtubeTitle || "Unknown Track");
-    const audioUrl = String(musicReply?.meta?.mp3Url || "");
-    const thumbnail = String(musicReply?.meta?.thumbnail || "");
-    const channelTitle = String(musicReply?.meta?.channelTitle || "");
-    const youtubeUrl = String(musicReply?.meta?.youtubeUrl || "");
-    const filename = String(musicReply?.meta?.filename || "");
-    const expiresInMs = Number(musicReply?.meta?.expiresInMs || 0);
-    const provider = String(musicReply?.meta?.provider || "temporary_local_cache");
+              const title = String(musicReply?.meta?.youtubeTitle || "Unknown Track");
+              const audioUrl = String(musicReply?.meta?.mp3Url || "");
+              const thumbnail = String(musicReply?.meta?.thumbnail || "");
+              const channelTitle = String(musicReply?.meta?.channelTitle || "");
+              const youtubeUrl = String(musicReply?.meta?.youtubeUrl || "");
+              const filename = String(musicReply?.meta?.filename || "");
+              const expiresInMs = Number(musicReply?.meta?.expiresInMs || 0);
+              const provider = String(musicReply?.meta?.provider || "temporary_local_cache");
 
-    console.log("🎧 Title:", title);
-    console.log("🎧 Audio URL:", audioUrl);
-    console.log("🖼 Thumbnail:", thumbnail);
-    console.log("📺 Channel:", channelTitle);
-    console.log("🔗 YouTube:", youtubeUrl);
+              console.log("🎧 Title:", title);
+              console.log("🎧 Audio URL:", audioUrl);
+              console.log("🖼 Thumbnail:", thumbnail);
+              console.log("📺 Channel:", channelTitle);
+              console.log("🔗 YouTube:", youtubeUrl);
 
-    if (!audioUrl) {
-      console.error("❌ audioUrl is EMPTY");
-    }
+              if (!audioUrl) {
+                console.error("❌ audioUrl is EMPTY");
+              }
 
-    // رسالة الأغنية الأساسية
-    await this.system(
-      roomId,
-      `🎵 ${title}\n🎤 ${channelTitle}\n🔗 ${audioUrl}`,
-      "song",
-      {
-        sender: senderId,
-        mentions: [senderId],
-        song: {
-          title,
-          audioUrl,
-          youtubeUrl,
-          thumbnail,
-          channelTitle,
-          provider,
-          filename,
-          expiresInMs
-        },
-        media: thumbnail
-          ? {
-              url: thumbnail,
-              mimeType: "image/jpeg",
-              fileName: "thumbnail.jpg"
+              // رسالة الأغنية الأساسية
+              await this.system(
+                roomId,
+                `🎵 ${title}\n🎤 ${channelTitle}\n🔗 ${audioUrl}`,
+                "song",
+                {
+                  sender: senderId,
+                  mentions: [senderId],
+                  song: {
+                    title,
+                    audioUrl,
+                    youtubeUrl,
+                    thumbnail,
+                    channelTitle,
+                    provider,
+                    filename,
+                    expiresInMs
+                  },
+                  media: thumbnail
+                    ? {
+                      url: thumbnail,
+                      mimeType: "image/jpeg",
+                      fileName: "thumbnail.jpg"
+                    }
+                    : undefined
+                }
+              );
+
+              console.log("✅ Song info message sent");
+
+              // رسالة ملف الصوت نفسه لكن بنفس النوع song
+              if (audioUrl) {
+                await this.system(
+                  roomId,
+                  title,
+                  "song",
+                  {
+                    sender: senderId,
+                    mentions: [senderId],
+                    media: {
+                      url: audioUrl,
+                      mimeType: "audio/mpeg",
+                      fileName: `${title}.mp3`
+                    },
+                    song: {
+                      title,
+                      audioUrl,
+                      youtubeUrl,
+                      thumbnail,
+                      channelTitle,
+                      provider,
+                      filename: filename || `${title}.mp3`,
+                      expiresInMs
+                    }
+                  }
+                );
+
+                console.log("✅ Song audio message sent:", audioUrl);
+              } else {
+                console.warn("⚠️ Audio URL missing, song audio message skipped");
+              }
+            } else {
+              console.warn("⚠️ Music command failed:", musicReply.text);
+
+              await this.system(
+                roomId,
+                musicReply.text || "تعذر تشغيل الأغنية",
+                "system",
+                {
+                  systemType: "room_music_error",
+                  sender: senderId,
+                  mentions: [senderId]
+                }
+              );
             }
-          : undefined
-      }
-    );
 
-    console.log("✅ Song info message sent");
-
-    // رسالة ملف الصوت نفسه لكن بنفس النوع song
-    if (audioUrl) {
-      await this.system(
-        roomId,
-        title,
-        "song",
-        {
-          sender: senderId,
-          mentions: [senderId],
-          media: {
-            url: audioUrl,
-            mimeType: "audio/mpeg",
-            fileName: `${title}.mp3`
-          },
-          song: {
-            title,
-            audioUrl,
-            youtubeUrl,
-            thumbnail,
-            channelTitle,
-            provider,
-            filename: filename || `${title}.mp3`,
-            expiresInMs
+            return message;
           }
-        }
-      );
-
-      console.log("✅ Song audio message sent:", audioUrl);
-    } else {
-      console.warn("⚠️ Audio URL missing, song audio message skipped");
-    }
-  } else {
-    console.warn("⚠️ Music command failed:", musicReply.text);
-
-    await this.system(
-      roomId,
-      musicReply.text || "تعذر تشغيل الأغنية",
-      "system",
-      {
-        systemType: "room_music_error",
-        sender: senderId,
-        mentions: [senderId]
-      }
-    );
-  }
-
-  return message;
-}
           // if (musicReply?.handled) {
           //   console.log("✅ Music command handled");
 
