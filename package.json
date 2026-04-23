@@ -7,7 +7,9 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "seed:badges": "ts-node src/seeds/seedStoreBadges.ts",
-      "seed:demoUsers": "ts-node src/seeds/seedDemoUsers.ts"
+      "seed:demoUsers": "ts-node src/seeds/seedDemoUsers.ts",
+        "delete:room-messages": "ts-node src/scripts/delete-all-room-messages.ts"
+
 
   },
   "dependencies": {

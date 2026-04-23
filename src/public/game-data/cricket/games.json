@@ -1,69 +1,42 @@
 {
   "games": [
     {
-      "gameId": "cr_23511fcc",
-      "hostUserId": "69ce260036d8133aa1806b2d",
-      "hostUsername": "⭏⭎𝗜𝃛𝗖̶𝗮̶𝗻̶⇣›♔𝗗̶𝗼⇣›♔𝗶𝗧̶⭏⭎",
-      "createdFromRoomId": "69e966b6fd939be46f66ee4e",
-      "playersRequired": 4,
-      "players": [
-        {
-          "userId": "69ce260036d8133aa1806b2d",
-          "username": "⭏⭎𝗜𝃛𝗖̶𝗮̶𝗻̶⇣›♔𝗗̶𝗼⇣›♔𝗶𝗧̶⭏⭎",
-          "roomId": "69e966b6fd939be46f66ee4e",
-          "joinedAt": "2026-04-23T09:44:28.054Z"
-        }
-      ],
-      "status": "waiting",
-      "createdAt": "2026-04-23T09:44:28.054Z",
-      "joinDeadlineAt": "2026-04-23T09:46:28.054Z",
-      "broadcastRoomIds": [
-        "69ccda2dc2a11ae5b657c36e",
-        "69cced9f637c5a5a95736256",
-        "69cceda6637c5a5a95736259",
-        "69ccedf7637c5a5a95736263",
-        "69ccedfc637c5a5a95736266",
-        "69d62c8c2059258e1c4cf6b3",
-        "69d64a052059258e1c4d0874",
-        "69d782b4750b6b8e36af4238",
-        "69d783251e897b37b011edef",
-        "69d783b382858210e3ea960c",
-        "69da1789cef3e11b80c62c67",
-        "69e79d15fd939be46f66e433",
-        "69e966b6fd939be46f66ee4e",
-        "69e9cd4a30d032fc6debbd36"
-      ],
-      "innings": {
-        "strikerUserId": null,
-        "currentPlayerIndex": 0,
-        "wickets": 0,
-        "totalRuns": 0,
-        "totalBalls": 0,
-        "overBalls": 0,
-        "overNumber": 0,
-        "battingOrder": [],
-        "playerScores": [],
-        "timeline": []
-      }
-    },
-    {
-      "gameId": "cr_8e4270d8",
+      "gameId": "cr_956a75ed",
+      "mode": "ffa",
+      "status": "finished",
       "hostUserId": "69ce260036d8133aa1806b2d",
       "hostUsername": "⭏⭎𝗜𝃛𝗖̶𝗮̶𝗻̶⇣›♔𝗗̶𝗼⇣›♔𝗶𝗧̶⭏⭎",
       "createdFromRoomId": "69d62c8c2059258e1c4cf6b3",
-      "playersRequired": 4,
+      "playersRequired": 2,
       "players": [
         {
           "userId": "69ce260036d8133aa1806b2d",
           "username": "⭏⭎𝗜𝃛𝗖̶𝗮̶𝗻̶⇣›♔𝗗̶𝗼⇣›♔𝗶𝗧̶⭏⭎",
           "roomId": "69d62c8c2059258e1c4cf6b3",
-          "joinedAt": "2026-04-23T10:13:55.548Z"
+          "joinedAt": "2026-04-23T17:17:03.730Z",
+          "isBot": false,
+          "team": null
+        },
+        {
+          "userId": "69e1ea5544e49c91ab425a7b",
+          "username": "tamer",
+          "roomId": "69e966b6fd939be46f66ee4e",
+          "joinedAt": "2026-04-23T17:17:11.515Z",
+          "isBot": false,
+          "team": null
         }
       ],
-      "status": "waiting",
-      "createdAt": "2026-04-23T10:13:55.548Z",
-      "joinDeadlineAt": "2026-04-23T10:15:55.548Z",
-      "broadcastRoomIds": [
+      "teams": null,
+      "solo": null,
+      "overs": 2,
+      "ballsPerOver": 6,
+      "rounds": 1,
+      "currentInningsNumber": 1,
+      "currentTurnUserId": "69ce260036d8133aa1806b2d",
+      "createdAt": "2026-04-23T17:17:03.730Z",
+      "joinDeadlineAt": "2026-04-23T17:19:03.730Z",
+      "winnerSide": "soloPlayer",
+      "announcementRoomIds": [
         "69ccda2dc2a11ae5b657c36e",
         "69cced9f637c5a5a95736256",
         "69cceda6637c5a5a95736259",
@@ -79,18 +52,317 @@
         "69e966b6fd939be46f66ee4e",
         "69e9cd4a30d032fc6debbd36"
       ],
+      "broadcastRoomIds": [
+        "69d62c8c2059258e1c4cf6b3",
+        "69e966b6fd939be46f66ee4e"
+      ],
       "innings": {
-        "strikerUserId": null,
+        "inningsNumber": 1,
+        "battingSide": "soloPlayer",
+        "bowlingSide": null,
+        "strikerUserId": "69ce260036d8133aa1806b2d",
         "currentPlayerIndex": 0,
-        "wickets": 0,
-        "totalRuns": 0,
-        "totalBalls": 0,
-        "overBalls": 0,
-        "overNumber": 0,
-        "battingOrder": [],
-        "playerScores": [],
-        "timeline": []
-      }
+        "wickets": 2,
+        "totalRuns": 23,
+        "totalBalls": 7,
+        "overBalls": 1,
+        "overNumber": 1,
+        "battingOrder": [
+          "69ce260036d8133aa1806b2d",
+          "69e1ea5544e49c91ab425a7b"
+        ],
+        "playerScores": [
+          {
+            "userId": "69ce260036d8133aa1806b2d",
+            "username": "⭏⭎𝗜𝃛𝗖̶𝗮̶𝗻̶⇣›♔𝗗̶𝗼⇣›♔𝗶𝗧̶⭏⭎",
+            "team": null,
+            "runs": 14,
+            "balls": 4,
+            "fours": 0,
+            "sixes": 1,
+            "isOut": true,
+            "strikeRate": 350
+          },
+          {
+            "userId": "69e1ea5544e49c91ab425a7b",
+            "username": "tamer",
+            "team": null,
+            "runs": 9,
+            "balls": 3,
+            "fours": 0,
+            "sixes": 1,
+            "isOut": true,
+            "strikeRate": 300
+          }
+        ],
+        "timeline": [
+          {
+            "ballNo": 1,
+            "inningsNumber": 1,
+            "playerId": "69ce260036d8133aa1806b2d",
+            "username": "⭏⭎𝗜𝃛𝗖̶𝗮̶𝗻̶⇣›♔𝗗̶𝗼⇣›♔𝗶𝗧̶⭏⭎",
+            "side": "soloPlayer",
+            "result": 5,
+            "totalRunsAfterBall": 5,
+            "wicketsAfterBall": 0,
+            "overNumber": 0,
+            "overBalls": 1,
+            "batterChoice": 5,
+            "bowlerChoice": 3,
+            "at": "2026-04-23T17:18:56.600Z"
+          },
+          {
+            "ballNo": 2,
+            "inningsNumber": 1,
+            "playerId": "69e1ea5544e49c91ab425a7b",
+            "username": "tamer",
+            "side": "soloPlayer",
+            "result": "W",
+            "totalRunsAfterBall": 5,
+            "wicketsAfterBall": 1,
+            "overNumber": 0,
+            "overBalls": 2,
+            "batterChoice": 1,
+            "bowlerChoice": 1,
+            "at": "2026-04-23T17:19:03.753Z"
+          },
+          {
+            "ballNo": 3,
+            "inningsNumber": 1,
+            "playerId": "69ce260036d8133aa1806b2d",
+            "username": "⭏⭎𝗜𝃛𝗖̶𝗮̶𝗻̶⇣›♔𝗗̶𝗼⇣›♔𝗶𝗧̶⭏⭎",
+            "side": "soloPlayer",
+            "result": 6,
+            "totalRunsAfterBall": 11,
+            "wicketsAfterBall": 1,
+            "overNumber": 0,
+            "overBalls": 3,
+            "batterChoice": 6,
+            "bowlerChoice": 5,
+            "at": "2026-04-23T17:19:11.092Z"
+          },
+          {
+            "ballNo": 4,
+            "inningsNumber": 1,
+            "playerId": "69e1ea5544e49c91ab425a7b",
+            "username": "tamer",
+            "side": "soloPlayer",
+            "result": 6,
+            "totalRunsAfterBall": 17,
+            "wicketsAfterBall": 1,
+            "overNumber": 0,
+            "overBalls": 4,
+            "batterChoice": 6,
+            "bowlerChoice": 1,
+            "at": "2026-04-23T17:19:15.833Z"
+          },
+          {
+            "ballNo": 5,
+            "inningsNumber": 1,
+            "playerId": "69ce260036d8133aa1806b2d",
+            "username": "⭏⭎𝗜𝃛𝗖̶𝗮̶𝗻̶⇣›♔𝗗̶𝗼⇣›♔𝗶𝗧̶⭏⭎",
+            "side": "soloPlayer",
+            "result": 3,
+            "totalRunsAfterBall": 20,
+            "wicketsAfterBall": 1,
+            "overNumber": 0,
+            "overBalls": 5,
+            "batterChoice": 3,
+            "bowlerChoice": 6,
+            "at": "2026-04-23T17:20:30.051Z"
+          },
+          {
+            "ballNo": 6,
+            "inningsNumber": 1,
+            "playerId": "69e1ea5544e49c91ab425a7b",
+            "username": "tamer",
+            "side": "soloPlayer",
+            "result": 3,
+            "totalRunsAfterBall": 23,
+            "wicketsAfterBall": 1,
+            "overNumber": 1,
+            "overBalls": 0,
+            "batterChoice": 3,
+            "bowlerChoice": 6,
+            "at": "2026-04-23T17:20:34.723Z"
+          },
+          {
+            "ballNo": 7,
+            "inningsNumber": 1,
+            "playerId": "69ce260036d8133aa1806b2d",
+            "username": "⭏⭎𝗜𝃛𝗖̶𝗮̶𝗻̶⇣›♔𝗗̶𝗼⇣›♔𝗶𝗧̶⭏⭎",
+            "side": "soloPlayer",
+            "result": "W",
+            "totalRunsAfterBall": 23,
+            "wicketsAfterBall": 2,
+            "overNumber": 1,
+            "overBalls": 1,
+            "batterChoice": 6,
+            "bowlerChoice": 6,
+            "at": "2026-04-23T17:20:38.546Z"
+          }
+        ],
+        "isCompleted": true
+      },
+      "scoreboard": {
+        "innings1": {
+          "inningsNumber": 1,
+          "battingSide": "soloPlayer",
+          "bowlingSide": null,
+          "strikerUserId": "69ce260036d8133aa1806b2d",
+          "currentPlayerIndex": 0,
+          "wickets": 2,
+          "totalRuns": 23,
+          "totalBalls": 7,
+          "overBalls": 1,
+          "overNumber": 1,
+          "battingOrder": [
+            "69ce260036d8133aa1806b2d",
+            "69e1ea5544e49c91ab425a7b"
+          ],
+          "playerScores": [
+            {
+              "userId": "69ce260036d8133aa1806b2d",
+              "username": "⭏⭎𝗜𝃛𝗖̶𝗮̶𝗻̶⇣›♔𝗗̶𝗼⇣›♔𝗶𝗧̶⭏⭎",
+              "team": null,
+              "runs": 14,
+              "balls": 4,
+              "fours": 0,
+              "sixes": 1,
+              "isOut": true,
+              "strikeRate": 350
+            },
+            {
+              "userId": "69e1ea5544e49c91ab425a7b",
+              "username": "tamer",
+              "team": null,
+              "runs": 9,
+              "balls": 3,
+              "fours": 0,
+              "sixes": 1,
+              "isOut": true,
+              "strikeRate": 300
+            }
+          ],
+          "timeline": [
+            {
+              "ballNo": 1,
+              "inningsNumber": 1,
+              "playerId": "69ce260036d8133aa1806b2d",
+              "username": "⭏⭎𝗜𝃛𝗖̶𝗮̶𝗻̶⇣›♔𝗗̶𝗼⇣›♔𝗶𝗧̶⭏⭎",
+              "side": "soloPlayer",
+              "result": 5,
+              "totalRunsAfterBall": 5,
+              "wicketsAfterBall": 0,
+              "overNumber": 0,
+              "overBalls": 1,
+              "batterChoice": 5,
+              "bowlerChoice": 3,
+              "at": "2026-04-23T17:18:56.600Z"
+            },
+            {
+              "ballNo": 2,
+              "inningsNumber": 1,
+              "playerId": "69e1ea5544e49c91ab425a7b",
+              "username": "tamer",
+              "side": "soloPlayer",
+              "result": "W",
+              "totalRunsAfterBall": 5,
+              "wicketsAfterBall": 1,
+              "overNumber": 0,
+              "overBalls": 2,
+              "batterChoice": 1,
+              "bowlerChoice": 1,
+              "at": "2026-04-23T17:19:03.753Z"
+            },
+            {
+              "ballNo": 3,
+              "inningsNumber": 1,
+              "playerId": "69ce260036d8133aa1806b2d",
+              "username": "⭏⭎𝗜𝃛𝗖̶𝗮̶𝗻̶⇣›♔𝗗̶𝗼⇣›♔𝗶𝗧̶⭏⭎",
+              "side": "soloPlayer",
+              "result": 6,
+              "totalRunsAfterBall": 11,
+              "wicketsAfterBall": 1,
+              "overNumber": 0,
+              "overBalls": 3,
+              "batterChoice": 6,
+              "bowlerChoice": 5,
+              "at": "2026-04-23T17:19:11.092Z"
+            },
+            {
+              "ballNo": 4,
+              "inningsNumber": 1,
+              "playerId": "69e1ea5544e49c91ab425a7b",
+              "username": "tamer",
+              "side": "soloPlayer",
+              "result": 6,
+              "totalRunsAfterBall": 17,
+              "wicketsAfterBall": 1,
+              "overNumber": 0,
+              "overBalls": 4,
+              "batterChoice": 6,
+              "bowlerChoice": 1,
+              "at": "2026-04-23T17:19:15.833Z"
+            },
+            {
+              "ballNo": 5,
+              "inningsNumber": 1,
+              "playerId": "69ce260036d8133aa1806b2d",
+              "username": "⭏⭎𝗜𝃛𝗖̶𝗮̶𝗻̶⇣›♔𝗗̶𝗼⇣›♔𝗶𝗧̶⭏⭎",
+              "side": "soloPlayer",
+              "result": 3,
+              "totalRunsAfterBall": 20,
+              "wicketsAfterBall": 1,
+              "overNumber": 0,
+              "overBalls": 5,
+              "batterChoice": 3,
+              "bowlerChoice": 6,
+              "at": "2026-04-23T17:20:30.051Z"
+            },
+            {
+              "ballNo": 6,
+              "inningsNumber": 1,
+              "playerId": "69e1ea5544e49c91ab425a7b",
+              "username": "tamer",
+              "side": "soloPlayer",
+              "result": 3,
+              "totalRunsAfterBall": 23,
+              "wicketsAfterBall": 1,
+              "overNumber": 1,
+              "overBalls": 0,
+              "batterChoice": 3,
+              "bowlerChoice": 6,
+              "at": "2026-04-23T17:20:34.723Z"
+            },
+            {
+              "ballNo": 7,
+              "inningsNumber": 1,
+              "playerId": "69ce260036d8133aa1806b2d",
+              "username": "⭏⭎𝗜𝃛𝗖̶𝗮̶𝗻̶⇣›♔𝗗̶𝗼⇣›♔𝗶𝗧̶⭏⭎",
+              "side": "soloPlayer",
+              "result": "W",
+              "totalRunsAfterBall": 23,
+              "wicketsAfterBall": 2,
+              "overNumber": 1,
+              "overBalls": 1,
+              "batterChoice": 6,
+              "bowlerChoice": 6,
+              "at": "2026-04-23T17:20:38.546Z"
+            }
+          ],
+          "isCompleted": true
+        },
+        "target": 24,
+        "winningSide": "soloPlayer",
+        "bestPlayerUserId": "69ce260036d8133aa1806b2d",
+        "bestPlayerUsername": "⭏⭎𝗜𝃛𝗖̶𝗮̶𝗻̶⇣›♔𝗗̶𝗼⇣›♔𝗶𝗧̶⭏⭎"
+      },
+      "startedAt": "2026-04-23T17:17:11.527Z",
+      "target": 24,
+      "endedAt": "2026-04-23T17:20:38.547Z",
+      "winnerUserId": "69ce260036d8133aa1806b2d",
+      "winnerUsername": "⭏⭎𝗜𝃛𝗖̶𝗮̶𝗻̶⇣›♔𝗗̶𝗼⇣›♔𝗶𝗧̶⭏⭎"
     }
   ]
 }

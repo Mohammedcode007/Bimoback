@@ -132,9 +132,9 @@ export type CricketBallResult =
   | 2
   | 3
   | 4
+  | 5
   | 6
   | "W";
-
 export type CricketSide =
   | "teamA"
   | "teamB"
@@ -174,6 +174,8 @@ export interface CricketBallEvent {
   wicketsAfterBall: number;
   overNumber: number;
   overBalls: number;
+  batterChoice?: number;
+  bowlerChoice?: number;
   at: string;
 }
 
@@ -247,6 +249,7 @@ export interface CricketGame {
   winnerUserId?: string;
   winnerUsername?: string;
   winnerSide?: CricketSide;
+  announcementRoomIds: string[];
 
   broadcastRoomIds: string[];
 

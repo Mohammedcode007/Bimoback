@@ -218,7 +218,7 @@
 // }
 
 // export const cricketService = new CricketService();
-// src/services/cricket/cricket.service.ts
+/// src/services/cricket/cricket.service.ts
 
 import crypto from "crypto";
 import {
@@ -276,7 +276,30 @@ export class CricketService {
     game: CricketGame,
     content: string
   ): CricketOutgoingMessage[] {
-    const uniqueRooms = [...new Set(game.broadcastRoomIds)];
+    const uniqueRooms = [...new Set(game.broadcastRoomIds || [])];
+
+    return uniqueRooms.map((roomId) => ({
+      roomId,
+      content,
+      type: "game" as const,
+      gameType: "cricket" as const,
+      game: {
+        gameId: game.gameId,
+        title: "Cricket",
+        state: game.status,
+        turnUserId:
+          game.currentTurnUserId || game.innings?.strikerUserId || "",
+        winnerUserId: game.winnerUserId || "",
+        payload: game,
+      },
+    }));
+  }
+
+  private serializeAnnouncementMessage(
+    game: CricketGame,
+    content: string
+  ): CricketOutgoingMessage[] {
+    const uniqueRooms = [...new Set(game.announcementRoomIds || [])];
 
     return uniqueRooms.map((roomId) => ({
       roomId,
@@ -304,17 +327,13 @@ export class CricketService {
   ): CricketGame {
     return {
       gameId: this.makeGameId(),
-
       mode,
       status: "waiting",
-
       hostUserId: user.userId,
       hostUsername: user.username,
       createdFromRoomId: user.roomId,
-
       playersRequired,
       players: [this.makePlayerRef(user)],
-
       teams: null,
       solo:
         mode === "solo"
@@ -324,32 +343,37 @@ export class CricketService {
               serverUsername: CRICKET_SERVER_USERNAME,
             }
           : null,
-
       overs: Number(overs || CRICKET_DEFAULT_OVERS),
       ballsPerOver: CRICKET_BALLS_PER_OVER,
       rounds: 1,
-
       currentInningsNumber: 1,
       currentTurnUserId: null,
       target: undefined,
-
       createdAt: new Date().toISOString(),
       joinDeadlineAt: new Date(
         Date.now() + CRICKET_JOIN_WINDOW_MS
       ).toISOString(),
       startedAt: undefined,
       endedAt: undefined,
-
       winnerUserId: undefined,
       winnerUsername: undefined,
       winnerSide: null,
 
-      broadcastRoomIds: [...new Set(allRoomIds)],
+      // ✅ أول إعلان لكل الغرف
+      announcementRoomIds: [...new Set(allRoomIds)],
+      // ✅ اللعب نفسه فقط لغرفة المنشئ بالبداية
+      broadcastRoomIds: [user.roomId],
 
       innings: {
         inningsNumber: 1,
-        battingSide: mode === "ffa" ? "soloPlayer" : mode === "solo" ? "soloPlayer" : "teamA",
-        bowlingSide: mode === "solo" ? "server" : mode === "team" ? "teamB" : null,
+        battingSide:
+          mode === "ffa"
+            ? "soloPlayer"
+            : mode === "solo"
+            ? "soloPlayer"
+            : "teamA",
+        bowlingSide:
+          mode === "solo" ? "server" : mode === "team" ? "teamB" : null,
         strikerUserId: null,
         currentPlayerIndex: 0,
         wickets: 0,
@@ -362,7 +386,6 @@ export class CricketService {
         timeline: [],
         isCompleted: false,
       },
-
       scoreboard: {
         innings1: undefined,
         innings2: undefined,
@@ -411,71 +434,76 @@ export class CricketService {
     ];
   }
 
-private maybeHandleBotTurn(game: CricketGame): CricketOutgoingMessage[] {
-  const messages: CricketOutgoingMessage[] = [];
+  private maybeHandleBotTurn(game: CricketGame): CricketOutgoingMessage[] {
+    const messages: CricketOutgoingMessage[] = [];
 
-  while (
-    String(game.currentTurnUserId || "") === "server" &&
-    game.status === "live"
-  ) {
-    const botResult = cricketEngine.playBotTurn(game);
+    while (
+      String(game.currentTurnUserId || "") === "server" &&
+      game.status === "live"
+    ) {
+      const botResult = cricketEngine.playBotTurn(game);
 
-    cricketStateRepository.upsertGame(game);
-
-    messages.push(
-      ...this.serializeGameMessage(
-        game,
-        cricketMessageBuilder.buildBotTurnResult(game, String(botResult.result))
-      )
-    );
-
-    if (botResult.gameFinished) {
-      cricketStatsRepository.applyFinishedGame(game);
-      cricketStateRepository.unlockPlayers(
-        game.players.filter((p) => !p.isBot).map((p) => p.userId)
-      );
-
-      messages.push(
-        ...this.serializeGameMessage(
-          game,
-          cricketMessageBuilder.buildFinished(game)
-        )
-      );
-
-      break;
-    }
-
-    if (botResult.inningsEnded) {
-      messages.push(
-        ...this.serializeGameMessage(
-          game,
-          cricketMessageBuilder.buildInningsBreak(game)
-        )
-      );
-
-      cricketEngine.startSecondInnings(game);
       cricketStateRepository.upsertGame(game);
 
       messages.push(
         ...this.serializeGameMessage(
           game,
-          cricketMessageBuilder.buildGameStarted(game)
+          cricketMessageBuilder.buildBotTurnResult(
+            game,
+            String(botResult.result),
+            botResult.batterChoice,
+            botResult.bowlerChoice
+          )
         )
       );
 
-      continue;
+      if (botResult.gameFinished) {
+        cricketStatsRepository.applyFinishedGame(game);
+        cricketStateRepository.unlockPlayers(
+          game.players.filter((p) => !p.isBot).map((p) => p.userId)
+        );
+
+        messages.push(
+          ...this.serializeGameMessage(
+            game,
+            cricketMessageBuilder.buildFinished(game)
+          )
+        );
+
+        break;
+      }
+
+      if (botResult.inningsEnded) {
+        messages.push(
+          ...this.serializeGameMessage(
+            game,
+            cricketMessageBuilder.buildInningsBreak(game)
+          )
+        );
+
+        cricketEngine.startSecondInnings(game);
+        cricketStateRepository.upsertGame(game);
+
+        messages.push(
+          ...this.serializeGameMessage(
+            game,
+            cricketMessageBuilder.buildGameStarted(game)
+          )
+        );
+
+        continue;
+      }
+
+      messages.push(
+        ...this.serializeGameMessage(
+          game,
+          cricketMessageBuilder.buildTurnPrompt(game)
+        )
+      );
     }
 
-    messages.push(
-      ...this.serializeGameMessage(
-        game,
-        cricketMessageBuilder.buildTurnPrompt(game)
-      )
-    );
+    return messages;
   }
-
-  return messages;
-}
 
   startGameLobby(
     user: UserContext,
@@ -514,8 +542,9 @@ private maybeHandleBotTurn(game: CricketGame): CricketOutgoingMessage[] {
     cricketStateRepository.upsertGame(game);
     cricketStateRepository.lockPlayer(user.userId, game.gameId);
 
+    // ✅ إعلان البداية لكل الغرف
     const messages: CricketOutgoingMessage[] = [
-      ...this.serializeGameMessage(
+      ...this.serializeAnnouncementMessage(
         game,
         cricketMessageBuilder.buildLobbyAnnouncement(game)
       ),
@@ -567,6 +596,7 @@ private maybeHandleBotTurn(game: CricketGame): CricketOutgoingMessage[] {
 
     game.players.push(this.makePlayerRef(user));
 
+    // ✅ من هنا فصاعدًا البث فقط لغرف المشتركين
     if (!game.broadcastRoomIds.includes(user.roomId)) {
       game.broadcastRoomIds.push(user.roomId);
     }
@@ -590,7 +620,7 @@ private maybeHandleBotTurn(game: CricketGame): CricketOutgoingMessage[] {
     return messages;
   }
 
-  hitBall(user: UserContext, gameId: string) {
+  playNumber(user: UserContext, gameId: string, choice: number) {
     const game = cricketStateRepository.findGameById(gameId);
     if (!game) throw new Error("Game not found");
 
@@ -601,7 +631,7 @@ private maybeHandleBotTurn(game: CricketGame): CricketOutgoingMessage[] {
       throw new Error("It is not your turn");
     }
 
-    const hitResult = cricketEngine.playBall(game, user.userId);
+    const playResult = cricketEngine.playChosenBall(game, user.userId, choice);
     cricketStateRepository.upsertGame(game);
 
     const messages: CricketOutgoingMessage[] = [
@@ -610,34 +640,14 @@ private maybeHandleBotTurn(game: CricketGame): CricketOutgoingMessage[] {
         cricketMessageBuilder.buildBallResult(
           game,
           user.username,
-          String(hitResult.result)
+          String(playResult.result),
+          playResult.batterChoice,
+          playResult.bowlerChoice
         )
       ),
     ];
 
-if (hitResult.inningsEnded && !hitResult.gameFinished) {
-  messages.push(
-    ...this.serializeGameMessage(
-      game,
-      cricketMessageBuilder.buildInningsBreak(game)
-    )
-  );
-
-      cricketEngine.startSecondInnings(game);
-      cricketStateRepository.upsertGame(game);
-
-      messages.push(
-        ...this.serializeGameMessage(
-          game,
-          cricketMessageBuilder.buildGameStarted(game)
-        )
-      );
-
-      messages.push(...this.maybeHandleBotTurn(game));
-      return messages;
-    }
-
-    if (game.status === "finished") {
+    if (playResult.gameFinished) {
       cricketStatsRepository.applyFinishedGame(game);
       cricketStateRepository.unlockPlayers(
         game.players.filter((p) => !p.isBot).map((p) => p.userId)
@@ -653,15 +663,39 @@ if (hitResult.inningsEnded && !hitResult.gameFinished) {
       return messages;
     }
 
-    messages.push(
-      ...this.serializeGameMessage(
-        game,
-        cricketMessageBuilder.buildTurnPrompt(game)
-      )
-    );
+    if (playResult.inningsEnded && !playResult.gameFinished) {
+      messages.push(
+        ...this.serializeGameMessage(
+          game,
+          cricketMessageBuilder.buildInningsBreak(game)
+        )
+      );
 
-    messages.push(...this.maybeHandleBotTurn(game));
-    return messages;
+      cricketEngine.startSecondInnings(game);
+      cricketStateRepository.upsertGame(game);
+
+      messages.push(
+        ...this.serializeGameMessage(
+          game,
+          cricketMessageBuilder.buildGameStarted(game)
+        )
+      );
+
+      messages.push(...this.maybeHandleBotTurn(game));
+      return messages;
+    }
+
+  if (game.mode !== "ffa") {
+  messages.push(
+    ...this.serializeGameMessage(
+      game,
+      cricketMessageBuilder.buildTurnPrompt(game)
+    )
+  );
+}
+
+messages.push(...this.maybeHandleBotTurn(game));
+return messages;
   }
 
   topWins(roomId: string) {
@@ -800,27 +834,27 @@ if (hitResult.inningsEnded && !hitResult.gameFinished) {
       ];
     }
 
-  const currentStatus = game.status as CricketGame["status"];
+    const currentStatus = game.status as CricketGame["status"];
 
-if (["live", "innings_break"].includes(currentStatus)) {
-  game.status = "cancelled";
-  game.endedAt = new Date().toISOString();
+    if (currentStatus === "live" || currentStatus === "innings_break") {
+      game.status = "cancelled";
+      game.endedAt = new Date().toISOString();
 
-  cricketStateRepository.unlockPlayers(
-    game.players.filter((p) => !p.isBot).map((p) => p.userId)
-  );
-  cricketStateRepository.upsertGame(game);
+      cricketStateRepository.unlockPlayers(
+        game.players.filter((p) => !p.isBot).map((p) => p.userId)
+      );
+      cricketStateRepository.upsertGame(game);
 
-  return [
-    ...this.serializeGameMessage(
-      game,
-      cricketMessageBuilder.buildCancelled(
-        game,
-        `${user.username} خرج من اللعبة أثناء اللعب`
-      )
-    ),
-  ];
-}
+      return [
+        ...this.serializeGameMessage(
+          game,
+          cricketMessageBuilder.buildCancelled(
+            game,
+            `${user.username} خرج من اللعبة أثناء اللعب`
+          )
+        ),
+      ];
+    }
 
     cricketStateRepository.upsertGame(game);
 

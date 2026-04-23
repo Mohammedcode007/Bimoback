@@ -1,0 +1,42 @@
+{
+  "leaderboard": [
+    {
+      "userId": "69ce260036d8133aa1806b2d",
+      "username": "⭏⭎𝗜𝃛𝗖̶𝗮̶𝗻̶⇣›♔𝗗̶𝗼⇣›♔𝗶𝗧̶⭏⭎",
+      "wins": 1,
+      "losses": 0,
+      "draws": 0,
+      "matches": 1,
+      "totalRuns": 14,
+      "totalBalls": 4,
+      "fours": 0,
+      "sixes": 1,
+      "outs": 1,
+      "bestScore": 14,
+      "strikeRate": 350,
+      "soloWins": 0,
+      "teamWins": 0,
+      "ffaWins": 1,
+      "updatedAt": "2026-04-23T17:20:38.562Z"
+    },
+    {
+      "userId": "69e1ea5544e49c91ab425a7b",
+      "username": "tamer",
+      "wins": 0,
+      "losses": 1,
+      "draws": 0,
+      "matches": 1,
+      "totalRuns": 9,
+      "totalBalls": 3,
+      "fours": 0,
+      "sixes": 1,
+      "outs": 1,
+      "bestScore": 9,
+      "strikeRate": 300,
+      "soloWins": 0,
+      "teamWins": 0,
+      "ffaWins": 0,
+      "updatedAt": "2026-04-23T17:20:38.562Z"
+    }
+  ]
+}

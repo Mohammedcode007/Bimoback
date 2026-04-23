@@ -2436,27 +2436,74 @@ try {
           // }
 
           // 2) أوامر البوت العادية
-          if (text.startsWith("!")) {
-            console.log("🤖 Checking normal bot command...");
+        if (text.startsWith("!cricket")) {
+  console.log("🏏 Checking cricket command...");
 
-            const reply = await executeRoomBotCommand({
-              roomId,
-              actorId: senderId,
-              raw: text,
-              lang: "ar",
-            });
+  try {
+    const senderUser = await User.findById(senderId).select("username").lean();
+    const username = String((senderUser as any)?.username || "مستخدم");
 
-            console.log("🤖 Bot reply:", reply);
+    const rooms = await Room.find({}).select("_id").lean();
+    const allRoomIds = rooms.map((r: any) => String(r._id));
 
-            if (reply?.handled && reply?.text) {
-              await this.system(roomId, reply.text, "system", {
-                systemType: "room_bot",
-                sender: senderId,
-              });
+    const result = await handleCricketCommand({
+      text,
+      userId: String(senderId),
+      username,
+      roomId: String(roomId),
+      allRoomIds,
+    });
 
-              console.log("✅ Bot message sent");
-            }
-          }
+    console.log("🏏 Cricket result:", result);
+
+    if (Array.isArray(result) && result.length) {
+      for (const item of result) {
+        await this.sendCricketGameMessage({
+          roomId: item.roomId,
+          content: item.content,
+          gameType: "cricket",
+          game: item.game,
+        });
+      }
+    }
+  } catch (error: any) {
+    console.log("❌ cricket command error:", error);
+
+    await this.system(
+      roomId,
+      String(error?.message || "حدث خطأ في لعبة الكريكت"),
+      "system",
+      {
+        systemType: "announcement",
+        sender: senderId,
+      }
+    );
+  }
+
+  return message;
+}
+
+if (text.startsWith("!")) {
+  console.log("🤖 Checking normal bot command.");
+
+  const reply = await executeRoomBotCommand({
+    roomId,
+    actorId: senderId,
+    raw: text,
+    lang: "ar",
+  });
+
+  console.log("🤖 Bot reply:", reply);
+
+  if (reply?.handled && reply?.text) {
+    await this.system(roomId, reply.text, "system", {
+      systemType: "room_bot",
+      sender: senderId,
+    });
+
+    console.log("✅ Bot message sent");
+  }
+}
         }
       } catch (botError: any) {
         console.error("❌ bot/music command error:", botError?.message || botError);

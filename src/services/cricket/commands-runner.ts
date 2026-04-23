@@ -82,7 +82,6 @@
 //     },
 //   ];
 // }
-
 // src/services/cricket/commands-runner.ts
 
 import { parseCricketCommand } from "./cricket.commands";
@@ -124,8 +123,8 @@ export async function handleCricketCommand(input: HandleInput) {
     return cricketService.joinGame(user, parsed.gameId);
   }
 
-  if (parsed.action === "hit") {
-    return cricketService.hitBall(user, parsed.gameId);
+  if (parsed.action === "play") {
+    return cricketService.playNumber(user, parsed.gameId, parsed.choice);
   }
 
   if (parsed.action === "top") {
@@ -159,7 +158,8 @@ export async function handleCricketCommand(input: HandleInput) {
           gameId: game?.gameId || "",
           title: "Cricket",
           state: game?.status || "none",
-          turnUserId: game?.currentTurnUserId || game?.innings?.strikerUserId || "",
+          turnUserId:
+            game?.currentTurnUserId || game?.innings?.strikerUserId || "",
           winnerUserId: game?.winnerUserId || "",
           payload: game || null,
         },

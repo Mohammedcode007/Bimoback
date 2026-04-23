@@ -46,6 +46,7 @@
 // }
 
 // src/services/cricket/cricket.commands.ts
+// src/services/cricket/cricket.commands.ts
 
 import {
   CRICKET_DEFAULT_OVERS,
@@ -67,7 +68,11 @@ export type CricketParsedCommand =
       overs: number;
     }
   | { action: "join"; gameId: string }
-  | { action: "hit"; gameId: string }
+  | {
+      action: "play";
+      gameId: string;
+      choice: 1 | 2 | 3 | 4 | 5 | 6;
+    }
   | { action: "top" }
   | { action: "topruns" }
   | { action: "topsixes" }
@@ -157,11 +162,21 @@ export function parseCricketCommand(text?: string): CricketParsedCommand | null 
     return { action: "join", gameId };
   }
 
-  if (sub === "hit") {
+  if (sub === "play") {
     const gameId = String(parts[2] || "").trim();
+    const choiceNum = Number(parts[3] || 0);
+
     if (!gameId) return null;
 
-    return { action: "hit", gameId };
+    if (![1, 2, 3, 4, 5, 6].includes(choiceNum)) {
+      throw new Error("Choice must be a number from 1 to 6");
+    }
+
+    return {
+      action: "play",
+      gameId,
+      choice: choiceNum as 1 | 2 | 3 | 4 | 5 | 6,
+    };
   }
 
   if (sub === "top") {

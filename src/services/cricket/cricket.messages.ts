@@ -74,17 +74,20 @@
 // export const cricketMessageBuilder = new CricketMessageBuilder();
 
 // src/services/cricket/cricket.messages.ts
+// src/services/cricket/cricket.messages.ts
 
 import type {
   CricketGame,
-  CricketInningsState,
   CricketPlayerRef,
   CricketPlayerScore,
   CricketStatsEntry,
 } from "./cricket.types";
 
 function getCurrentPlayer(game: CricketGame) {
-  const uid = String(game.currentTurnUserId || game.innings.strikerUserId || "").trim();
+  const uid = String(
+    game.currentTurnUserId || game.innings.strikerUserId || ""
+  ).trim();
+
   if (!uid) return null;
   return game.players.find((p) => String(p.userId) === uid) || null;
 }
@@ -122,6 +125,7 @@ function collectAllScores(game: CricketGame) {
 
     for (const p of scores) {
       const found = all.find((x) => x.userId === p.userId);
+
       if (!found) {
         all.push({ ...p });
       } else {
@@ -131,7 +135,9 @@ function collectAllScores(game: CricketGame) {
         found.sixes += Number(p.sixes || 0);
         found.isOut = found.isOut || p.isOut;
         found.strikeRate =
-          found.balls > 0 ? Number(((found.runs / found.balls) * 100).toFixed(2)) : 0;
+          found.balls > 0
+            ? Number(((found.runs / found.balls) * 100).toFixed(2))
+            : 0;
       }
     }
   };
@@ -202,28 +208,60 @@ Innings: ${inningsNo}
 الطرف الضارب: ${battingSide}
 الدور الأول: ${current?.username || "غير معروف"}
 
-الضرب يكون بالأمر:
-!cricket hit ${game.gameId}`;
+اختر رقمًا من 1 إلى 6 بالأمر:
+!cricket play ${game.gameId} 4`;
   }
 
-  buildBallResult(game: CricketGame, username: string, result: string | number) {
-    const innings = game.innings;
-    const targetText =
-      game.target && game.currentInningsNumber === 2
-        ? `\nالهدف: ${game.target}`
-        : "";
+ buildBallResult(
+  game: CricketGame,
+  username: string,
+  result: string | number,
+  batterChoice?: number,
+  bowlerChoice?: number
+) {
+  const innings = game.innings;
+  const targetText =
+    game.target && game.currentInningsNumber === 2
+      ? `\nالهدف: ${game.target}`
+      : "";
 
-    return `🎯 ${username} لعب الكرة
+  const choicesText =
+    typeof batterChoice === "number" && typeof bowlerChoice === "number"
+      ? `\nاختيار ${username}: ${batterChoice}\nاختيار الخصم: ${bowlerChoice}`
+      : "";
+
+  const nextPlayerId = String(
+    game.currentTurnUserId || game.innings?.strikerUserId || ""
+  ).trim();
+
+  const nextPlayer =
+    game.players.find((p) => String(p.userId) === nextPlayerId)?.username ||
+    "غير معروف";
+
+  const nextTurnText =
+    game.status === "live" ? `\nالدور الآن على: ${nextPlayer}` : "";
+
+  return `🎯 ${username} لعب الكرة${choicesText}
 النتيجة: ${result}
 السكور: ${innings.totalRuns}/${innings.wickets}
-الأوفر: ${innings.overNumber}.${innings.overBalls}${targetText}`;
-  }
+الأوفر: ${innings.overNumber}.${innings.overBalls}${targetText}${nextTurnText}`;
+}
 
-  buildBotTurnResult(game: CricketGame, result: string | number) {
+  buildBotTurnResult(
+    game: CricketGame,
+    result: string | number,
+    batterChoice?: number,
+    bowlerChoice?: number
+  ) {
     const innings = game.innings;
     const botName = game.solo?.serverUsername || "Cricket Server";
 
-    return `🤖 ${botName} لعب الكرة
+    const choicesText =
+      typeof batterChoice === "number" && typeof bowlerChoice === "number"
+        ? `\nاختيار ${botName}: ${batterChoice}\nاختيار الخصم: ${bowlerChoice}`
+        : "";
+
+    return `🤖 ${botName} لعب الكرة${choicesText}
 النتيجة: ${result}
 السكور: ${innings.totalRuns}/${innings.wickets}
 الأوفر: ${innings.overNumber}.${innings.overBalls}`;
@@ -235,8 +273,8 @@ Innings: ${inningsNo}
 
     return `👉 الدور الآن على: ${current.username}
 Innings: ${game.currentInningsNumber}
-الأمر:
-!cricket hit ${game.gameId}`;
+اختر رقمًا من 1 إلى 6:
+!cricket play ${game.gameId} 4`;
   }
 
   buildInningsBreak(game: CricketGame) {
@@ -340,7 +378,7 @@ ${rows
 !cricket start team 4 2
 
 !cricket join GAME_ID
-!cricket hit GAME_ID
+!cricket play GAME_ID 4
 !cricket mygame
 !cricket top
 !cricket topruns

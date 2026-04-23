@@ -1147,10 +1147,9 @@ RoomMessageSchema.pre("save", function () {
   // @ts-ignore
   this.$locals.wasNew = this.isNew;
 
-  if (this.isNew && !this.expiresAt) {
-    this.expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  }
-
+ if (this.isNew && !this.expiresAt) {
+  this.expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000);
+}
   const t = String((this as any).type || "");
   if (
     ["promotion", "join", "leave", "ban", "announcement", "system", "song", "game"].includes(t)

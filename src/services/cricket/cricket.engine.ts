@@ -169,7 +169,6 @@
 // }
 
 // export const cricketEngine = new CricketEngine();
-
 // src/services/cricket/cricket.engine.ts
 
 import {
@@ -186,11 +185,16 @@ import type {
   CricketSide,
 } from "./cricket.types";
 
-function randomBall(): CricketBallResult {
-  const pool: CricketBallResult[] = [
-    0, 0, 1, 1, 1, 2, 2, 3, 4, 4, 6, "W",
-  ];
-  return pool[Math.floor(Math.random() * pool.length)];
+function randomChoice1To6(): 1 | 2 | 3 | 4 | 5 | 6 {
+  return (Math.floor(Math.random() * 6) + 1) as 1 | 2 | 3 | 4 | 5 | 6;
+}
+
+function resolveBallFromChoices(
+  batterChoice: number,
+  bowlerChoice: number
+): CricketBallResult {
+  if (batterChoice === bowlerChoice) return "W";
+  return batterChoice as 1 | 2 | 3 | 4 | 5 | 6;
 }
 
 function safeStrikeRate(runs: number, balls: number) {
@@ -229,7 +233,10 @@ export class CricketEngine {
     return Number(game.ballsPerOver || CRICKET_BALLS_PER_OVER || 6);
   }
 
-  private getPlayersForSide(game: CricketGame, side: CricketSide): CricketPlayerRef[] {
+  private getPlayersForSide(
+    game: CricketGame,
+    side: CricketSide
+  ): CricketPlayerRef[] {
     if (side === "soloPlayer") {
       return game.players.filter((p) => !p.isBot);
     }
@@ -377,11 +384,42 @@ export class CricketEngine {
     game.innings.strikerUserId = nextUserId;
     game.currentTurnUserId = nextUserId;
   }
+private moveToNextFfaPlayer(game: CricketGame) {
+  const order = Array.isArray(game.innings.battingOrder)
+    ? game.innings.battingOrder
+    : [];
 
+  if (!order.length) {
+    game.currentTurnUserId = null;
+    game.innings.strikerUserId = null;
+    return;
+  }
+
+  const currentId = String(
+    game.currentTurnUserId || game.innings.strikerUserId || ""
+  );
+
+  const currentIndex = order.findIndex((id) => String(id) === currentId);
+
+  if (currentIndex < 0) {
+    const first = order[0] || null;
+    game.currentTurnUserId = first;
+    game.innings.strikerUserId = first;
+    return;
+  }
+
+  const nextIndex = (currentIndex + 1) % order.length;
+  const nextUserId = order[nextIndex] || null;
+
+  game.currentTurnUserId = nextUserId;
+  game.innings.strikerUserId = nextUserId;
+}
   private pushBallEvent(
     game: CricketGame,
     player: CricketPlayerRef,
-    result: CricketBallResult
+    result: CricketBallResult,
+    batterChoice?: number,
+    bowlerChoice?: number
   ) {
     const event: CricketBallEvent = {
       ballNo: game.innings.totalBalls,
@@ -394,8 +432,10 @@ export class CricketEngine {
       wicketsAfterBall: game.innings.wickets,
       overNumber: game.innings.overNumber,
       overBalls: game.innings.overBalls,
+      batterChoice,
+      bowlerChoice,
       at: this.now(),
-    };
+    } as CricketBallEvent;
 
     game.innings.timeline.push(event);
   }
@@ -442,6 +482,7 @@ export class CricketEngine {
     if (game.scoreboard.innings1?.playerScores?.length) {
       scores.push(...game.scoreboard.innings1.playerScores);
     }
+
     if (game.scoreboard.innings2?.playerScores?.length) {
       for (const p of game.scoreboard.innings2.playerScores) {
         const found = scores.find((x) => x.userId === p.userId);
@@ -567,7 +608,12 @@ export class CricketEngine {
     game.status = "live";
 
     if (game.mode === "solo") {
-      game.innings = this.createInningsFromSide(game, 2, "server", "soloPlayer");
+      game.innings = this.createInningsFromSide(
+        game,
+        2,
+        "server",
+        "soloPlayer"
+      );
     } else if (game.mode === "team") {
       game.innings = this.createInningsFromSide(game, 2, "teamB", "teamA");
     } else {
@@ -578,13 +624,17 @@ export class CricketEngine {
     return game;
   }
 
-  playBall(game: CricketGame, actorUserId: string) {
+  playChosenBall(game: CricketGame, actorUserId: string, choice: number) {
     if (game.status !== "live") {
       throw new Error("Game is not live");
     }
 
     if (String(game.currentTurnUserId || "") !== String(actorUserId)) {
       throw new Error("It is not your turn");
+    }
+
+    if (![1, 2, 3, 4, 5, 6].includes(choice)) {
+      throw new Error("Choice must be a number from 1 to 6");
     }
 
     const player = this.getCurrentPlayer(game);
@@ -594,7 +644,8 @@ export class CricketEngine {
       throw new Error("Current player not found");
     }
 
-    const result = randomBall();
+    const opponentChoice = randomChoice1To6();
+    const result = resolveBallFromChoices(choice, opponentChoice);
 
     score.balls += 1;
     game.innings.totalBalls += 1;
@@ -619,34 +670,40 @@ export class CricketEngine {
       game.innings.overNumber += 1;
     }
 
-    this.pushBallEvent(game, player, result);
+    this.pushBallEvent(game, player, result, choice, opponentChoice);
 
     const shouldEnd = this.shouldEndInnings(game);
 
-    if (result === "W") {
-      this.moveToNextBatsman(game);
-    }
-
-    if (!shouldEnd && result !== "W") {
-      game.currentTurnUserId = player.userId;
-      game.innings.strikerUserId = player.userId;
-    }
+ if (!shouldEnd) {
+  if (game.mode === "ffa") {
+    this.moveToNextFfaPlayer(game);
+  } else if (result === "W") {
+    this.moveToNextBatsman(game);
+  } else {
+    game.currentTurnUserId = player.userId;
+    game.innings.strikerUserId = player.userId;
+  }
+}
 
     if (shouldEnd) {
       this.completeCurrentInnings(game);
     }
 
-const statusAfterBall = game.status as CricketGame["status"];
-return {
-  game,
-  result,
-  player,
-  score,
-  inningsEnded:
-    statusAfterBall === "innings_break" || statusAfterBall === "finished",
-  gameFinished: statusAfterBall === "finished",
-  statusAfterBall,
-};
+    const statusAfterBall = game.status as CricketGame["status"];
+
+    return {
+      game,
+      result,
+      player,
+      score,
+      batterChoice: choice,
+      bowlerChoice: opponentChoice,
+      inningsEnded:
+        statusAfterBall === "innings_break" ||
+        statusAfterBall === "finished",
+      gameFinished: statusAfterBall === "finished",
+      statusAfterBall,
+    };
   }
 
   playBotTurn(game: CricketGame) {
@@ -656,7 +713,8 @@ return {
       throw new Error("Current bot player not found");
     }
 
-    return this.playBall(game, bot.userId);
+    const botChoice = randomChoice1To6();
+    return this.playChosenBall(game, bot.userId, botChoice);
   }
 }
 
