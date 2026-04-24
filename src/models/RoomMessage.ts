@@ -1,3 +1,5 @@
+
+// // export default mongoose.model<IRoomMessage>("RoomMessage", RoomMessageSchema);
 // import mongoose, { Schema, Document, Types } from "mongoose";
 
 // /* =====================================================
@@ -15,11 +17,13 @@
 //   | "join"
 //   | "leave"
 //   | "promotion"
-
 //   | "ban"
-//   | "gift";
+//   | "gift"
+//   | "song"
+//   | "game";
 
 // export type RoomRole = "creator" | "owner" | "admin" | "member";
+
 // export type RoomSystemAction =
 //   | "role:set"
 //   | "role:transferCreator"
@@ -28,6 +32,13 @@
 //   | "room:announcement"
 //   | ""; // للتوافق
 
+// export type RoomGameType =
+//   | ""
+//   | "cricket"
+//   | "chess"
+//   | "quiz"
+//   | "xo"
+//   | "cards";
 
 // /* =====================================================
 //    INTERFACE
@@ -36,36 +47,37 @@
 // export interface IRoomMessage extends Document {
 //   room: Types.ObjectId;
 //   sender?: Types.ObjectId;
-//   clientId?: string; // ✅ لتوحيد optimistic message مع رسالة السيرفر ومنع التكرار
+//   clientId?: string;
 //   type: RoomMessageType;
 //   content: string;
-//  senderSnapshot?: {
-//   _id: string;
-//   username: string;
-//   atUsername?: string;
-//   avatar?: string;
 
-//   activeCustomization?: {
+//   senderSnapshot?: {
+//     _id: string;
+//     username: string;
+//     atUsername?: string;
+//     avatar?: string;
+
+//     activeCustomization?: {
+//       avatarFrame?: string;
+//       messageEffect?: string;
+//       profileEntryAnimation?: string;
+//       badges: string[];
+//       verificationType: "none" | "blue" | "gold" | "business";
+//     };
+
+//     customEmojiBadge?: {
+//       emoji?: string;
+//       isActive?: boolean;
+//       purchasedAt?: Date | null;
+//       expiresAt?: Date | null;
+//     };
+
+//     verificationType?: "none" | "blue" | "gold" | "business";
 //     avatarFrame?: string;
-//     messageEffect?: string;
+//     badges?: string[];
 //     profileEntryAnimation?: string;
-//     badges: string[];
-//     verificationType: "none" | "blue" | "gold" | "business";
 //   };
 
-//   customEmojiBadge?: {
-//     emoji?: string;
-//     isActive?: boolean;
-//     purchasedAt?: Date | null;
-//     expiresAt?: Date | null;
-//   };
-
-//   verificationType?: "none" | "blue" | "gold" | "business";
-//   avatarFrame?: string;
-//   badges?: string[];
-//   profileEntryAnimation?: string;
-// };
-//   // ✅ System meta (للترقيات والأحداث)
 //   action?: RoomSystemAction;
 
 //   actorId?: Types.ObjectId;
@@ -74,7 +86,7 @@
 //   actorName?: string;
 //   targetName?: string;
 
-//   role?: RoomRole | ""; // في رسائل promotion/role:set
+//   role?: RoomRole | "";
 
 //   meta?: {
 //     action?: RoomSystemAction;
@@ -95,18 +107,38 @@
 //     mimeType?: string;
 //   };
 
-//  gift?: {
-//   key: string;              // gift_rose | boost_rocket ...
-//   icon?: string;            // 🌹 ...
-//   count?: number;           // للـ overlay particles
-//   targetId?: string;        // كـ string لتبسيط التوافق مع الفرونت (أو Types.ObjectId)
-//   targetName?: string;
+//   song?: {
+//     title?: string;
+//     audioUrl?: string;
+//     youtubeUrl?: string;
+//     thumbnail?: string;
+//     channelTitle?: string;
+//     provider?: string;
+//     filename?: string;
+//     expiresInMs?: number;
+//   };
 
-//   // إن كنت لازلت تحتاجها (اختياري)
-//   name?: string;            // display name (Rose/Boost...)
-//   value?: number;           // قيمة/مستوى
-//   animation?: string;
-// };
+//   gameType?: RoomGameType;
+
+//   game?: {
+//     gameId?: string;
+//     title?: string;
+//     state?: string;
+//     turnUserId?: string;
+//     winnerUserId?: string;
+//     payload?: any;
+//   };
+
+//   gift?: {
+//     key: string;
+//     icon?: string;
+//     count?: number;
+//     targetId?: string;
+//     targetName?: string;
+//     name?: string;
+//     value?: number;
+//     animation?: string;
+//   };
 
 //   isPinned: boolean;
 //   isHighlighted: boolean;
@@ -139,22 +171,48 @@
 //   { _id: false }
 // );
 
+// const SongSchema = new Schema(
+//   {
+//     title: { type: String, trim: true, default: "" },
+//     audioUrl: { type: String, trim: true, default: "" },
+//     youtubeUrl: { type: String, trim: true, default: "" },
+//     thumbnail: { type: String, trim: true, default: "" },
+//     channelTitle: { type: String, trim: true, default: "" },
+//     provider: { type: String, trim: true, default: "" },
+//     filename: { type: String, trim: true, default: "" },
+//     expiresInMs: { type: Number, min: 0, default: 0 }
+//   },
+//   { _id: false }
+// );
+
+// const GameSchema = new Schema(
+//   {
+//     gameId: { type: String, trim: true, default: "" },
+//     title: { type: String, trim: true, default: "" },
+//     state: { type: String, trim: true, default: "" },
+//     turnUserId: { type: String, trim: true, default: "" },
+//     winnerUserId: { type: String, trim: true, default: "" },
+//     payload: { type: Schema.Types.Mixed, default: undefined }
+//   },
+//   { _id: false }
+// );
+
 // const GiftSchema = new Schema(
 //   {
-//     key: { type: String, trim: true, default: "" },   // ✅ أساسي
+//     key: { type: String, trim: true, default: "" },
 //     icon: { type: String, trim: true, default: "" },
 //     count: { type: Number, min: 0, default: 0 },
 
 //     targetId: { type: String, trim: true, default: "" },
 //     targetName: { type: String, trim: true, default: "" },
 
-//     // اختياري للحفاظ على الموجود
 //     name: { type: String, trim: true, default: "" },
 //     value: { type: Number, min: 0, default: 0 },
 //     animation: { type: String, trim: true, default: "" }
 //   },
 //   { _id: false }
 // );
+
 // const ReactionSchema = new Schema(
 //   {
 //     user: { type: Schema.Types.ObjectId, ref: "User", required: true },
@@ -164,7 +222,6 @@
 //   { _id: false }
 // );
 
-// // ✅ Meta schema لرسائل النظام/الترقيات
 // const SystemMetaSchema = new Schema(
 //   {
 //     action: { type: String, default: "", trim: true },
@@ -175,7 +232,7 @@
 //     targetId: { type: String, default: "", trim: true },
 //     targetName: { type: String, default: "", trim: true },
 
-//     role: { type: String, default: "", trim: true } // creator|owner|admin|member
+//     role: { type: String, default: "", trim: true }
 //   },
 //   { _id: false }
 // );
@@ -198,13 +255,14 @@
 //       ref: "User",
 //       index: true
 //     },
-    
-// clientId: {
-//   type: String,
-//   trim: true,
-//   default: undefined,
-//   index: true
-// },
+
+//     clientId: {
+//       type: String,
+//       trim: true,
+//       default: undefined,
+//       index: true
+//     },
+
 //     type: {
 //       type: String,
 //       enum: [
@@ -219,7 +277,9 @@
 //         "leave",
 //         "promotion",
 //         "ban",
-//         "gift"
+//         "gift",
+//         "song",
+//         "game"
 //       ],
 //       default: "text",
 //       required: true,
@@ -232,10 +292,6 @@
 //       trim: true
 //     },
 
-//     /* ============================
-//        ✅ System / Promotion fields
-//        (حل مشكلة ضياع actor/target/role في strict mode)
-//     ============================ */
 //     senderSnapshot: {
 //       type: {
 //         _id: { type: String, default: "" },
@@ -250,12 +306,14 @@
 //           badges: { type: [String], default: [] },
 //           verificationType: { type: String, default: "none" }
 //         },
-// customEmojiBadge: {
-//   emoji: { type: String, default: "" },
-//   isActive: { type: Boolean, default: false },
-//   purchasedAt: { type: Date, default: null },
-//   expiresAt: { type: Date, default: null }
-// },
+
+//         customEmojiBadge: {
+//           emoji: { type: String, default: "" },
+//           isActive: { type: Boolean, default: false },
+//           purchasedAt: { type: Date, default: null },
+//           expiresAt: { type: Date, default: null }
+//         },
+
 //         verificationType: { type: String, default: "none" },
 //         avatarFrame: { type: String, default: "" },
 //         badges: { type: [String], default: [] },
@@ -263,6 +321,7 @@
 //       },
 //       default: undefined
 //     },
+
 //     action: {
 //       type: String,
 //       default: "",
@@ -308,10 +367,6 @@
 //       default: undefined
 //     },
 
-//     /* ============================
-//        Reply / Mentions
-//     ============================ */
-
 //     replyTo: {
 //       type: Schema.Types.ObjectId,
 //       ref: "RoomMessage",
@@ -326,12 +381,26 @@
 //       }
 //     ],
 
-//     /* ============================
-//        Media / Gift
-//     ============================ */
-
 //     media: {
 //       type: MediaSchema,
+//       default: undefined
+//     },
+
+//     song: {
+//       type: SongSchema,
+//       default: undefined
+//     },
+
+//     gameType: {
+//       type: String,
+//       enum: ["", "cricket", "chess", "quiz", "xo", "cards"],
+//       default: "",
+//       trim: true,
+//       index: true
+//     },
+
+//     game: {
+//       type: GameSchema,
 //       default: undefined
 //     },
 
@@ -339,10 +408,6 @@
 //       type: GiftSchema,
 //       default: undefined
 //     },
-
-//     /* ============================
-//        Flags
-//     ============================ */
 
 //     isPinned: {
 //       type: Boolean,
@@ -358,7 +423,7 @@
 
 //     expiresAt: {
 //       type: Date,
-//       default: undefined,
+//       default: undefined
 //     },
 
 //     reactions: {
@@ -380,7 +445,14 @@
 // ===================================================== */
 
 // RoomMessageSchema.path("content").validate(function (this: IRoomMessage) {
-//   const noContentTypes: RoomMessageType[] = ["system", "announcement", "join", "leave", "promotion", "ban"];
+//   const noContentTypes: RoomMessageType[] = [
+//     "system",
+//     "announcement",
+//     "join",
+//     "leave",
+//     "promotion",
+//     "ban"
+//   ];
 
 //   if (noContentTypes.includes(this.type)) return true;
 
@@ -388,28 +460,38 @@
 //     return Boolean(this.media?.url) || (this.content?.trim()?.length ?? 0) > 0;
 //   }
 
-// if (this.type === "gift") {
-//   const key = String(this.gift?.key || "").trim();
-//   const name = String(this.gift?.name || "").trim();
+//   if (this.type === "song") {
+//     return (
+//       Boolean(this.song?.audioUrl) ||
+//       Boolean(this.media?.url) ||
+//       (this.content?.trim()?.length ?? 0) > 0
+//     );
+//   }
 
-//   // ✅ نقبل أي Gift إذا عندنا key أو name
-//   // (ولو عندك هدايا قديمة value موجودة ما زال OK)
-//   return Boolean(key) || Boolean(name);
-// }
+//   if (this.type === "game") {
+//     return (
+//       Boolean(this.gameType) ||
+//       Boolean(this.game?.gameId) ||
+//       (this.content?.trim()?.length ?? 0) > 0
+//     );
+//   }
+
+//   if (this.type === "gift") {
+//     const key = String(this.gift?.key || "").trim();
+//     const name = String(this.gift?.name || "").trim();
+//     return Boolean(key) || Boolean(name);
+//   }
 
 //   return (this.content?.trim()?.length ?? 0) > 0;
 // }, "Invalid message payload for the given type.");
 
-// // ✅ بدون next لتفادي أخطاء TS في overloads
 // RoomMessageSchema.pre("validate", function () {
-//   // mentions unique
 //   if (Array.isArray(this.mentions) && this.mentions.length) {
 //     const uniq = new Set(this.mentions.map(String));
 //     // @ts-ignore
 //     this.mentions = Array.from(uniq).map((id) => new mongoose.Types.ObjectId(id));
 //   }
 
-//   // reactions unique by (user, emoji)
 //   if (Array.isArray(this.reactions) && this.reactions.length) {
 //     const seen = new Set<string>();
 //     this.reactions = this.reactions.filter((r) => {
@@ -422,11 +504,14 @@
 // });
 
 // /* =====================================================
-//    INDEXES (Performance Optimized)
+//    INDEXES
 // ===================================================== */
 
-// RoomMessageSchema.index({ room: 1, createdAt: -1 }, { partialFilterExpression: { deletedForEveryone: false } });
-// // ✅ يمنع إنشاء نفس الرسالة مرتين لنفس (room + sender + clientId)
+// RoomMessageSchema.index(
+//   { room: 1, createdAt: -1 },
+//   { partialFilterExpression: { deletedForEveryone: false } }
+// );
+
 // RoomMessageSchema.index(
 //   { room: 1, sender: 1, clientId: 1 },
 //   {
@@ -436,6 +521,7 @@
 //     }
 //   }
 // );
+
 // RoomMessageSchema.index(
 //   { room: 1, isPinned: 1, createdAt: -1 },
 //   {
@@ -453,12 +539,13 @@
 
 // RoomMessageSchema.index({ "reactions.user": 1 });
 // RoomMessageSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+// RoomMessageSchema.index({ room: 1, type: 1, createdAt: -1 });
+// RoomMessageSchema.index({ room: 1, gameType: 1, createdAt: -1 });
 
 // /* =====================================================
 //    SOFT DELETE FILTER
 // ===================================================== */
 
-// // ✅ بدون next (الأبسط والأضمن مع TypeScript)
 // RoomMessageSchema.pre(/^find/, function (this: mongoose.Query<any, any>) {
 //   this.setQuery({
 //     ...this.getQuery(),
@@ -473,11 +560,12 @@
 //   });
 // });
 
-// // aggregate لا يمر على find hooks
 // RoomMessageSchema.pre("aggregate", function () {
 //   const pipeline = this.pipeline();
 
-//   const hasMatch = pipeline.some((stage: any) => stage?.$match?.deletedForEveryone !== undefined);
+//   const hasMatch = pipeline.some(
+//     (stage: any) => stage?.$match?.deletedForEveryone !== undefined
+//   );
 
 //   if (!hasMatch) {
 //     pipeline.unshift({ $match: { deletedForEveryone: false } });
@@ -485,51 +573,45 @@
 // });
 
 // /* =====================================================
-//    MESSAGE COUNT SAFE UPDATE + ✅ DEBUG PRINTS
+//    MESSAGE COUNT SAFE UPDATE + DEBUG
 // ===================================================== */
 
-// // ✅ بدون next لتفادي SaveOptions overload
 // RoomMessageSchema.pre("save", function () {
 //   // @ts-ignore
 //   this.$locals = this.$locals || {};
 //   // @ts-ignore
 //   this.$locals.wasNew = this.isNew;
-//   if (this.isNew && !this.expiresAt) {
-//     this.expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-//   }
-//   // ✅ DEBUG: اطبع فقط رسائل النظام/الترقية
+
+//  if (this.isNew && !this.expiresAt) {
+//   this.expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000);
+// }
 //   const t = String((this as any).type || "");
-//   if (["promotion", "join", "leave", "ban", "announcement", "system"].includes(t)) {
-//     console.log("[RoomMessage][pre-save] SYSTEM SNAPSHOT", {
+//   if (
+//     ["promotion", "join", "leave", "ban", "announcement", "system", "song", "game"].includes(t)
+//   ) {
+//     console.log("[RoomMessage][pre-save]", {
 //       _id: String((this as any)._id),
 //       type: (this as any).type,
 //       content: (this as any).content,
-//       action: (this as any).action,
-//       actorId: (this as any).actorId ? String((this as any).actorId) : undefined,
-//       targetId: (this as any).targetId ? String((this as any).targetId) : undefined,
-//       actorName: (this as any).actorName,
-//       targetName: (this as any).targetName,
-//       role: (this as any).role,
-//       meta: (this as any).meta
+//       gameType: (this as any).gameType,
+//       song: (this as any).song,
+//       game: (this as any).game
 //     });
 //   }
 // });
 
 // RoomMessageSchema.post("save", async function (doc: any) {
-//   // ✅ DEBUG بعد الحفظ
 //   const t = String(doc?.type || "");
-//   if (["promotion", "join", "leave", "ban", "announcement", "system"].includes(t)) {
-//     console.log("[RoomMessage][post-save] SYSTEM SAVED", {
+//   if (
+//     ["promotion", "join", "leave", "ban", "announcement", "system", "song", "game"].includes(t)
+//   ) {
+//     console.log("[RoomMessage][post-save]", {
 //       _id: String(doc?._id),
 //       type: doc?.type,
 //       content: doc?.content,
-//       action: doc?.action,
-//       actorId: doc?.actorId ? String(doc.actorId) : undefined,
-//       targetId: doc?.targetId ? String(doc.targetId) : undefined,
-//       actorName: doc?.actorName,
-//       targetName: doc?.targetName,
-//       role: doc?.role,
-//       meta: doc?.meta
+//       gameType: doc?.gameType,
+//       song: doc?.song,
+//       game: doc?.game
 //     });
 //   }
 
@@ -538,14 +620,20 @@
 //   if (!wasNew) return;
 //   if (doc.deletedForEveryone) return;
 
-//   await mongoose.model("Room").updateOne({ _id: doc.room }, { $inc: { messagesCount: 1 } });
+//   await mongoose.model("Room").updateOne(
+//     { _id: doc.room },
+//     { $inc: { messagesCount: 1 } }
+//   );
 // });
 
 // RoomMessageSchema.post("findOneAndDelete", async function (doc: any) {
 //   if (!doc) return;
 //   if (doc.deletedForEveryone) return;
 
-//   await mongoose.model("Room").updateOne({ _id: doc.room }, { $inc: { messagesCount: -1 } });
+//   await mongoose.model("Room").updateOne(
+//     { _id: doc.room },
+//     { $inc: { messagesCount: -1 } }
+//   );
 // });
 
 // RoomMessageSchema.post("findOneAndUpdate", async function (doc: any) {
@@ -557,7 +645,10 @@
 //   if (set?.deletedForEveryone !== true) return;
 //   if (doc.deletedForEveryone === true) return;
 
-//   await mongoose.model("Room").updateOne({ _id: doc.room }, { $inc: { messagesCount: -1 } });
+//   await mongoose.model("Room").updateOne(
+//     { _id: doc.room },
+//     { $inc: { messagesCount: -1 } }
+//   );
 // });
 
 // /* =====================================================
@@ -565,6 +656,7 @@
 // ===================================================== */
 
 // export default mongoose.model<IRoomMessage>("RoomMessage", RoomMessageSchema);
+
 import mongoose, { Schema, Document, Types } from "mongoose";
 
 /* =====================================================
@@ -595,7 +687,7 @@ export type RoomSystemAction =
   | "user:ban"
   | "user:unban"
   | "room:announcement"
-  | ""; // للتوافق
+  | "";
 
 export type RoomGameType =
   | ""
@@ -604,6 +696,68 @@ export type RoomGameType =
   | "quiz"
   | "xo"
   | "cards";
+
+/* =====================================================
+   MESSAGE LENGTH LIMITS
+===================================================== */
+
+const MAX_ROOM_MESSAGE_CONTENT_LENGTH = 2000;
+
+// الرسائل العادية
+const MAX_ROOM_TEXT_MESSAGE_LENGTH = 1000;
+
+// الرسالة المثبتة / الإعلان
+const MAX_ROOM_ANNOUNCEMENT_LENGTH = 500;
+
+// رسائل النظام مثل دخول/خروج/ترقية/حظر
+const MAX_ROOM_SYSTEM_MESSAGE_LENGTH = 700;
+
+// كابشن الميديا والملفات
+const MAX_ROOM_MEDIA_CAPTION_LENGTH = 300;
+
+// رسائل الهدايا
+const MAX_ROOM_GIFT_CONTENT_LENGTH = 200;
+
+// رسائل الأغاني
+const MAX_ROOM_SONG_CONTENT_LENGTH = 500;
+
+// رسائل الألعاب
+const MAX_ROOM_GAME_CONTENT_LENGTH = 700;
+
+function getMaxContentLengthByType(type: string) {
+  switch (type) {
+    case "text":
+      return MAX_ROOM_TEXT_MESSAGE_LENGTH;
+
+    case "announcement":
+      return MAX_ROOM_ANNOUNCEMENT_LENGTH;
+
+    case "system":
+    case "join":
+    case "leave":
+    case "promotion":
+    case "ban":
+      return MAX_ROOM_SYSTEM_MESSAGE_LENGTH;
+
+    case "image":
+    case "video":
+    case "audio":
+    case "file":
+      return MAX_ROOM_MEDIA_CAPTION_LENGTH;
+
+    case "gift":
+      return MAX_ROOM_GIFT_CONTENT_LENGTH;
+
+    case "song":
+      return MAX_ROOM_SONG_CONTENT_LENGTH;
+
+    case "game":
+      return MAX_ROOM_GAME_CONTENT_LENGTH;
+
+    default:
+      return MAX_ROOM_MESSAGE_CONTENT_LENGTH;
+  }
+}
 
 /* =====================================================
    INTERFACE
@@ -854,7 +1008,11 @@ const RoomMessageSchema = new Schema<IRoomMessage>(
     content: {
       type: String,
       default: "",
-      trim: true
+      trim: true,
+      maxlength: [
+        MAX_ROOM_MESSAGE_CONTENT_LENGTH,
+        `Message content is too long. Max ${MAX_ROOM_MESSAGE_CONTENT_LENGTH} characters.`
+      ]
     },
 
     senderSnapshot: {
@@ -1010,58 +1168,87 @@ const RoomMessageSchema = new Schema<IRoomMessage>(
 ===================================================== */
 
 RoomMessageSchema.path("content").validate(function (this: IRoomMessage) {
-  const noContentTypes: RoomMessageType[] = [
+  const type = String(this.type || "").trim();
+  const content = String(this.content || "").trim();
+
+  const optionalContentTypes: RoomMessageType[] = [
     "system",
-    "announcement",
     "join",
     "leave",
     "promotion",
     "ban"
   ];
 
-  if (noContentTypes.includes(this.type)) return true;
-
-  if (["image", "video", "audio", "file"].includes(this.type)) {
-    return Boolean(this.media?.url) || (this.content?.trim()?.length ?? 0) > 0;
+  if (optionalContentTypes.includes(this.type)) {
+    return true;
   }
 
-  if (this.type === "song") {
+  if (type === "announcement") {
+    return content.length > 0;
+  }
+
+  if (["image", "video", "audio", "file"].includes(type)) {
+    return Boolean(this.media?.url) || content.length > 0;
+  }
+
+  if (type === "song") {
     return (
       Boolean(this.song?.audioUrl) ||
       Boolean(this.media?.url) ||
-      (this.content?.trim()?.length ?? 0) > 0
+      content.length > 0
     );
   }
 
-  if (this.type === "game") {
+  if (type === "game") {
     return (
       Boolean(this.gameType) ||
       Boolean(this.game?.gameId) ||
-      (this.content?.trim()?.length ?? 0) > 0
+      content.length > 0
     );
   }
 
-  if (this.type === "gift") {
+  if (type === "gift") {
     const key = String(this.gift?.key || "").trim();
     const name = String(this.gift?.name || "").trim();
-    return Boolean(key) || Boolean(name);
+
+    return Boolean(key) || Boolean(name) || content.length > 0;
   }
 
-  return (this.content?.trim()?.length ?? 0) > 0;
+  return content.length > 0;
 }, "Invalid message payload for the given type.");
 
 RoomMessageSchema.pre("validate", function () {
+  const type = String(this.type || "").trim();
+  const content = String(this.content || "").trim();
+
+  this.content = content;
+
+  const maxLength = getMaxContentLengthByType(type);
+
+  if (content.length > maxLength) {
+    this.invalidate(
+      "content",
+      `${type || "Message"} content is too long. Max ${maxLength} characters.`
+    );
+  }
+
   if (Array.isArray(this.mentions) && this.mentions.length) {
     const uniq = new Set(this.mentions.map(String));
+
     // @ts-ignore
-    this.mentions = Array.from(uniq).map((id) => new mongoose.Types.ObjectId(id));
+    this.mentions = Array.from(uniq).map(
+      (id) => new mongoose.Types.ObjectId(id)
+    );
   }
 
   if (Array.isArray(this.reactions) && this.reactions.length) {
     const seen = new Set<string>();
+
     this.reactions = this.reactions.filter((r) => {
       const key = `${String(r.user)}::${String(r.emoji)}`;
+
       if (seen.has(key)) return false;
+
       seen.add(key);
       return true;
     });
@@ -1144,15 +1331,27 @@ RoomMessageSchema.pre("aggregate", function () {
 RoomMessageSchema.pre("save", function () {
   // @ts-ignore
   this.$locals = this.$locals || {};
+
   // @ts-ignore
   this.$locals.wasNew = this.isNew;
 
- if (this.isNew && !this.expiresAt) {
-  this.expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000);
-}
+  if (this.isNew && !this.expiresAt) {
+    this.expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000);
+  }
+
   const t = String((this as any).type || "");
+
   if (
-    ["promotion", "join", "leave", "ban", "announcement", "system", "song", "game"].includes(t)
+    [
+      "promotion",
+      "join",
+      "leave",
+      "ban",
+      "announcement",
+      "system",
+      "song",
+      "game"
+    ].includes(t)
   ) {
     console.log("[RoomMessage][pre-save]", {
       _id: String((this as any)._id),
@@ -1167,8 +1366,18 @@ RoomMessageSchema.pre("save", function () {
 
 RoomMessageSchema.post("save", async function (doc: any) {
   const t = String(doc?.type || "");
+
   if (
-    ["promotion", "join", "leave", "ban", "announcement", "system", "song", "game"].includes(t)
+    [
+      "promotion",
+      "join",
+      "leave",
+      "ban",
+      "announcement",
+      "system",
+      "song",
+      "game"
+    ].includes(t)
   ) {
     console.log("[RoomMessage][post-save]", {
       _id: String(doc?._id),
@@ -1182,6 +1391,7 @@ RoomMessageSchema.post("save", async function (doc: any) {
 
   // @ts-ignore
   const wasNew = Boolean(doc?.$locals?.wasNew);
+
   if (!wasNew) return;
   if (doc.deletedForEveryone) return;
 

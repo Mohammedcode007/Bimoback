@@ -11,6 +11,7 @@ import { executeRoomBotCommand } from "./bot/room-bot/roomBot.commands";
 import { executeRoomMusicCommand } from "./bot/room-bot/roomMusic.command";
 import { handleCricketCommand } from "./cricket/commands-runner";
 import User from "../models/User";
+import { executeRoomSpinCommand } from "./bot/room-bot/roomSpin.command";
 /**
  * ملاحظة مهمة جدًا:
  * - في RoomMessageSchema عندك يوجد Hook يقوم بزيادة messagesCount تلقائيًا عند إنشاء الرسالة.
@@ -2164,6 +2165,47 @@ class RoomService {
       });
       // ✅ بث مرة واحدة فقط بعد إنشاء فعلي
       this.io().to(`room:${roomId}`).emit("room:message:new", message);
+      
+/* =====================================================
+  SPIN COMMAND
+===================================================== */
+try {
+  const text = String(content || "").trim();
+
+  console.log("🎰 Checking spin command:", text);
+
+  if (type === "text" && text === ".s") {
+    const senderUser = await User.findById(senderId).select("username").lean();
+    const username = String((senderUser as any)?.username || "مستخدم");
+
+    const spinReply = await executeRoomSpinCommand({
+      raw: text,
+      userId: String(senderId),
+      username,
+    });
+
+    console.log("🎰 Spin reply:", JSON.stringify(spinReply, null, 2));
+
+    if (spinReply?.handled) {
+      await this.system(
+        roomId,
+        spinReply.text || "تم تشغيل السبين.",
+        spinReply.success ? "system" : "announcement",
+        {
+          systemType: spinReply.success ? "spin_win" : "spin_error",
+          sender: senderId,
+          mentions: [senderId],
+          meta: spinReply.meta || {},
+        }
+      );
+
+      return message;
+    }
+  }
+} catch (error) {
+  console.log("❌ spin command error:", error);
+}
+
 /* =====================================================
   CRICKET COMMANDS FIRST
 ===================================================== */
