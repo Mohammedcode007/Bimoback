@@ -1,106 +1,3 @@
-// // src/services/cricket/cricket.types.ts
-
-// export type CricketGameStatus =
-//   | "waiting"
-//   | "live"
-//   | "finished"
-//   | "cancelled";
-
-// export type CricketActionType =
-//   | "join"
-//   | "leave"
-//   | "start"
-//   | "bat"
-//   | "skip"
-//   | "end";
-
-// export type CricketBallResult =
-//   | 0
-//   | 1
-//   | 2
-//   | 3
-//   | 4
-//   | 6
-//   | "W";
-
-// export interface CricketPlayerRef {
-//   userId: string;
-//   username: string;
-//   roomId: string;
-//   joinedAt: string;
-// }
-
-// export interface CricketPlayerScore {
-//   userId: string;
-//   username: string;
-//   runs: number;
-//   balls: number;
-//   fours: number;
-//   sixes: number;
-//   isOut: boolean;
-// }
-
-// export interface CricketInningsState {
-//   strikerUserId: string | null;
-//   currentPlayerIndex: number;
-//   wickets: number;
-//   totalRuns: number;
-//   totalBalls: number;
-//   overBalls: number;
-//   overNumber: number;
-//   battingOrder: string[];
-//   playerScores: CricketPlayerScore[];
-//   timeline: Array<{
-//     ballNo: number;
-//     playerId: string;
-//     result: CricketBallResult;
-//     at: string;
-//   }>;
-// }
-
-// export interface CricketGame {
-//   gameId: string;
-//   hostUserId: string;
-//   hostUsername: string;
-//   createdFromRoomId: string;
-//   playersRequired: number;
-//   players: CricketPlayerRef[];
-//   status: CricketGameStatus;
-//   createdAt: string;
-//   joinDeadlineAt: string;
-//   startedAt?: string;
-//   endedAt?: string;
-//   winnerUserId?: string;
-//   winnerUsername?: string;
-//   broadcastRoomIds: string[];
-//   innings: CricketInningsState;
-// }
-
-// export interface CricketStatsEntry {
-//   userId: string;
-//   username: string;
-//   wins: number;
-//   losses: number;
-//   matches: number;
-//   totalRuns: number;
-//   totalBalls: number;
-//   fours: number;
-//   sixes: number;
-//   outs: number;
-//   updatedAt: string;
-// }
-
-// export interface CricketStatsFile {
-//   leaderboard: CricketStatsEntry[];
-// }
-
-// export interface CricketGamesFile {
-//   games: CricketGame[];
-// }
-
-// export interface CricketLocksFile {
-//   activePlayerToGame: Record<string, string>;
-// }
 
 // src/services/cricket/cricket.types.ts
 
@@ -243,6 +140,8 @@ export interface CricketGame {
 
   createdAt: string;
   joinDeadlineAt: string;
+  lastTurnAt?: string;
+cancelledReason?: string;
   startedAt?: string;
   endedAt?: string;
 

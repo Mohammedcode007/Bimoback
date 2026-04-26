@@ -1,51 +1,3 @@
-// // src/services/cricket/cricket.commands.ts
-
-// export type CricketParsedCommand =
-//   | { action: "start"; playersRequired: number }
-//   | { action: "join"; gameId: string }
-//   | { action: "hit"; gameId: string }
-//   | { action: "top" }
-//   | { action: "mygame" }
-//   | { action: "help" };
-
-// export function parseCricketCommand(text?: string): CricketParsedCommand | null {
-//   const raw = String(text || "").trim();
-//   if (!raw) return null;
-
-//   const parts = raw.split(/\s+/);
-//   if (parts[0]?.toLowerCase() !== "!cricket") return null;
-
-//   const sub = (parts[1] || "").toLowerCase();
-
-//   if (sub === "start") {
-//     const playersRequired = Number(parts[2] || 2);
-//     return { action: "start", playersRequired };
-//   }
-
-//   if (sub === "join") {
-//     const gameId = String(parts[2] || "").trim();
-//     if (!gameId) return null;
-//     return { action: "join", gameId };
-//   }
-
-//   if (sub === "hit") {
-//     const gameId = String(parts[2] || "").trim();
-//     if (!gameId) return null;
-//     return { action: "hit", gameId };
-//   }
-
-//   if (sub === "top") {
-//     return { action: "top" };
-//   }
-
-//   if (sub === "mygame") {
-//     return { action: "mygame" };
-//   }
-
-//   return { action: "help" };
-// }
-
-// src/services/cricket/cricket.commands.ts
 // src/services/cricket/cricket.commands.ts
 
 import {
@@ -79,6 +31,7 @@ export type CricketParsedCommand =
   | { action: "topsr" }
   | { action: "mygame" }
   | { action: "leavegame" }
+  | { action: "endgame"; gameId?: string }
   | { action: "help" };
 
 function toSafeInt(value: unknown, fallback: number) {
@@ -176,6 +129,15 @@ export function parseCricketCommand(text?: string): CricketParsedCommand | null 
       action: "play",
       gameId,
       choice: choiceNum as 1 | 2 | 3 | 4 | 5 | 6,
+    };
+  }
+
+  if (sub === "end" || sub === "endgame" || sub === "cancel") {
+    const gameId = String(parts[2] || "").trim();
+
+    return {
+      action: "endgame",
+      gameId: gameId || undefined,
     };
   }
 

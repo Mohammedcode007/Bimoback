@@ -1,43 +1,4 @@
-// // src/services/cricket/cricket.json-store.ts
 
-// import fs from "fs";
-// import path from "path";
-
-// export class CricketJsonStore {
-//   private ensureFile(filePath: string, fallbackData: any) {
-//     const dir = path.dirname(filePath);
-//     if (!fs.existsSync(dir)) {
-//       fs.mkdirSync(dir, { recursive: true });
-//     }
-
-//     if (!fs.existsSync(filePath)) {
-//       fs.writeFileSync(filePath, JSON.stringify(fallbackData, null, 2), "utf-8");
-//     }
-//   }
-
-//   read<T>(filePath: string, fallbackData: T): T {
-//     this.ensureFile(filePath, fallbackData);
-
-//     const raw = fs.readFileSync(filePath, "utf-8").trim();
-//     if (!raw) return fallbackData;
-
-//     try {
-//       return JSON.parse(raw) as T;
-//     } catch {
-//       fs.writeFileSync(filePath, JSON.stringify(fallbackData, null, 2), "utf-8");
-//       return fallbackData;
-//     }
-//   }
-
-//   write<T>(filePath: string, data: T) {
-//     this.ensureFile(filePath, data);
-//     fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
-//   }
-// }
-
-// export const cricketJsonStore = new CricketJsonStore();
-
-// src/services/cricket/cricket.json-store.ts
 
 import fs from "fs";
 import path from "path";

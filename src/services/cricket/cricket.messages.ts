@@ -1,79 +1,4 @@
-// // src/services/cricket/cricket.messages.ts
 
-// import type { CricketGame, CricketStatsEntry } from "./cricket.types";
-
-// export class CricketMessageBuilder {
-//   buildLobbyAnnouncement(game: CricketGame) {
-//     return `🏏 لعبة كريكت جديدة
-// المضيف: ${game.hostUsername}
-// العدد المطلوب: ${game.playersRequired}
-// المنضمون: ${game.players.length}/${game.playersRequired}
-
-// للإنضمام:
-// !cricket join ${game.gameId}`;
-//   }
-
-//   buildJoinSuccess(game: CricketGame, username: string) {
-//     return `✅ انضم ${username} إلى لعبة الكريكت
-// اللاعبون الآن: ${game.players.length}/${game.playersRequired}`;
-//   }
-
-//   buildGameStarted(game: CricketGame) {
-//     const current = game.players.find((p) => p.userId === game.innings.strikerUserId);
-//     const names = game.players.map((p) => p.username).join(" - ");
-
-//     return `🚀 بدأت لعبة الكريكت
-// اللاعبون: ${names}
-// الدور الأول: ${current?.username || "غير معروف"}
-
-// الضرب يكون بالأمر:
-// !cricket hit ${game.gameId}`;
-//   }
-
-//   buildBallResult(game: CricketGame, username: string, result: string | number) {
-//     return `🎯 ${username} لعب الكرة
-// النتيجة: ${result}
-// السكور: ${game.innings.totalRuns}/${game.innings.wickets}
-// الأوفر: ${game.innings.overNumber}.${game.innings.overBalls}`;
-//   }
-
-//   buildTurnPrompt(game: CricketGame) {
-//     const current = game.players.find((p) => p.userId === game.innings.strikerUserId);
-//     if (!current) return `⌛ لا يوجد لاعب حالي`;
-
-//     return `👉 الدور الآن على: ${current.username}
-// الأمر:
-// !cricket hit ${game.gameId}`;
-//   }
-
-//   buildFinished(game: CricketGame) {
-//     const lines = game.innings.playerScores
-//       .sort((a, b) => b.runs - a.runs)
-//       .map((p, idx) => `${idx + 1}- ${p.username}: ${p.runs} run / ${p.balls} ball`)
-//       .join("\n");
-
-//     return `🏆 انتهت لعبة الكريكت
-// الفائز: ${game.winnerUsername || "لا يوجد"}
-// إجمالي السكور: ${game.innings.totalRuns}/${game.innings.wickets}
-
-// النتائج:
-// ${lines}`;
-//   }
-
-//   buildTopWins(rows: CricketStatsEntry[]) {
-//     if (!rows.length) return "لا توجد إحصائيات حتى الآن";
-
-//     return `🥇 الأكثر فوزًا في الكريكت
-// ${rows
-//   .slice(0, 10)
-//   .map((r, i) => `${i + 1}- ${r.username} | wins: ${r.wins} | matches: ${r.matches}`)
-//   .join("\n")}`;
-//   }
-// }
-
-// export const cricketMessageBuilder = new CricketMessageBuilder();
-
-// src/services/cricket/cricket.messages.ts
 // src/services/cricket/cricket.messages.ts
 
 import type {
@@ -371,21 +296,28 @@ ${rows
   .join("\n")}`;
   }
 
-  buildHelp() {
-    return `أوامر الكريكت:
+buildHelp() {
+  return `أوامر الكريكت:
 !cricket start solo 1 2
 !cricket start ffa 4 2
 !cricket start team 4 2
 
 !cricket join GAME_ID
 !cricket play GAME_ID 4
+
+إنهاء اللعبة:
+!cricket end
+!cricket end GAME_ID
+!cricket cancel GAME_ID
+
+أوامر أخرى:
 !cricket mygame
 !cricket top
 !cricket topruns
 !cricket topsixes
 !cricket topsr
 !cricket leavegame`;
-  }
+}
 }
 
 export const cricketMessageBuilder = new CricketMessageBuilder();

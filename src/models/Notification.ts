@@ -15,6 +15,7 @@ export type NotificationType =
   | "comment_like"
 | "comment_reply"
   | "mention" // ✅ أضف هذا
+  | "song_love"
 
   | "system";
 
@@ -80,6 +81,7 @@ const NotificationSchema = new Schema<INotification>(
 "comment_reply",
         "reaction", // ✅ أضف هذا
         "mention", // ✅ أضف هذا
+        "song_love",
 
         "system"
       ],
@@ -141,8 +143,11 @@ const NotificationSchema = new Schema<INotification>(
       default: 0
     },
 
-    expiresAt: Date,
-
+expiresAt: {
+  type: Date,
+  default: () => new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+  index: true,
+},
     isDeleted: {
       type: Boolean,
       default: false,

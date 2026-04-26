@@ -12,6 +12,7 @@ import { executeRoomMusicCommand } from "./bot/room-bot/roomMusic.command";
 import { handleCricketCommand } from "./cricket/commands-runner";
 import User from "../models/User";
 import { executeRoomSpinCommand } from "./bot/room-bot/roomSpin.command";
+import { executeGlobalSongCommand, parseGlobalSongLoveCommand } from "./bot/room-bot/roomGlobalSong.command";
 /**
  * ملاحظة مهمة جدًا:
  * - في RoomMessageSchema عندك يوجد Hook يقوم بزيادة messagesCount تلقائيًا عند إنشاء الرسالة.
@@ -113,7 +114,30 @@ type Pagination = {
   limit?: number;
   before?: string; // messageId (cursor)
 };
+const GLOBAL_SONG_CODES = new Map<
+  string,
+  {
+    songCode: string;
+    title: string;
+    playedById: string;
+    playedByName: string;
+    sourceRoomId: string;
+    sourceRoomName: string;
+    createdAt: number;
+  }
+>();
 
+const GLOBAL_SONG_CODE_TTL_MS = 60 * 60 * 1000;
+
+function cleanupGlobalSongCodes() {
+  const now = Date.now();
+
+  for (const [code, item] of GLOBAL_SONG_CODES.entries()) {
+    if (now - item.createdAt > GLOBAL_SONG_CODE_TTL_MS) {
+      GLOBAL_SONG_CODES.delete(code);
+    }
+  }
+}
 class RoomService {
   /* =====================================================
      INTERNAL HELPERS
@@ -2265,6 +2289,215 @@ try {
         console.log("🟡 Incoming message:", text);
 
         if (type === "text" && text) {
+          const globalSongLove = parseGlobalSongLoveCommand(text);
+
+if (globalSongLove.matched) {
+  cleanupGlobalSongCodes();
+
+  const songCode = String(globalSongLove.songCode || "")
+    .trim()
+    .toUpperCase();
+
+  if (!songCode) {
+    await this.system(roomId, "استخدم الأمر بهذا الشكل: love@ID", "system", {
+      systemType: "global_song_love_error",
+      sender: senderId,
+      mentions: [senderId],
+    });
+
+    return message;
+  }
+
+  const songInfo = GLOBAL_SONG_CODES.get(songCode);
+
+  if (!songInfo) {
+    await this.system(
+      roomId,
+      "كود الأغنية غير صحيح أو انتهت صلاحيته.",
+      "system",
+      {
+        systemType: "global_song_love_error",
+        sender: senderId,
+        mentions: [senderId],
+      }
+    );
+
+    return message;
+  }
+
+  if (String(songInfo.playedById) === String(senderId)) {
+    await this.system(roomId, "لا يمكنك إرسال Love لنفسك.", "system", {
+      systemType: "global_song_love_error",
+      sender: senderId,
+      mentions: [senderId],
+    });
+
+    return message;
+  }
+
+  const senderUser = await User.findById(senderId)
+    .select("username")
+    .lean();
+
+  const senderName = String((senderUser as any)?.username || "مستخدم");
+
+  await notificationService.create({
+    recipient: songInfo.playedById,
+    sender: senderId,
+    type: "song_love",
+    title: "Love على أغنيتك",
+    body: `${senderName} أرسل Love على أغنية: ${songInfo.title}`,
+    relatedRoom: roomId,
+    isRead: false,
+    isDeleted: false,
+  });
+
+  await this.system(
+    roomId,
+    `❤️ ${senderName} أرسل Love على أغنية ${songInfo.title} الخاصة بـ ${songInfo.playedByName}`,
+    "system",
+    {
+      systemType: "global_song_love",
+      sender: senderId,
+      mentions: [senderId, songInfo.playedById],
+      meta: {
+        action: "global_song_love",
+        songCode,
+        songTitle: songInfo.title,
+        playedById: songInfo.playedById,
+        playedByName: songInfo.playedByName,
+        sourceRoomId: songInfo.sourceRoomId,
+        sourceRoomName: songInfo.sourceRoomName,
+      },
+    }
+  );
+
+  return message;
+}
+
+const globalSongReply = await executeGlobalSongCommand(text);
+
+if (globalSongReply?.handled) {
+  if (!globalSongReply.success) {
+    await this.system(
+      roomId,
+      globalSongReply.text || "تعذر تشغيل الأغنية في كل الغرف.",
+      "system",
+      {
+        systemType: "global_song_error",
+        sender: senderId,
+        mentions: [senderId],
+        meta: globalSongReply.meta || {},
+      }
+    );
+
+    return message;
+  }
+
+  const title = String(globalSongReply?.meta?.youtubeTitle || "Unknown Track");
+  const audioUrl = String(globalSongReply?.meta?.mp3Url || "");
+  const thumbnail = String(globalSongReply?.meta?.thumbnail || "");
+  const channelTitle = String(globalSongReply?.meta?.channelTitle || "");
+  const youtubeUrl = String(globalSongReply?.meta?.youtubeUrl || "");
+  const filename = String(globalSongReply?.meta?.filename || "");
+  const expiresInMs = Number(globalSongReply?.meta?.expiresInMs || 0);
+  const provider = String(
+    globalSongReply?.meta?.provider || "temporary_local_cache"
+  );
+
+  const songCode = String(globalSongReply?.meta?.songCode || "")
+    .trim()
+    .toUpperCase();
+
+  if (!audioUrl || !songCode) {
+    await this.system(roomId, "تعذر تجهيز بيانات الأغنية.", "system", {
+      systemType: "global_song_error",
+      sender: senderId,
+      mentions: [senderId],
+    });
+
+    return message;
+  }
+
+  const senderUser = await User.findById(senderId)
+    .select("username atUsername")
+    .lean();
+
+  const playedByName = String((senderUser as any)?.username || "مستخدم");
+  const playedByAtUsername = String((senderUser as any)?.atUsername || "");
+
+  GLOBAL_SONG_CODES.set(songCode, {
+    songCode,
+    title,
+    playedById: String(senderId),
+    playedByName,
+    sourceRoomId: String(roomId),
+    sourceRoomName: String(room.name || ""),
+    createdAt: Date.now(),
+  });
+
+  cleanupGlobalSongCodes();
+
+  const rooms = await Room.find({})
+    .select("_id name")
+    .lean();
+
+  for (const targetRoom of rooms) {
+    const targetRoomId = String((targetRoom as any)._id);
+    const targetRoomName = String((targetRoom as any).name || "غرفة");
+
+    await this.system(targetRoomId, title, "song", {
+      systemType: "global_room_music",
+      sender: senderId,
+      mentions: [senderId],
+
+      media: {
+        url: audioUrl,
+        mimeType: "audio/mpeg",
+        fileName: filename || `${title}.mp3`,
+      },
+
+      song: {
+        title,
+        audioUrl,
+        youtubeUrl,
+        thumbnail,
+        channelTitle,
+        provider,
+        filename: filename || `${title}.mp3`,
+        expiresInMs,
+
+        songCode,
+
+        playedById: String(senderId),
+        playedByName,
+        playedByAtUsername,
+
+        sourceRoomId: String(roomId),
+        sourceRoomName: String(room.name || ""),
+
+        roomId: targetRoomId,
+        roomName: targetRoomName,
+
+        loveCommand: `love@${songCode}`,
+      },
+
+      meta: {
+        action: "global_room_music",
+        songCode,
+        loveCommand: `love@${songCode}`,
+        playedById: String(senderId),
+        playedByName,
+        sourceRoomId: String(roomId),
+        sourceRoomName: String(room.name || ""),
+        targetRoomId,
+        targetRoomName,
+      },
+    });
+  }
+
+  return message;
+}
           // 1) أوامر الموسيقى
           console.log("🎵 Checking music command...");
 
@@ -2297,32 +2530,32 @@ try {
               }
 
               // رسالة الأغنية الأساسية
-              await this.system(
-                roomId,
-                `🎵 ${title}\n🎤 ${channelTitle}\n🔗 ${audioUrl}`,
-                "song",
-                {
-                  sender: senderId,
-                  mentions: [senderId],
-                  song: {
-                    title,
-                    audioUrl,
-                    youtubeUrl,
-                    thumbnail,
-                    channelTitle,
-                    provider,
-                    filename,
-                    expiresInMs
-                  },
-                  media: thumbnail
-                    ? {
-                      url: thumbnail,
-                      mimeType: "image/jpeg",
-                      fileName: "thumbnail.jpg"
-                    }
-                    : undefined
-                }
-              );
+              // await this.system(
+              //   roomId,
+              //   `🎵 ${title}\n🎤 ${channelTitle}\n🔗 ${audioUrl}`,
+              //   "song",
+              //   {
+              //     sender: senderId,
+              //     mentions: [senderId],
+              //     song: {
+              //       title,
+              //       audioUrl,
+              //       youtubeUrl,
+              //       thumbnail,
+              //       channelTitle,
+              //       provider,
+              //       filename,
+              //       expiresInMs
+              //     },
+              //     media: thumbnail
+              //       ? {
+              //         url: thumbnail,
+              //         mimeType: "image/jpeg",
+              //         fileName: "thumbnail.jpg"
+              //       }
+              //       : undefined
+              //   }
+              // );
 
               console.log("✅ Song info message sent");
 
