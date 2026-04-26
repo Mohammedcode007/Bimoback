@@ -899,11 +899,27 @@ const SongSchema = new Schema(
     channelTitle: { type: String, trim: true, default: "" },
     provider: { type: String, trim: true, default: "" },
     filename: { type: String, trim: true, default: "" },
-    expiresInMs: { type: Number, min: 0, default: 0 }
+    expiresInMs: { type: Number, min: 0, default: 0 },
+
+    // ✅ مهم لزر الإعجاب
+    songCode: { type: String, trim: true, uppercase: true, default: "", index: true },
+    loveCommand: { type: String, trim: true, default: "" },
+
+    playedById: { type: String, trim: true, default: "" },
+    playedByName: { type: String, trim: true, default: "" },
+    playedByAtUsername: { type: String, trim: true, default: "" },
+
+    sourceRoomId: { type: String, trim: true, default: "" },
+    sourceRoomName: { type: String, trim: true, default: "" },
+
+    roomId: { type: String, trim: true, default: "" },
+    roomName: { type: String, trim: true, default: "" },
+
+    lovesCount: { type: Number, min: 0, default: 0 },
+    lovedBy: [{ type: String, trim: true }]
   },
   { _id: false }
 );
-
 const GameSchema = new Schema(
   {
     gameId: { type: String, trim: true, default: "" },
