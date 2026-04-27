@@ -134,7 +134,45 @@ try {
       }
     }
 
-    return tweet;
+    // return tweet;
+const populatedTweet = await Tweet.findById(tweet._id)
+  .populate(
+    "author",
+    "username atUsername avatar isVerified badges verificationType activeCustomization customEmojiBadge"
+  )
+  .lean();
+
+if (!populatedTweet) {
+  throw new Error("Tweet created but not found");
+}
+
+const author: any = populatedTweet.author;
+
+return {
+  ...populatedTweet,
+
+  author: {
+    ...author,
+
+    displayBadges:
+      Array.isArray(author?.activeCustomization?.badges) &&
+      author.activeCustomization.badges.length > 0
+        ? author.activeCustomization.badges
+        : author?.badges || [],
+
+    displayVerificationType:
+      author?.activeCustomization?.verificationType ||
+      author?.verificationType ||
+      "none",
+  },
+
+  likesCount: populatedTweet.likesCount ?? 0,
+  retweetsCount: populatedTweet.retweetsCount ?? 0,
+  repliesCount: populatedTweet.repliesCount ?? 0,
+  isLiked: false,
+  isRetweeted: false,
+  isBookmarked: false,
+};
   }
 
   /* ======================================================

@@ -592,7 +592,16 @@ class RoomService {
     if (!this.isValidObjectId(id)) throw new Error("Invalid id");
     return new Types.ObjectId(id);
   }
-
+  private replyToPopulate() {
+    return {
+      path: "replyTo",
+      select: "content type media sender senderSnapshot createdAt deletedForEveryone",
+      populate: {
+        path: "sender",
+        select: USER_PUBLIC_FIELDS,
+      },
+    };
+  }
   async withTx<T>(fn: (session: any) => Promise<T>) {
     const sid = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
     const session = await mongoose.startSession();
@@ -660,7 +669,253 @@ class RoomService {
     if (!u) return { _id: userId, username: "مستخدم", avatar: "" };
     return { _id: u._id.toString(), username: u.username || "مستخدم", avatar: u.avatar || "" };
   }
+private escapeRegExp(value: string) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
+private parsePrivateMentionCommand(rawText?: string) {
+  const text = String(rawText || "").trim();
+
+  // الشكل المطلوب:
+  // @username message
+  const match = text.match(/^@([^\s@]+)\s+([\s\S]+)$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const username = String(match[1] || "").trim();
+  const message = String(match[2] || "").trim();
+
+  if (!username || !message) {
+    return null;
+  }
+
+  return {
+    username,
+    message,
+  };
+}
+
+private async isPrivateMessageBlocked(senderId: string, targetId: string) {
+  const sender: any = await User.findById(senderId)
+    .select("blockedUsers blocked blockedUsersIds blockeds blockedBy")
+    .lean();
+
+  const target: any = await User.findById(targetId)
+    .select("blockedUsers blocked blockedUsersIds blockeds blockedBy")
+    .lean();
+
+  const hasId = (arr: any, id: string) => {
+    if (!Array.isArray(arr)) return false;
+    return arr.some((x: any) => String(x?._id || x?.user || x) === String(id));
+  };
+
+  // لو المرسل عامل بلوك للهدف أو الهدف عامل بلوك للمرسل
+  const senderBlockedTarget =
+    hasId(sender?.blockedUsers, targetId) ||
+    hasId(sender?.blocked, targetId) ||
+    hasId(sender?.blockedUsersIds, targetId) ||
+    hasId(sender?.blockeds, targetId);
+
+  const targetBlockedSender =
+    hasId(target?.blockedUsers, senderId) ||
+    hasId(target?.blocked, senderId) ||
+    hasId(target?.blockedUsersIds, senderId) ||
+    hasId(target?.blockeds, senderId) ||
+    hasId(sender?.blockedBy, targetId);
+
+  return senderBlockedTarget || targetBlockedSender;
+}
+
+private async sendPrivateMentionMessage(input: {
+  roomId: string;
+  senderId: string;
+  rawText: string;
+}) {
+  const { roomId, senderId, rawText } = input;
+
+  const parsed = this.parsePrivateMentionCommand(rawText);
+
+  // ليست رسالة منشن خاص
+  if (!parsed) {
+    return null;
+  }
+
+  const usernameRx = new RegExp(
+    `^${this.escapeRegExp(parsed.username)}$`,
+    "i"
+  );
+
+  const target: any = await User.findOne({
+    $or: [
+      { username: usernameRx },
+      { atUsername: usernameRx },
+    ],
+  })
+    .select("_id username avatar")
+    .lean();
+
+  if (!target?._id) {
+    return {
+      success: false,
+      reason: "USER_NOT_FOUND",
+      targetId: "",
+      targetName: parsed.username,
+      message: `User @${parsed.username} was not found.`,
+    };
+  }
+
+  const targetId = String(target._id);
+  const targetName = String(target.username || parsed.username);
+
+  if (targetId === String(senderId)) {
+    return {
+      success: false,
+      reason: "SELF_MESSAGE",
+      targetId,
+      targetName,
+      message: "You cannot send a private mention message to yourself.",
+    };
+  }
+
+  const blocked = await this.isPrivateMessageBlocked(senderId, targetId);
+
+  if (blocked) {
+    return {
+      success: false,
+      reason: "BLOCKED",
+      targetId,
+      targetName,
+      message: `Private message failed: you cannot message @${targetName}.`,
+    };
+  }
+
+  const sender = await this.getUserBasic(senderId);
+
+  let chat: any = await Chat.findOne({
+    participants: {
+      $all: [
+        new Types.ObjectId(senderId),
+        new Types.ObjectId(targetId),
+      ],
+    },
+  });
+
+  if (!chat) {
+    chat = await Chat.create({
+      participants: [
+        new Types.ObjectId(senderId),
+        new Types.ObjectId(targetId),
+      ],
+      unreadCounts: {
+        [senderId]: 0,
+        [targetId]: 0,
+      },
+      deletedFor: [],
+      mutedBy: [],
+      archivedBy: [],
+      lastMessagePreview: "",
+      lastMessageType: "text",
+    });
+  }
+
+  const privateMessage = await Message.create({
+    chat: chat._id,
+    sender: new Types.ObjectId(senderId),
+    type: "text",
+    content: parsed.message,
+
+    reactions: [],
+    deliveryStatus: {
+      deliveredTo: [],
+      seenBy: [],
+    },
+    status: "sent",
+    deletedForEveryone: false,
+    deletedFor: [],
+    edited: false,
+    isSystemMessage: false,
+    moderationHidden: false,
+    moderationReason: null,
+    moderationHiddenAt: null,
+    moderationHiddenBy: null,
+
+    meta: {
+      fromRoomId: String(roomId),
+      source: "room_mention_private",
+      targetUsername: parsed.username,
+    },
+  } as any);
+
+  await chat.updateOne(
+    { _id: chat._id },
+    {
+      $set: {
+        lastMessage: privateMessage._id,
+        lastMessagePreview: parsed.message.slice(0, 120),
+        lastMessageType: "text",
+        updatedAt: new Date(),
+      },
+      $inc: {
+        [`unreadCounts.${targetId}`]: 1,
+      },
+      $pull: {
+        deletedFor: {
+          $in: [
+            new Types.ObjectId(senderId),
+            new Types.ObjectId(targetId),
+          ],
+        },
+      },
+    }
+  );
+
+  const chatSnap = await Chat.findById(chat._id)
+    .populate(
+      "participants",
+      "username avatar avatarGif isOnline isInvisible lastSeen activeCustomization customEmojiBadge"
+    )
+    .populate("lastMessage")
+    .lean();
+
+  const io = this.io();
+
+  io.to(targetId).emit("chat:inbox:update", {
+    chat: chatSnap,
+    unreadCount: (chatSnap as any)?.unreadCounts?.[targetId] || 1,
+  });
+
+  io.to(senderId).emit("chat:inbox:update", {
+    chat: chatSnap,
+    unreadCount: 0,
+  });
+
+  io.to(`chat:${String(chat._id)}`).emit("chat:new", privateMessage);
+
+  await notificationService.create({
+    recipient: targetId,
+    sender: senderId,
+    type: "mention",
+    title: "Private mention message",
+    body: `${sender.username} sent you a private message from a room: ${parsed.message.slice(0, 80)}`,
+    relatedChat: chat._id,
+    relatedMessage: privateMessage._id,
+    relatedRoom: roomId,
+    isRead: false,
+    isDeleted: false,
+  });
+
+  return {
+    success: true,
+    reason: "SENT",
+    chatId: String(chat._id),
+    messageId: String(privateMessage._id),
+    targetId,
+    targetName,
+    message: `Private message sent to @${targetName}.`,
+  };
+}
   // ================================
   // PERMISSION CHECK: can actor do action on target?
   // ================================
@@ -2133,11 +2388,17 @@ class RoomService {
         sender: senderId,
         clientId: cid
       });
-
       if (existing) {
-        // ✅ لا تعيد بث socket مرة أخرى لتفادي duplicate في الفرونت
-        return existing;
+        const fullExisting = await RoomMessage.findById(existing._id)
+          .populate(this.replyToPopulate())
+          .lean();
+
+        return fullExisting || existing;
       }
+      // if (existing) {
+      //   // ✅ لا تعيد بث socket مرة أخرى لتفادي duplicate في الفرونت
+      //   return existing;
+      // }
     }
 
     const senderSnapshot = await this.getUserPublicSnapshot(senderId);
@@ -2150,6 +2411,27 @@ class RoomService {
       badges: senderSnapshot?.badges || []
     });
     try {
+      let replyToId: Types.ObjectId | undefined = undefined;
+
+      if (replyTo) {
+        const replyToStr = String(replyTo || "").trim();
+
+        if (!this.isValidObjectId(replyToStr)) {
+          throw new Error("Invalid replyTo message id");
+        }
+
+        const repliedMessage = await RoomMessage.findOne({
+          _id: replyToStr,
+          room: roomId,
+          deletedForEveryone: { $ne: true },
+        }).select("_id");
+
+        if (!repliedMessage) {
+          throw new Error("Reply message not found");
+        }
+
+        replyToId = repliedMessage._id as Types.ObjectId;
+      }
       const message = await RoomMessage.create({
         room: roomId,
         sender: senderId,
@@ -2159,7 +2441,7 @@ class RoomService {
 
         content,
         type,
-        replyTo: replyTo && this.isValidObjectId(replyTo) ? replyTo : undefined,
+        replyTo: replyToId,
         mentions: cleanMentions,
         media: media?.url ? media : undefined,
         song: song && (song.audioUrl || song.title || song.youtubeUrl) ? song : undefined,
@@ -2311,6 +2593,52 @@ class RoomService {
         console.log("🟡 Incoming message:", text);
 
         if (type === "text" && text) {
+const privateMentionResult = await this.sendPrivateMentionMessage({
+  roomId,
+  senderId,
+  rawText: text,
+});
+
+if (privateMentionResult) {
+  if (privateMentionResult.success) {
+    await this.system(
+      roomId,
+      `✅ ${privateMentionResult.message}`,
+      "system",
+      {
+        systemType: "private_mention_success",
+        sender: senderId,
+        mentions: [senderId],
+        meta: {
+          action: "private_mention_success",
+          targetId: privateMentionResult.targetId,
+          targetName: privateMentionResult.targetName,
+          chatId: privateMentionResult.chatId,
+          messageId: privateMentionResult.messageId,
+        },
+      }
+    );
+  } else {
+    await this.system(
+      roomId,
+      `❌ ${privateMentionResult.message}`,
+      "system",
+      {
+        systemType: "private_mention_failed",
+        sender: senderId,
+        mentions: [senderId],
+        meta: {
+          action: "private_mention_failed",
+          reason: privateMentionResult.reason,
+          targetId: privateMentionResult.targetId || "",
+          targetName: privateMentionResult.targetName || "",
+        },
+      }
+    );
+  }
+
+  return message;
+}
           const globalSongLove = parseGlobalSongLoveCommand(text);
 
           if (globalSongLove.matched) {
@@ -2858,11 +3186,18 @@ class RoomService {
       // }
       if (cleanMentions.length) {
         for (const uid of cleanMentions) {
-          this.io().to(uid).emit("room:mention", { roomId, messageId: message._id });
+          this.io().to(uid).emit("room:mention", {
+            roomId,
+            messageId: message._id,
+          });
         }
       }
 
-      return message;
+      const fullMessage = await RoomMessage.findById(message._id)
+        .populate(this.replyToPopulate())
+        .lean();
+
+      return fullMessage || message;
     } catch (e: any) {
       // ✅ 2) حماية من duplicate key لو حصلت race
       // Mongo duplicate key error code = 11000
@@ -2872,7 +3207,13 @@ class RoomService {
           sender: senderId,
           clientId: cid
         });
-        if (existing) return existing;
+        if (existing) {
+          const fullExisting = await RoomMessage.findById(existing._id)
+            .populate(this.replyToPopulate())
+            .lean();
+
+          return fullExisting || existing;
+        }
       }
       throw e;
     }
@@ -3684,8 +4025,7 @@ class RoomService {
       messages = await RoomMessage.find(query)
         .sort({ createdAt: -1 })
         .limit(limit)
-        .populate("replyTo");
-
+        .populate(this.replyToPopulate());
 
       const giftCount = messages.filter((m: any) => m.type === "gift").length;
 
@@ -3716,8 +4056,7 @@ class RoomService {
     messages = await RoomMessage.find(query)
       .sort({ createdAt: -1 })
       .limit(limit)
-      .populate("replyTo");
-
+      .populate(this.replyToPopulate());
 
     const giftCount = messages.filter((m: any) => m.type === "gift").length;
 
@@ -3818,13 +4157,13 @@ class RoomService {
       query.content = rx;
     }
 
-    const messages = await RoomMessage.find(query)
-      .sort({ createdAt: -1 })
-      .limit(l)
-      .populate("sender", "username avatar")
-      .populate("replyTo");
+ const messages = await RoomMessage.find(query)
+  .sort({ createdAt: -1 })
+  .limit(l)
+  .populate("sender", "username avatar")
+  .populate(this.replyToPopulate());
 
-    return messages;
+return messages;
   }
   async toggleReaction(roomId: string, messageId: string, userId: string, emoji: string) {
     const room = await Room.findById(roomId);
