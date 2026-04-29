@@ -273,61 +273,151 @@ return {
      COMMENT
   ====================================================== */
 
-  async comment(userId: string, tweetId: string, content: string) {
-    const tweet = await Tweet.findOne({
-      _id: tweetId,
-      deleted: false,
-      isHidden: false
+//   async comment(userId: string, tweetId: string, content: string) {
+//     const tweet = await Tweet.findOne({
+//       _id: tweetId,
+//       deleted: false,
+//       isHidden: false
+//     });
+
+//     if (!tweet) throw new Error("Tweet not found");
+
+//     const cleanContent = content.trim();
+// const senderUser = await User.findById(userId).select("username");
+// const senderName = senderUser?.username || "Someone";
+//     const mentionedUsernames = extractMentions(cleanContent);
+
+//     const mentionedUsers = await User.find({
+//       atUsername: { $in: mentionedUsernames }
+//     }).select("_id");
+
+//     const comment = await Comment.create({
+//       tweet: tweetId,
+//       user: userId,
+//       content: cleanContent
+//     });
+
+//     await Tweet.updateOne(
+//       { _id: tweetId },
+//       { $inc: { repliesCount: 1 } }
+//     );
+
+//     if (tweet.author.toString() !== userId) {
+//       await notificationService.create({
+//         recipient: tweet.author,
+//         sender: userId,
+//         type: "tweet_reply",
+//         relatedTweet: tweetId,
+//         body: "قام بالرد على تويتتك"
+//       });
+//     }
+
+//     for (const user of mentionedUsers) {
+//       if (user._id.toString() !== userId) {
+//         await notificationService.create({
+//           recipient: user._id,
+//           sender: userId,
+//           type: "mention",
+//           relatedTweet: tweetId,
+//       body: `${senderUser?.username || "Someone"} mentioned you in a comment`
+
+//     });
+//       }
+//     }
+
+//     return comment;
+//   }
+async comment(userId: string, tweetId: string, content: string) {
+  const tweet = await Tweet.findOne({
+    _id: tweetId,
+    deleted: false,
+    isHidden: false,
+  });
+
+  if (!tweet) throw new Error("Tweet not found");
+
+  const cleanContent = content.trim();
+  if (!cleanContent) throw new Error("Comment content is required");
+
+  const senderUser = await User.findById(userId).select("username");
+  const senderName = senderUser?.username || "Someone";
+
+  const mentionedUsernames = extractMentions(cleanContent);
+
+  const mentionedUsers = await User.find({
+    atUsername: { $in: mentionedUsernames },
+  }).select("_id");
+
+  const comment = await Comment.create({
+    tweet: tweetId,
+    user: userId,
+    content: cleanContent,
+    mentions: mentionedUsers.map((u) => u._id),
+  });
+
+  await Tweet.updateOne(
+    { _id: tweetId },
+    { $inc: { repliesCount: 1 } }
+  );
+
+  if (tweet.author.toString() !== userId) {
+    await notificationService.create({
+      recipient: tweet.author,
+      sender: userId,
+      type: "tweet_reply",
+      relatedTweet: tweetId,
+      body: `${senderName} replied to your tweet`,
     });
-
-    if (!tweet) throw new Error("Tweet not found");
-
-    const cleanContent = content.trim();
-const senderUser = await User.findById(userId).select("username");
-const senderName = senderUser?.username || "Someone";
-    const mentionedUsernames = extractMentions(cleanContent);
-
-    const mentionedUsers = await User.find({
-      atUsername: { $in: mentionedUsernames }
-    }).select("_id");
-
-    const comment = await Comment.create({
-      tweet: tweetId,
-      user: userId,
-      content: cleanContent
-    });
-
-    await Tweet.updateOne(
-      { _id: tweetId },
-      { $inc: { repliesCount: 1 } }
-    );
-
-    if (tweet.author.toString() !== userId) {
-      await notificationService.create({
-        recipient: tweet.author,
-        sender: userId,
-        type: "tweet_reply",
-        relatedTweet: tweetId,
-        body: "قام بالرد على تويتتك"
-      });
-    }
-
-    for (const user of mentionedUsers) {
-      if (user._id.toString() !== userId) {
-        await notificationService.create({
-          recipient: user._id,
-          sender: userId,
-          type: "mention",
-          relatedTweet: tweetId,
-      body: `${senderUser?.username || "Someone"} mentioned you in a comment`
-
-    });
-      }
-    }
-
-    return comment;
   }
 
+  for (const user of mentionedUsers) {
+    if (user._id.toString() !== userId) {
+      await notificationService.create({
+        recipient: user._id,
+        sender: userId,
+        type: "mention",
+        relatedTweet: tweetId,
+        body: `${senderName} mentioned you in a comment`,
+      });
+    }
+  }
+
+  const populatedComment = await Comment.findById(comment._id)
+    .populate(
+      "user",
+      "username atUsername avatar isVerified badges verificationType activeCustomization customEmojiBadge"
+    )
+    .lean();
+
+  if (!populatedComment) {
+    throw new Error("Comment created but not found");
+  }
+
+  const commentUser: any = populatedComment.user;
+
+  return {
+    ...populatedComment,
+
+    user: {
+      ...commentUser,
+
+      displayBadges:
+        Array.isArray(commentUser?.activeCustomization?.badges) &&
+        commentUser.activeCustomization.badges.length > 0
+          ? commentUser.activeCustomization.badges
+          : commentUser?.badges || [],
+
+      displayVerificationType:
+        commentUser?.activeCustomization?.verificationType ||
+        commentUser?.verificationType ||
+        "none",
+    },
+
+    likesCount: populatedComment.likesCount ?? 0,
+    repliesCount: populatedComment.repliesCount ?? 0,
+    isLiked: false,
+  };
+}
   async toggleCommentLike(userId: string, commentId: string) {
   const comment = await Comment.findOne({
     _id: commentId,
@@ -776,7 +866,7 @@ async getUserTweets(
 async replyToComment(userId: string, commentId: string, content: string) {
   const parentComment = await Comment.findOne({
     _id: commentId,
-    isHidden: false
+    isHidden: false,
   });
 
   if (!parentComment) throw new Error("Comment not found");
@@ -788,8 +878,9 @@ async replyToComment(userId: string, commentId: string, content: string) {
   const senderName = senderUser?.username || "Someone";
 
   const mentionedUsernames = extractMentions(cleanContent);
+
   const mentionedUsers = await User.find({
-    atUsername: { $in: mentionedUsernames }
+    atUsername: { $in: mentionedUsernames },
   }).select("_id");
 
   const reply = await Comment.create({
@@ -797,7 +888,7 @@ async replyToComment(userId: string, commentId: string, content: string) {
     user: userId,
     content: cleanContent,
     parentComment: parentComment._id,
-    mentions: mentionedUsers.map((u) => u._id)
+    mentions: mentionedUsers.map((u) => u._id),
   });
 
   await Comment.updateOne(
@@ -805,7 +896,6 @@ async replyToComment(userId: string, commentId: string, content: string) {
     { $inc: { repliesCount: 1 } }
   );
 
-  // إشعار لصاحب الكومنت الأصلي
   if (parentComment.user.toString() !== userId) {
     try {
       await notificationService.create({
@@ -814,14 +904,13 @@ async replyToComment(userId: string, commentId: string, content: string) {
         type: "comment_reply",
         relatedTweet: parentComment.tweet,
         relatedMessage: reply._id,
-        body: `${senderName} replied to your comment`
+        body: `${senderName} replied to your comment`,
       });
     } catch (error) {
       console.log("❌ comment reply notification error:", error);
     }
   }
 
-  // إشعارات المنشن داخل الرد
   for (const user of mentionedUsers) {
     if (
       user._id.toString() !== userId &&
@@ -834,7 +923,7 @@ async replyToComment(userId: string, commentId: string, content: string) {
           type: "mention",
           relatedTweet: parentComment.tweet,
           relatedMessage: reply._id,
-          body: `${senderName} mentioned you in a comment`
+          body: `${senderName} mentioned you in a comment`,
         });
       } catch (error) {
         console.log("❌ mention in comment reply notification error:", error);
@@ -842,7 +931,41 @@ async replyToComment(userId: string, commentId: string, content: string) {
     }
   }
 
-  return reply;
+  const populatedReply = await Comment.findById(reply._id)
+    .populate(
+      "user",
+      "username atUsername avatar isVerified badges verificationType activeCustomization customEmojiBadge"
+    )
+    .lean();
+
+  if (!populatedReply) {
+    throw new Error("Reply created but not found");
+  }
+
+  const replyUser: any = populatedReply.user;
+
+  return {
+    ...populatedReply,
+
+    user: {
+      ...replyUser,
+
+      displayBadges:
+        Array.isArray(replyUser?.activeCustomization?.badges) &&
+        replyUser.activeCustomization.badges.length > 0
+          ? replyUser.activeCustomization.badges
+          : replyUser?.badges || [],
+
+      displayVerificationType:
+        replyUser?.activeCustomization?.verificationType ||
+        replyUser?.verificationType ||
+        "none",
+    },
+
+    likesCount: populatedReply.likesCount ?? 0,
+    repliesCount: populatedReply.repliesCount ?? 0,
+    isLiked: false,
+  };
 }
   /* ======================================================
      TOGGLE BOOKMARK

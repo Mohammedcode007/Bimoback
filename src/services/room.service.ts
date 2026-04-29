@@ -1528,70 +1528,7 @@ private async sendPrivateMentionMessage(input: {
    * - (اختياري) يضاف members لو كان none
    * - ثم يبث العدد الحقيقي عبر room:activeCount:update
    */
-  // async joinRoom(roomId: string, userId: string, password?: string) {
-  //   const uid = userId.toString();
-  //   const joinAt = new Date();
 
-  //   const { joined } = await this.withTx(async (session) => {
-  //     const room = await Room.findById(roomId).session(session);
-  //     if (!room) throw new Error("Room not found");
-
-  //     this.ensureArrays(room);
-
-  //     if (room.isLocked) throw new Error("Room is locked");
-  //     if (this.isBanned(room, uid)) throw new Error("You are banned");
-  //     if ((room.usersCount || 0) >= (room.maxUsers || 50)) throw new Error("Room is full");
-
-  //     const alreadyActive = room.activeUsers.some((u: any) => u?.toString?.() === uid);
-  //     if (alreadyActive) return { joined: false };
-
-  //     // ✅ 1) احسب الدور قبل التحقق من الباسورد
-  //     const role = this.getRole(room, uid);
-
-  //     // ✅ 2) شرط الغرفة المحمية
-  //     if (room.type === RoomType.PROTECTED) {
-  //       const bypass = role === "creator" || role === "owner" || role === "admin";
-
-  //       if (!bypass) {
-  //         const pass = String(password || "").trim();
-
-  //         // لا تقبل الدخول بدون باسورد
-  //         if (!pass) throw new Error("Password required");
-
-  //         // تحقق من التطابق (بسيطة لأنك تخزنها نصًا عندك)
-  //         // لو عندك hashing عدلها كما بالأسفل في ملاحظة رقم (2)
-  //         if (pass !== String(room.password || "")) throw new Error("Invalid password");
-  //       }
-  //     }
-
-  //     // ✅ لو كان none: ضمه للأعضاء (كما عندك)
-  //     if (role === "none") {
-  //       const alreadyMember = room.members.some((m: any) => m?.toString?.() === uid);
-  //       if (!alreadyMember) room.members.push(userId as any);
-  //     }
-
-  //     room.activeUsers.push(userId as any);
-  //     room.usersCount = (room.usersCount || 0) + 1;
-
-  //     await room.save({ session });
-  //     return { joined: true };
-  //   });
-
-  //   if (!joined) return { success: true };
-
-  //   const keepPinnedId = await this.getLastPinnedBefore(roomId, joinAt);
-
-  //   this.io().to(`room:${roomId}`).emit("room:user:joined", { roomId, userId });
-
-  //   await this.system(roomId, "دخل", "join", { sender: userId, mentions: [userId] });
-
-  //   const afterJoinSystem = new Date();
-  //   await this.setClearedAt(roomId, userId, afterJoinSystem, keepPinnedId);
-
-  //   await this.emitActiveCount(roomId);
-
-  //   return { success: true };
-  // }
   async joinRoom(roomId: string, userId: string, password?: string) {
     const uid = userId.toString();
     const joinAt = new Date();
@@ -4022,10 +3959,15 @@ if (privateMentionResult) {
     if (!state.clearedAt) {
       if (beforeDate) query.createdAt = { $lt: beforeDate };
 
-      messages = await RoomMessage.find(query)
-        .sort({ createdAt: -1 })
-        .limit(limit)
-        .populate(this.replyToPopulate());
+   messages = await RoomMessage.find(query)
+  .sort({ createdAt: -1 })
+  .limit(limit)
+  .populate("sender", USER_PUBLIC_FIELDS)
+  .populate({
+    path: "reactions.user",
+    select: USER_PUBLIC_FIELDS,
+  })
+  .populate(this.replyToPopulate());
 
       const giftCount = messages.filter((m: any) => m.type === "gift").length;
 
@@ -4053,10 +3995,15 @@ if (privateMentionResult) {
 
     query.$or = or;
 
-    messages = await RoomMessage.find(query)
-      .sort({ createdAt: -1 })
-      .limit(limit)
-      .populate(this.replyToPopulate());
+messages = await RoomMessage.find(query)
+  .sort({ createdAt: -1 })
+  .limit(limit)
+  .populate("sender", USER_PUBLIC_FIELDS)
+  .populate({
+    path: "reactions.user",
+    select: USER_PUBLIC_FIELDS,
+  })
+  .populate(this.replyToPopulate());
 
     const giftCount = messages.filter((m: any) => m.type === "gift").length;
 
@@ -4157,107 +4104,237 @@ if (privateMentionResult) {
       query.content = rx;
     }
 
- const messages = await RoomMessage.find(query)
+const messages = await RoomMessage.find(query)
   .sort({ createdAt: -1 })
   .limit(l)
-  .populate("sender", "username avatar")
+  .populate("sender", USER_PUBLIC_FIELDS)
+  .populate({
+    path: "reactions.user",
+    select: USER_PUBLIC_FIELDS,
+  })
   .populate(this.replyToPopulate());
 
 return messages;
+
   }
-  async toggleReaction(roomId: string, messageId: string, userId: string, emoji: string) {
-    const room = await Room.findById(roomId);
-    if (!room) throw new Error("Room not found");
-    this.ensureArrays(room);
+async toggleReaction(roomId: string, messageId: string, userId: string, emoji: string) {
+  console.log("🟡 [toggleReaction] START", {
+    roomId,
+    messageId,
+    userId,
+    emoji,
+  });
 
-    const role = this.getRole(room, userId);
-    const isInside = this.isInside(room, userId);
+  const room = await Room.findById(roomId);
+  if (!room) throw new Error("Room not found");
+  this.ensureArrays(room);
 
-    if (!isInside && role === "none") throw new Error("Not allowed");
+  const role = this.getRole(room, userId);
+  const isInside = this.isInside(room, userId);
 
-    const message = await RoomMessage.findById(messageId);
-    if (!message) throw new Error("Message not found");
-    if (message.room.toString() !== roomId) throw new Error("Invalid room message");
+  console.log("🟡 [toggleReaction] PERMISSION", {
+    role,
+    isInside,
+  });
 
-    const e = String(emoji || "").trim();
-    if (!e) throw new Error("Invalid emoji");
+  if (!isInside && role === "none") throw new Error("Not allowed");
 
-    const existing = (message.reactions || []).find(
-      (r: any) => r.user.toString() === userId && r.emoji === e
+  const message = await RoomMessage.findById(messageId);
+  if (!message) throw new Error("Message not found");
+  if (message.room.toString() !== roomId) throw new Error("Invalid room message");
+
+  const e = String(emoji || "").trim();
+  if (!e) throw new Error("Invalid emoji");
+
+  console.log("🔵 [toggleReaction] BEFORE UPDATE RAW", {
+    messageId: String(message._id),
+    reactions: (message.reactions || []).map((r: any) => ({
+      user: String(r.user),
+      userType: typeof r.user,
+      emoji: r.emoji,
+      createdAt: r.createdAt,
+    })),
+  });
+
+  const existing = (message.reactions || []).find(
+    (r: any) => r.user.toString() === userId && r.emoji === e
+  );
+
+  let added = false;
+
+  if (existing) {
+    message.reactions = message.reactions.filter(
+      (r: any) => !(r.user.toString() === userId && r.emoji === e)
     );
+    added = false;
+  } else {
+    message.reactions.push({
+      user: userId as any,
+      emoji: e,
+      createdAt: new Date(),
+    });
+    added = true;
+  }
 
-    // ✅ سنحدد هل تمت الإضافة أم الإزالة
-    let added = false;
+  console.log("🔵 [toggleReaction] BEFORE SAVE RAW", {
+    added,
+    reactions: (message.reactions || []).map((r: any) => ({
+      user: String(r.user),
+      userType: typeof r.user,
+      emoji: r.emoji,
+      createdAt: r.createdAt,
+    })),
+  });
 
-    if (existing) {
-      // إزالة
-      message.reactions = message.reactions.filter(
-        (r: any) => !(r.user.toString() === userId && r.emoji === e)
-      );
-      added = false;
-    } else {
-      // إضافة
-      message.reactions.push({ user: userId as any, emoji: e, createdAt: new Date() });
-      added = true;
-    }
+  await message.save();
 
-    await message.save();
+  console.log("🟢 [toggleReaction] AFTER SAVE RAW", {
+    added,
+    reactions: (message.reactions || []).map((r: any) => ({
+      user: String(r.user),
+      userType: typeof r.user,
+      emoji: r.emoji,
+      createdAt: r.createdAt,
+    })),
+  });
 
-    // بث تحديث الرياكشن للغرفة
-    this.io().to(`room:${roomId}`).emit("room:reaction:update", {
-      messageId,
-      reactions: message.reactions
+  const populatedMessage = await RoomMessage.findById(messageId)
+    .populate("sender", USER_PUBLIC_FIELDS)
+    .populate({
+      path: "reactions.user",
+      select: USER_PUBLIC_FIELDS,
+    })
+    .lean();
+
+  console.log("🟣 [toggleReaction] POPULATED MESSAGE", {
+    found: Boolean(populatedMessage),
+    messageId: String((populatedMessage as any)?._id || ""),
+    reactions: Array.isArray((populatedMessage as any)?.reactions)
+      ? (populatedMessage as any).reactions.map((r: any) => ({
+          emoji: r?.emoji,
+          createdAt: r?.createdAt,
+          userType: typeof r?.user,
+          user:
+            typeof r?.user === "object"
+              ? {
+                  _id: r?.user?._id,
+                  username: r?.user?.username,
+                  atUsername: r?.user?.atUsername,
+                  avatar: r?.user?.avatar,
+                  avatarGif: r?.user?.avatarGif,
+                  activeAvatarGif: r?.user?.activeCustomization?.avatarGif,
+                }
+              : r?.user,
+        }))
+      : [],
+  });
+
+  const populatedReactions = Array.isArray((populatedMessage as any)?.reactions)
+    ? (populatedMessage as any).reactions
+    : [];
+
+  const emitPayload = {
+    roomId,
+    messageId,
+    reactions: populatedReactions,
+    reactionCount: populatedReactions.length,
+  };
+
+  console.log("📢 [toggleReaction] EMIT room:reaction:update", {
+    roomId: emitPayload.roomId,
+    messageId: emitPayload.messageId,
+    reactionCount: emitPayload.reactionCount,
+    reactions: emitPayload.reactions.map((r: any) => ({
+      emoji: r?.emoji,
+      userType: typeof r?.user,
+      user:
+        typeof r?.user === "object"
+          ? {
+              _id: r?.user?._id,
+              username: r?.user?.username,
+              atUsername: r?.user?.atUsername,
+              avatar: r?.user?.avatar,
+            }
+          : r?.user,
+    })),
+  });
+
+  this.io().to(`room:${roomId}`).emit("room:reaction:update", emitPayload);
+
+  try {
+    const recipientId = message.sender?.toString?.() ? String(message.sender) : "";
+    const actorId = String(userId);
+
+    console.log("🟠 [toggleReaction] NOTIFICATION CHECK", {
+      added,
+      recipientId,
+      actorId,
+      shouldNotify: Boolean(added && recipientId && recipientId !== actorId),
     });
 
-    // =====================================================
-    // ✅ إرسال إشعار لصاحب الرسالة (فقط عند الإضافة)
-    // =====================================================
-    try {
-      const recipientId = message.sender?.toString?.() ? String(message.sender) : "";
-      const actorId = String(userId);
+    if (added && recipientId && recipientId !== actorId) {
+      const actor = await this.getUserBasic(actorId);
 
-      // لا ترسل لنفسه
-      if (added && recipientId && recipientId !== actorId) {
-        const actor = await this.getUserBasic(actorId);
+      console.log("🟠 [toggleReaction] NOTIFICATION ACTOR", {
+        actor,
+      });
 
-        const info = this.buildMessagePreviewForNotification(message);
+      const info = this.buildMessagePreviewForNotification(message);
 
-        // نص الإشعار
-        const title = "تفاعل جديد";
-        let body = "";
+      const title = "تفاعل جديد";
+      let body = "";
 
-        if (info.kind === "text") {
-          // "فلان عمل لك رياكشن 😀 على رسالتك: ...."
-          body = `قام ${actor.username} بالتفاعل ${e} على رسالتك${info.preview ? `: ${info.preview}` : ""}`;
-        } else {
-          // "فلان عمل لك رياكشن 😀 على صورة/فيديو"
-          body = `قام ${actor.username} بالتفاعل ${e} على ${info.labelAr}`;
-        }
-
-        await notificationService.create({
-          recipient: recipientId,
-          sender: actorId,
-          type: "reaction", // أي قيمة مناسبة عندك
-          title,
-          body,
-
-          // بيانات إضافية لتوجيه المستخدم عند الضغط على الإشعار
-          data: {
-            roomId: String(roomId),
-            messageId: String(messageId),
-            emoji: e,
-            messageType: String(message.type || "text"),
-            mediaUrl: message?.media?.url || ""
-          }
-        });
+      if (info.kind === "text") {
+        body = `قام ${actor.username} بالتفاعل ${e} على رسالتك${info.preview ? `: ${info.preview}` : ""}`;
+      } else {
+        body = `قام ${actor.username} بالتفاعل ${e} على ${info.labelAr}`;
       }
-    } catch (err) {
-      // مهم: لا نكسر العملية الأساسية بسبب الإشعار
-      console.error("reaction notification error:", err);
-    }
 
-    return message.reactions;
+      await notificationService.create({
+        recipient: recipientId,
+        sender: actorId,
+        type: "reaction",
+        title,
+        body,
+        data: {
+          roomId: String(roomId),
+          messageId: String(messageId),
+          emoji: e,
+          messageType: String(message.type || "text"),
+          mediaUrl: message?.media?.url || "",
+        },
+      });
+
+      console.log("✅ [toggleReaction] NOTIFICATION SENT");
+    }
+  } catch (err: any) {
+    console.log("🔴 [toggleReaction] NOTIFICATION ERROR", {
+      message: err?.message,
+      stack: err?.stack,
+    });
   }
+
+  console.log("✅ [toggleReaction] RETURN", {
+    reactionCount: populatedReactions.length,
+    reactions: populatedReactions.map((r: any) => ({
+      emoji: r?.emoji,
+      userType: typeof r?.user,
+      user:
+        typeof r?.user === "object"
+          ? {
+              _id: r?.user?._id,
+              username: r?.user?.username,
+              atUsername: r?.user?.atUsername,
+            }
+          : r?.user,
+    })),
+  });
+
+  return {
+    reactions: populatedReactions,
+    reactionCount: populatedReactions.length,
+  };
+}
 
   /* =====================================================
      ROOM USERS (WITH ROLES & STATUS)

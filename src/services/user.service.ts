@@ -38,6 +38,18 @@ gender?: string;
   notificationSound?: boolean;
   readReceiptsEnabled?: boolean;
 };
+function escapeRegex(value: string) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeSearchAtUsername(value: string) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^@+/, "")
+    .replace(/\s+/g, "")
+    .replace(/[^a-z0-9_]/g, "");
+}
 class UserService {
 // services/user.service.ts
 
@@ -303,13 +315,41 @@ async changeMyEmail(userId: string, newEmail: string): Promise<IUser> {
 
     /* ================= FIND USERS ================= */
 
-    const users = await User.find({
-      _id: { $ne: currentObjectId },
-      $or: [
-        { username: { $regex: query, $options: "i" } },
-        { atUsername: { $regex: query, $options: "i" } }
-      ]
-    }).limit(20);
+ const rawQuery = String(query || "").trim();
+
+if (!rawQuery) {
+  return [];
+}
+
+const safeRawRegex = escapeRegex(rawQuery);
+const safeAtUsername = normalizeSearchAtUsername(rawQuery);
+
+const orConditions: any[] = [
+  // يبحث عن الاسم المعروض كما هو، وهذا يدعم ❤️ والإيموجي والعربي
+  { username: { $regex: safeRawRegex, $options: "i" } },
+
+  // لو عندك displayName
+  { displayName: { $regex: safeRawRegex, $options: "i" } },
+];
+
+// يبحث في atUsername فقط لو بعد التنظيف بقي شيء
+// لأن ❤️ بعد التنظيف يصبح فارغًا
+if (safeAtUsername) {
+  const safeAtRegex = escapeRegex(safeAtUsername);
+
+  orConditions.push({
+    atUsername: { $regex: safeAtRegex, $options: "i" },
+  });
+}
+
+const users = await User.find({
+  _id: { $ne: currentObjectId },
+  $or: orConditions,
+})
+  .select(
+    "_id username atUsername displayName avatar avatarGif activeCustomization customEmojiBadge isOnline blockedUsers"
+  )
+  .limit(20);
 
     const userIds = users.map(u => u._id);
 

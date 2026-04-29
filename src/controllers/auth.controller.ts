@@ -231,28 +231,103 @@ function getAccountType(user: any) {
 /* =========================
    REGISTER
 ========================= */
+// export const register = async (req: Request, res: Response) => {
+//   try {
+//     const { username, password, role } = req.body;
+//     const adminKey = req.headers["x-admin-key"];
+
+//     const data = await registerUser(username, password, role, adminKey);
+
+//     return res.status(201).json({
+//       ...data,
+//       accountType: getAccountType(data.user),
+//       presence: {
+//         status: data.user?.isInvisible ? "offline" : "online",
+//       },
+//     });
+//   } catch (error: any) {
+//     return res.status(400).json({
+//       success: false,
+//       message: error.message || "Registration failed",
+//     });
+//   }
+// };
 export const register = async (req: Request, res: Response) => {
   try {
+    console.log("🟡 [REGISTER CONTROLLER] START");
+
+    console.log("🟡 [REGISTER CONTROLLER] BODY RAW:", req.body);
+
+    console.log("🟡 [REGISTER CONTROLLER] HEADERS:", {
+      adminKeyExists: Boolean(req.headers["x-admin-key"]),
+      contentType: req.headers["content-type"],
+      userAgent: req.headers["user-agent"],
+    });
+
     const { username, password, role } = req.body;
     const adminKey = req.headers["x-admin-key"];
 
+    console.log("🟡 [REGISTER CONTROLLER] PARSED:", {
+      username,
+      usernameType: typeof username,
+      usernameLength: String(username || "").length,
+      usernameChars: Array.from(String(username || "")),
+      hasEmoji: /[\p{Emoji_Presentation}\p{Extended_Pictographic}]/u.test(
+        String(username || "")
+      ),
+      passwordExists: Boolean(password),
+      passwordLength: String(password || "").length,
+      role,
+      adminKeyExists: Boolean(adminKey),
+    });
+
     const data = await registerUser(username, password, role, adminKey);
 
-    return res.status(201).json({
+    console.log("🟢 [REGISTER CONTROLLER] registerUser SUCCESS:", {
+      tokenExists: Boolean(data?.token),
+      userId: data?.user?._id,
+      username: data?.user?.username,
+      atUsername: data?.user?.atUsername,
+      role: data?.user?.role,
+      accountType: getAccountType(data.user),
+      isInvisible: data?.user?.isInvisible,
+    });
+
+    const responsePayload = {
       ...data,
       accountType: getAccountType(data.user),
       presence: {
         status: data.user?.isInvisible ? "offline" : "online",
       },
+    };
+
+    console.log("🟢 [REGISTER CONTROLLER] RESPONSE:", {
+      status: 201,
+      userId: responsePayload?.user?._id,
+      username: responsePayload?.user?.username,
+      atUsername: responsePayload?.user?.atUsername,
+      accountType: responsePayload?.accountType,
+      presence: responsePayload?.presence,
     });
+
+    return res.status(201).json(responsePayload);
   } catch (error: any) {
+    console.log("🔴 [REGISTER CONTROLLER] ERROR:", {
+      message: error?.message,
+      name: error?.name,
+      code: error?.code,
+      keyPattern: error?.keyPattern,
+      keyValue: error?.keyValue,
+      stack: error?.stack,
+      body: req.body,
+    });
+
     return res.status(400).json({
       success: false,
       message: error.message || "Registration failed",
     });
   }
 };
-
 /* =========================
    GOOGLE AUTH
 ========================= */

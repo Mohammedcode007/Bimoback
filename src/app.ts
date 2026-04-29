@@ -26,6 +26,7 @@ import paymobRoutes from "./routes/paymob.routes";
 import { errorHandler } from "./middlewares/error.middleware";
 import { enforceMinVersion } from "./middlewares/enforceMinVersion.middleware";
 import reportRoutes from "./routes/report.routes";
+import blockRoutes from "./routes/block.routes";
 
 const app = express();
 
@@ -99,6 +100,7 @@ app.use("/api/chats", chatRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/rooms", roomRoutes);
 app.use("/api/contact-us", contactUsRoutes);
+app.use("/api/blocks", blockRoutes);
 app.use("/api/payments/paymob", paymobRoutes);
 app.use("/api/reports", reportRoutes);
 /* =========================

@@ -83,7 +83,8 @@ function normalizeAtUsername(username: string) {
   return String(username || "")
     .trim()
     .toLowerCase()
-    .replace(/\s+/g, "");
+    .replace(/\s+/g, "")
+    .replace(/[^a-z0-9_]/g, "");
 }
 async function inviteNewUserToGirlsRoom(userId: string) {
   try {
@@ -158,34 +159,55 @@ function normalizeRole(role: unknown): UserRole {
 /* =====================================================
    REGISTER
 ===================================================== */
+function normalizeDisplayUsername(value: unknown) {
+  const raw = String(value || "").trim();
 
+  if (!raw) {
+    throw new Error("Invalid username");
+  }
+
+  // لا نمنع الإيموجي، فقط نمنع الاسم الطويل جدًا
+  if (Array.from(raw).length > 30) {
+    throw new Error("Username is too long");
+  }
+
+  return raw;
+}
 export const registerUser = async (
   username: string,
   password: string,
   role?: unknown,
   adminKey?: unknown
 ) => {
-
-  const rawUsername = String(username || "").trim();
-
-  if (!rawUsername || rawUsername.length < 3) {
-    throw new Error("Invalid username");
-  }
+  const rawUsername = normalizeDisplayUsername(username);
 
   if (!String(password || "").trim() || String(password).length < 6) {
     throw new Error("Invalid password");
   }
 
-  const atUsername = normalizeAtUsername(rawUsername);
+  let atUsername = normalizeAtUsername(rawUsername);
 
-  // تحقق من وجود المستخدم
-  const existing = await User.findOne({ atUsername }).lean();
+  // لو الاسم كله إيموجي مثل ❤️، atUsername سيكون فارغًا
+  // لذلك نولّد معرف آمن تلقائيًا
+  if (!atUsername || atUsername.length < 3) {
+    atUsername = await generateUniqueUsername(rawUsername);
+  } else {
+    const existingAtUsername = await User.findOne({ atUsername }).lean();
 
-  if (existing) {
+    if (existingAtUsername) {
+      atUsername = await generateUniqueUsername(rawUsername);
+    }
+  }
+
+  // لو تريد منع تكرار اسم العرض نفسه مثل ❤️
+  const existingUsername = await User.findOne({
+    username: rawUsername,
+  }).lean();
+
+  if (existingUsername) {
     throw new Error("Username already exists");
   }
 
-  // role
   let finalRole: UserRole = normalizeRole(role);
 
   if (finalRole === "admin") {
@@ -198,32 +220,33 @@ export const registerUser = async (
 
       if (provided !== required) {
         finalRole = "user";
-      } else {
       }
     }
   }
 
-
   const hashed = await hashPassword(password);
 
   const user = await User.create({
-    username: rawUsername,
-    atUsername,
+    username: rawUsername, // هنا الإيموجي يبقى كما هو
+    atUsername,            // هنا معرف آمن للبحث والمنشن
     password: hashed,
-    role: finalRole
+    role: finalRole,
   });
 
-  systemBotService.attachBotToNewUser(user._id.toString()).catch((err) => {
+  systemBotService.attachBotToNewUser(user._id.toString()).catch(() => {});
+
+  seedWelcomeMessagesForNewUser(user._id.toString()).catch(() => {});
+
+  inviteNewUserToGirlsRoom(user._id.toString()).catch((err) => {
+    console.log(
+      "❌ inviteNewUserToGirlsRoom failed (register):",
+      err?.message || err
+    );
   });
 
-  seedWelcomeMessagesForNewUser(user._id.toString()).catch((err) => {
-  });
-inviteNewUserToGirlsRoom(user._id.toString()).catch((err) => {
-  console.log("❌ inviteNewUserToGirlsRoom failed (register):", err?.message || err);
-});
   const token = generateToken(user);
 
-  const response = {
+  return {
     token,
     user: {
       _id: user._id,
@@ -234,24 +257,106 @@ inviteNewUserToGirlsRoom(user._id.toString()).catch((err) => {
       isVerified: user.isVerified,
       isOnline: false,
       isInvisible: false,
-      lastSeen: null
-    }
+      lastSeen: null,
+    },
   };
-
-
-  return response;
 };
+// export const registerUser = async (
+//   username: string,
+//   password: string,
+//   role?: unknown,
+//   adminKey?: unknown
+// ) => {
+
+//   const rawUsername = String(username || "").trim();
+
+//   if (!rawUsername || rawUsername.length < 3) {
+//     throw new Error("Invalid username");
+//   }
+
+//   if (!String(password || "").trim() || String(password).length < 6) {
+//     throw new Error("Invalid password");
+//   }
+
+//   const atUsername = normalizeAtUsername(rawUsername);
+
+//   // تحقق من وجود المستخدم
+//   const existing = await User.findOne({ atUsername }).lean();
+
+//   if (existing) {
+//     throw new Error("Username already exists");
+//   }
+
+//   // role
+//   let finalRole: UserRole = normalizeRole(role);
+
+//   if (finalRole === "admin") {
+//     const required = String(process.env.ADMIN_REGISTER_KEY || "").trim();
+
+//     if (!required) {
+//       finalRole = "user";
+//     } else {
+//       const provided = String(adminKey || "").trim();
+
+//       if (provided !== required) {
+//         finalRole = "user";
+//       } else {
+//       }
+//     }
+//   }
+
+
+//   const hashed = await hashPassword(password);
+
+//   const user = await User.create({
+//     username: rawUsername,
+//     atUsername,
+//     password: hashed,
+//     role: finalRole
+//   });
+
+//   systemBotService.attachBotToNewUser(user._id.toString()).catch((err) => {
+//   });
+
+//   seedWelcomeMessagesForNewUser(user._id.toString()).catch((err) => {
+//   });
+// inviteNewUserToGirlsRoom(user._id.toString()).catch((err) => {
+//   console.log("❌ inviteNewUserToGirlsRoom failed (register):", err?.message || err);
+// });
+//   const token = generateToken(user);
+
+//   const response = {
+//     token,
+//     user: {
+//       _id: user._id,
+//       username: user.username,
+//       atUsername: user.atUsername,
+//       avatar: user.avatar,
+//       role: (user as any).role || "user",
+//       isVerified: user.isVerified,
+//       isOnline: false,
+//       isInvisible: false,
+//       lastSeen: null
+//     }
+//   };
+
+
+//   return response;
+// };
 /* =====================================================
    LOGIN
 ===================================================== */
 export const loginUser = async (username: string, password: string) => {
-  const rawUsername = String(username || "").trim();
-  const cleanPassword = String(password || "").trim();
-  const atUsername = normalizeAtUsername(rawUsername);
+const rawUsername = String(username || "").trim();
+const cleanPassword = String(password || "").trim();
+const atUsername = normalizeAtUsername(rawUsername);
 
-
-
-  const user = await User.findOne({ atUsername });
+const user = await User.findOne({
+  $or: [
+    ...(atUsername ? [{ atUsername }] : []),
+    { username: rawUsername },
+  ],
+});
 
 
   if (!user) {
