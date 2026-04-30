@@ -55,7 +55,7 @@ app.use(
 app.get("/", (_, res) => {
   res.sendFile(path.join(publicPath, "index.html"));
 });
-
+app.use("/lottie", express.static(path.join(publicPath, "lottie")));
 app.get("/privacy", (_, res) => {
   res.sendFile(path.join(publicPath, "privacy.html"));
 });

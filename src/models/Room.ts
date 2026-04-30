@@ -64,7 +64,9 @@ export interface IRoom extends Document {
   members: Types.ObjectId[];
   blockeds: Types.ObjectId[];
   activeUsers: Types.ObjectId[];
-
+roomGames: {
+  luckEnabled: boolean;
+};
   mutedUsers: {
     user: Types.ObjectId;
     until: Date;
@@ -267,11 +269,18 @@ const RoomSchema = new Schema<IRoom>(
 roomBot: {
   enabled: { type: Boolean, default: false, index: true },
   welcomeEnabled: { type: Boolean, default: true },
+  roomGames: {
+  luckEnabled: {
+    type: Boolean,
+    default: true,
+  },
+},
   language: {
     type: String,
     enum: ["ar", "en"],
     default: "ar",
   },
+  
   welcomeMessage: {
     type: String,
     trim: true,
@@ -343,7 +352,13 @@ this.roomBot ||= {
   language: "ar",
   welcomeMessage: null,
 };
+this.roomGames ||= {
+  luckEnabled: true,
+};
 
+if (typeof this.roomGames.luckEnabled !== "boolean") {
+  this.roomGames.luckEnabled = true;
+}
 if (!this.roomBot.language) {
   this.roomBot.language = "ar";
 }
@@ -391,7 +406,7 @@ RoomSchema.index({ "vipUsers.user": 1 });
 RoomSchema.index({ "mutedUsers.user": 1 });
 RoomSchema.index({ activeUsers: 1 });
 RoomSchema.index({ tags: 1 });
-
+RoomSchema.index({ "roomGames.luckEnabled": 1 });
 /* =====================================================
    CASCADE DELETE
 ===================================================== */

@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "rooms": {
+    "69d62c8c2059258e1c4cf6b3": {
+      "roomId": "69d62c8c2059258e1c4cf6b3",
+      "players": {
+        "69ce260036d8133aa1806b2d": {
+          "userId": "69ce260036d8133aa1806b2d",
+          "username": "⭏⭎𝗜𝃛𝗖̶𝗮̶𝗻̶⇣›♔𝗗̶𝗼⇣›♔𝗶𝗧̶⭏⭎",
+          "points": 4448,
+          "wins": 1,
+          "losses": 0,
+          "neutral": 0,
+          "millionWins": 1,
+          "investmentWins": 0,
+          "speculationWins": 0,
+          "duelWins": 0,
+          "duelLosses": 0,
+          "totalWon": 4448,
+          "totalLost": 0,
+          "updatedAt": "2026-04-30T09:20:34.036Z"
+        }
+      },
+      "cooldowns": {},
+      "history": [
+        {
+          "id": "fp-1777540834036-5db6a9",
+          "userId": "69ce260036d8133aa1806b2d",
+          "username": "⭏⭎𝗜𝃛𝗖̶𝗮̶𝗻̶⇣›♔𝗗̶𝗼⇣›♔𝗶𝗧̶⭏⭎",
+          "roomId": "69d62c8c2059258e1c4cf6b3",
+          "amount": 4448,
+          "balanceAfter": 4448,
+          "reason": "million",
+          "meta": {
+            "command": "million",
+            "outcome": "small_win"
+          },
+          "createdAt": "2026-04-30T09:20:34.036Z"
+        }
+      ]
+    }
+  }
+}

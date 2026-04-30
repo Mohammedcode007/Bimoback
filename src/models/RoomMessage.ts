@@ -39,7 +39,9 @@ export type RoomGameType =
   | "chess"
   | "quiz"
   | "xo"
-  | "cards";
+  | "cards"
+  | "luck"
+  |"duel"
 
 /* =====================================================
    MESSAGE LENGTH LIMITS
@@ -66,7 +68,7 @@ const MAX_ROOM_GIFT_CONTENT_LENGTH = 200;
 const MAX_ROOM_SONG_CONTENT_LENGTH = 500;
 
 // رسائل الألعاب
-const MAX_ROOM_GAME_CONTENT_LENGTH = 700;
+const MAX_ROOM_GAME_CONTENT_LENGTH = 1200;
 
 function getMaxContentLengthByType(type: string) {
   switch (type) {
@@ -474,14 +476,13 @@ const RoomMessageSchema = new Schema<IRoomMessage>(
       default: undefined
     },
 
-    gameType: {
-      type: String,
-      enum: ["", "cricket", "chess", "quiz", "xo", "cards"],
-      default: "",
-      trim: true,
-      index: true
-    },
-
+gameType: {
+  type: String,
+enum: ["", "cricket", "chess", "quiz", "xo", "cards", "luck", "duel"],
+  default: "",
+  trim: true,
+  index: true
+},
     game: {
       type: GameSchema,
       default: undefined
