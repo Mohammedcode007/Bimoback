@@ -143,11 +143,20 @@ if (!key || !value) return null;
  * وليس executeRoomSettingsCommand.
  */
 const ignoredGameKeys = [
+  // Bomb game
   "bomb",
   "بومب",
   "قنبلة",
   "قنبله",
+
+  // Global song love command
+  "love",
+  "حب",
+  "لايك",
+
+  // Games
   "سكر",
+  "sugar",
   "luck",
   "duel",
   "hit",
@@ -157,7 +166,6 @@ const ignoredGameKeys = [
   "ضرب",
   "كف",
 ];
-
 if (ignoredGameKeys.includes(key)) {
   return null;
 }
