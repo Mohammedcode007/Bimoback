@@ -213,6 +213,7 @@ import {
   verifyResetOtpService,
   resetPasswordService,
   forgotPasswordService,
+  createPaidAccountWithCoinz,
 } from "../services/auth.service";
 
 /* =========================
@@ -228,6 +229,58 @@ function getAccountType(user: any) {
   return "user";
 }
 
+
+function getAuthUserId(req: Request) {
+  return String(
+    (req as any).user?.id ||
+      (req as any).user?._id ||
+      (req as any).userId ||
+      ""
+  );
+}
+
+export const createPaidAccountController = async (
+  req: Request,
+  res: Response
+) => {
+  console.log("🟡 [createPaidAccountController] HIT", {
+    body: req.body,
+    authUser: (req as any).user,
+    userId: (req as any).userId,
+  });
+
+  try {
+    const ownerUserId = getAuthUserId(req);
+
+    if (!ownerUserId) {
+      console.log("❌ [createPaidAccountController] Unauthorized");
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { username, password } = req.body || {};
+
+    const result = await createPaidAccountWithCoinz({
+      ownerUserId,
+      username,
+      password,
+      cost: 30000,
+    });
+
+    return res.status(201).json(result);
+  } catch (err: any) {
+    console.log("❌ [createPaidAccountController] ERROR", {
+      message: err?.message || err,
+    });
+
+    return res.status(400).json({
+      success: false,
+      message: err?.message || "Failed to create account",
+    });
+  }
+};
 /* =========================
    REGISTER
 ========================= */

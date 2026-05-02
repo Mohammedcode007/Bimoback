@@ -16,6 +16,7 @@ import { executeGlobalSongCommand, parseGlobalSongLoveCommand } from "./bot/room
 import { executeRoomSettingsCommand } from "./roomSettings/roomSettingsCommand.service";
 import { executeGlobalHitDuelCommand } from "./roomGames/globalHitDuelGame.service";
 import { executeSugarLuckCommand } from "./roomGames/sugarLuckGame.service";
+import { executeBombColorCommand } from "./roomGames/bombColorGame.service";
 /**
  * ملاحظة مهمة جدًا:
  * - في RoomMessageSchema عندك يوجد Hook يقوم بزيادة messagesCount تلقائيًا عند إنشاء الرسالة.
@@ -103,7 +104,7 @@ type SendMessageInput = {
     roomName?: string;
   };
 
-  gameType?: "" | "cricket" | "chess" | "quiz" | "xo" | "cards" | "luck" | "duel";
+gameType?: "" | "cricket" | "chess" | "quiz" | "xo" | "cards" | "luck" | "duel" | "bomb";
   game?: {
     gameId?: string;
     title?: string;
@@ -192,23 +193,24 @@ class RoomService {
 
     if (msgType === "game") {
       const gt = String(message?.gameType || "").trim();
-      const label =
-        gt === "cricket"
-          ? "لعبة كريكت"
-          : gt === "luck"
-            ? "لعبة سُــــــكَّــــــر"
-            : gt === "duel"
-              ? "لعبة تحدي"
-              : gt === "chess"
-                ? "لعبة شطرنج"
-                : gt === "quiz"
-                  ? "لعبة أسئلة"
-                  : gt === "xo"
-                    ? "لعبة XO"
-                    : gt === "cards"
-                      ? "لعبة ورق"
-                      : "لعبة";
-
+     const label =
+  gt === "cricket"
+    ? "لعبة كريكت"
+    : gt === "luck"
+      ? "لعبة سُــــــكَّــــــر"
+      : gt === "bomb"
+        ? "لعبة القنبلة"
+        : gt === "duel"
+          ? "لعبة تحدي"
+          : gt === "chess"
+            ? "لعبة شطرنج"
+            : gt === "quiz"
+              ? "لعبة أسئلة"
+              : gt === "xo"
+                ? "لعبة XO"
+                : gt === "cards"
+                  ? "لعبة ورق"
+                  : "لعبة";
       return {
         kind: "game",
         labelAr: label,
@@ -2553,7 +2555,69 @@ try {
         (senderUser as any)?.atUsername ||
         "مستخدم"
     );
+/* =====================================================
+  BOMB COLOR GAME
+  أوامر:
+  bomb@username
+  bomb@username@roomname
 
+  الرد:
+  أحمر / أخضر / أزرق
+===================================================== */
+const bombResult = await executeBombColorCommand({
+  roomId: String(roomId),
+  userId: String(senderId),
+  username,
+  content: text,
+});
+
+if (bombResult?.handled) {
+  const createdMessages = Array.isArray(bombResult.messages)
+    ? bombResult.messages
+    : bombResult.message
+      ? [bombResult.message]
+      : [];
+
+  for (const rawMsg of createdMessages) {
+    if (!rawMsg?._id) continue;
+
+    const bombMessage = await RoomMessage.findById(rawMsg._id)
+      .populate("sender", USER_PUBLIC_FIELDS)
+      .populate({
+        path: "reactions.user",
+        select: USER_PUBLIC_FIELDS,
+      })
+      .populate(this.replyToPopulate())
+      .lean();
+
+    if (!bombMessage) continue;
+
+    const targetRoomId = String((bombMessage as any).room || roomId);
+
+    this.io()
+      .to(`room:${targetRoomId}`)
+      .emit("room:message:new", bombMessage);
+  }
+
+  if (bombResult.text && !createdMessages.length) {
+    await this.system(
+      roomId,
+      bombResult.text,
+      bombResult.success ? "game" : "system",
+      {
+        systemType: bombResult.success
+          ? "bomb_color"
+          : "bomb_color_error",
+        sender: senderId,
+        mentions: [senderId],
+        gameType: "bomb",
+        meta: bombResult.meta || {},
+      }
+    );
+  }
+
+  return message;
+}
     /* =====================================================
       GLOBAL HIT / SLAP / BOX DUEL GAME
       أوامر: كف / ضرب / بوكس

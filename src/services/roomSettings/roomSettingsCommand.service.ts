@@ -131,17 +131,43 @@ function parseCommand(content: string): ParsedCommand | null {
 
   if (!match) return null;
 
-  const key = String(match[1] || "").trim().toLowerCase();
-  const value = String(match[2] || "").trim();
+const key = String(match[1] || "").trim().toLowerCase();
+const value = String(match[2] || "").trim();
 
-  if (!key || !value) return null;
+if (!key || !value) return null;
 
-  return {
-    raw: text,
-    key,
-    value,
-    lang: detectLang(text),
-  };
+/**
+ * ✅ مهم جدًا:
+ * لا تجعل أوامر الألعاب تدخل على أوامر إعدادات الغرفة.
+ * bomb@username يجب أن يذهب إلى executeBombColorCommand
+ * وليس executeRoomSettingsCommand.
+ */
+const ignoredGameKeys = [
+  "bomb",
+  "بومب",
+  "قنبلة",
+  "قنبله",
+  "سكر",
+  "luck",
+  "duel",
+  "hit",
+  "slap",
+  "box",
+  "بوكس",
+  "ضرب",
+  "كف",
+];
+
+if (ignoredGameKeys.includes(key)) {
+  return null;
+}
+
+return {
+  raw: text,
+  key,
+  value,
+  lang: detectLang(text),
+};
 }
 
 function getRole(room: any, userId: string) {

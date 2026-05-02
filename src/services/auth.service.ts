@@ -12,6 +12,7 @@ import { seedWelcomeMessagesForNewUser } from "./welcomeMessage.service";
 import systemBotService from "./bot/private-chat/systemBot.service";
 import roomService from "./room.service";
 import Room from "../models/Room";
+import mongoose from "mongoose";
 type GoogleAuthInput = {
   idToken: string;
   username?: string;
@@ -159,6 +160,8 @@ function normalizeRole(role: unknown): UserRole {
 /* =====================================================
    REGISTER
 ===================================================== */
+const MAX_USERNAME_LENGTH = 64;
+
 function normalizeDisplayUsername(value: unknown) {
   const raw = String(value || "").trim();
 
@@ -166,65 +169,245 @@ function normalizeDisplayUsername(value: unknown) {
     throw new Error("Invalid username");
   }
 
-  // لا نمنع الإيموجي، فقط نمنع الاسم الطويل جدًا
-  if (Array.from(raw).length > 30) {
-    throw new Error("Username is too long");
+  // نستخدم Array.from حتى نحسب الإيموجي والزخارف بشكل أفضل من .length
+  const usernameLength = Array.from(raw).length;
+
+  if (usernameLength > MAX_USERNAME_LENGTH) {
+    throw new Error(`Username is too long. Max length is ${MAX_USERNAME_LENGTH}`);
   }
 
   return raw;
 }
+// export const registerUser = async (
+//   username: string,
+//   password: string,
+//   role?: unknown,
+//   adminKey?: unknown
+// ) => {
+//   const rawUsername = normalizeDisplayUsername(username);
+
+//   if (!String(password || "").trim() || String(password).length < 6) {
+//     throw new Error("Invalid password");
+//   }
+
+//   let atUsername = normalizeAtUsername(rawUsername);
+
+//   // لو الاسم كله إيموجي مثل ❤️، atUsername سيكون فارغًا
+//   // لذلك نولّد معرف آمن تلقائيًا
+//   if (!atUsername || atUsername.length < 3) {
+//     atUsername = await generateUniqueUsername(rawUsername);
+//   } else {
+//     const existingAtUsername = await User.findOne({ atUsername }).lean();
+
+//     if (existingAtUsername) {
+//       atUsername = await generateUniqueUsername(rawUsername);
+//     }
+//   }
+
+//   // لو تريد منع تكرار اسم العرض نفسه مثل ❤️
+//   const existingUsername = await User.findOne({
+//     username: rawUsername,
+//   }).lean();
+
+//   if (existingUsername) {
+//     throw new Error("Username already exists");
+//   }
+
+//   let finalRole: UserRole = normalizeRole(role);
+
+//   if (finalRole === "admin") {
+//     const required = String(process.env.ADMIN_REGISTER_KEY || "").trim();
+
+//     if (!required) {
+//       finalRole = "user";
+//     } else {
+//       const provided = String(adminKey || "").trim();
+
+//       if (provided !== required) {
+//         finalRole = "user";
+//       }
+//     }
+//   }
+
+//   const hashed = await hashPassword(password);
+
+//   const user = await User.create({
+//     username: rawUsername, // هنا الإيموجي يبقى كما هو
+//     atUsername,            // هنا معرف آمن للبحث والمنشن
+//     password: hashed,
+//     role: finalRole,
+//   });
+
+//   systemBotService.attachBotToNewUser(user._id.toString()).catch(() => {});
+
+//   seedWelcomeMessagesForNewUser(user._id.toString()).catch(() => {});
+
+//   inviteNewUserToGirlsRoom(user._id.toString()).catch((err) => {
+//     console.log(
+//       "❌ inviteNewUserToGirlsRoom failed (register):",
+//       err?.message || err
+//     );
+//   });
+
+//   const token = generateToken(user);
+
+//   return {
+//     token,
+//     user: {
+//       _id: user._id,
+//       username: user.username,
+//       atUsername: user.atUsername,
+//       avatar: user.avatar,
+//       role: (user as any).role || "user",
+//       isVerified: user.isVerified,
+//       isOnline: false,
+//       isInvisible: false,
+//       lastSeen: null,
+//     },
+//   };
+// };
+
+
 export const registerUser = async (
   username: string,
   password: string,
   role?: unknown,
   adminKey?: unknown
 ) => {
+  console.log("🟡 [registerUser] START", {
+    username,
+    role,
+    hasAdminKey: !!String(adminKey || "").trim(),
+  });
+
   const rawUsername = normalizeDisplayUsername(username);
 
+  console.log("🟡 [registerUser] Normalized display username:", {
+    inputUsername: username,
+    rawUsername,
+  });
+
   if (!String(password || "").trim() || String(password).length < 6) {
+    console.log("❌ [registerUser] Invalid password", {
+      username: rawUsername,
+      passwordLength: String(password || "").length,
+    });
+
     throw new Error("Invalid password");
   }
 
   let atUsername = normalizeAtUsername(rawUsername);
 
+  console.log("🟡 [registerUser] Initial atUsername:", {
+    rawUsername,
+    atUsername,
+  });
+
   // لو الاسم كله إيموجي مثل ❤️، atUsername سيكون فارغًا
   // لذلك نولّد معرف آمن تلقائيًا
   if (!atUsername || atUsername.length < 3) {
+    console.log("🟠 [registerUser] atUsername invalid, generating unique username", {
+      rawUsername,
+      currentAtUsername: atUsername,
+    });
+
     atUsername = await generateUniqueUsername(rawUsername);
+
+    console.log("✅ [registerUser] Generated atUsername:", {
+      rawUsername,
+      atUsername,
+    });
   } else {
+    console.log("🔵 [registerUser] Checking existing atUsername:", {
+      atUsername,
+    });
+
     const existingAtUsername = await User.findOne({ atUsername }).lean();
 
     if (existingAtUsername) {
+      console.log("🟠 [registerUser] atUsername already exists, generating new one", {
+        atUsername,
+        existingUserId: String(existingAtUsername._id),
+      });
+
       atUsername = await generateUniqueUsername(rawUsername);
+
+      console.log("✅ [registerUser] New generated atUsername:", {
+        rawUsername,
+        atUsername,
+      });
+    } else {
+      console.log("✅ [registerUser] atUsername is available:", {
+        atUsername,
+      });
     }
   }
 
   // لو تريد منع تكرار اسم العرض نفسه مثل ❤️
+  console.log("🔵 [registerUser] Checking existing display username:", {
+    username: rawUsername,
+  });
+
   const existingUsername = await User.findOne({
     username: rawUsername,
   }).lean();
 
   if (existingUsername) {
+    console.log("❌ [registerUser] Username already exists:", {
+      username: rawUsername,
+      existingUserId: String(existingUsername._id),
+    });
+
     throw new Error("Username already exists");
   }
 
+  console.log("✅ [registerUser] Display username is available:", {
+    username: rawUsername,
+  });
+
   let finalRole: UserRole = normalizeRole(role);
+
+  console.log("🟡 [registerUser] Role after normalize:", {
+    inputRole: role,
+    finalRole,
+  });
 
   if (finalRole === "admin") {
     const required = String(process.env.ADMIN_REGISTER_KEY || "").trim();
 
+    console.log("🔵 [registerUser] Admin role requested:", {
+      hasRequiredAdminKey: !!required,
+      hasProvidedAdminKey: !!String(adminKey || "").trim(),
+    });
+
     if (!required) {
+      console.log("🟠 [registerUser] ADMIN_REGISTER_KEY missing, fallback to user role");
+
       finalRole = "user";
     } else {
       const provided = String(adminKey || "").trim();
 
       if (provided !== required) {
+        console.log("🟠 [registerUser] Invalid admin key, fallback to user role");
+
         finalRole = "user";
+      } else {
+        console.log("✅ [registerUser] Valid admin key, admin role accepted");
       }
     }
   }
 
+  console.log("🔵 [registerUser] Hashing password...");
+
   const hashed = await hashPassword(password);
+
+  console.log("✅ [registerUser] Password hashed");
+
+  console.log("🔵 [registerUser] Creating user:", {
+    username: rawUsername,
+    atUsername,
+    role: finalRole,
+  });
 
   const user = await User.create({
     username: rawUsername, // هنا الإيموجي يبقى كما هو
@@ -233,20 +416,70 @@ export const registerUser = async (
     role: finalRole,
   });
 
-  systemBotService.attachBotToNewUser(user._id.toString()).catch(() => {});
+  console.log("✅ [registerUser] User created successfully:", {
+    userId: String(user._id),
+    username: user.username,
+    atUsername: user.atUsername,
+    role: (user as any).role || "user",
+  });
 
-  seedWelcomeMessagesForNewUser(user._id.toString()).catch(() => {});
+  console.log("🔵 [registerUser] Attaching system bot to new user:", {
+    userId: String(user._id),
+  });
+
+  systemBotService
+    .attachBotToNewUser(user._id.toString())
+    .then(() => {
+      console.log("✅ [registerUser] Bot attached successfully:", {
+        userId: String(user._id),
+      });
+    })
+    .catch((err) => {
+      console.log("❌ [registerUser] attachBotToNewUser failed:", {
+        userId: String(user._id),
+        error: err?.message || err,
+      });
+    });
+
+  console.log("🔵 [registerUser] Seeding welcome messages:", {
+    userId: String(user._id),
+  });
+
+  seedWelcomeMessagesForNewUser(user._id.toString())
+    .then(() => {
+      console.log("✅ [registerUser] Welcome messages seeded successfully:", {
+        userId: String(user._id),
+      });
+    })
+    .catch((err) => {
+      console.log("❌ [registerUser] seedWelcomeMessagesForNewUser failed:", {
+        userId: String(user._id),
+        error: err?.message || err,
+      });
+    });
+
+  console.log("🔵 [registerUser] Inviting new user to girls room:", {
+    userId: String(user._id),
+  });
 
   inviteNewUserToGirlsRoom(user._id.toString()).catch((err) => {
-    console.log(
-      "❌ inviteNewUserToGirlsRoom failed (register):",
-      err?.message || err
-    );
+    console.log("❌ inviteNewUserToGirlsRoom failed (register):", {
+      userId: String(user._id),
+      error: err?.message || err,
+    });
+  });
+
+  console.log("🔵 [registerUser] Generating token:", {
+    userId: String(user._id),
   });
 
   const token = generateToken(user);
 
-  return {
+  console.log("✅ [registerUser] Token generated successfully:", {
+    userId: String(user._id),
+  });
+
+  const response = {
     token,
     user: {
       _id: user._id,
@@ -260,89 +493,238 @@ export const registerUser = async (
       lastSeen: null,
     },
   };
+
+  console.log("✅ [registerUser] DONE", {
+    userId: String(user._id),
+    username: user.username,
+    atUsername: user.atUsername,
+    role: (user as any).role || "user",
+  });
+
+  return response;
 };
-// export const registerUser = async (
-//   username: string,
-//   password: string,
-//   role?: unknown,
-//   adminKey?: unknown
-// ) => {
+export const createPaidAccountWithCoinz = async ({
+  ownerUserId,
+  username,
+  password,
+  cost = 30000,
+}: {
+  ownerUserId: string;
+  username: string;
+  password: string;
+  cost?: number;
+}) => {
+  console.log("🟡 [createPaidAccountWithCoinz] START", {
+    ownerUserId,
+    username,
+    cost,
+    passwordLength: String(password || "").length,
+  });
 
-//   const rawUsername = String(username || "").trim();
+  const session = await mongoose.startSession();
 
-//   if (!rawUsername || rawUsername.length < 3) {
-//     throw new Error("Invalid username");
-//   }
+  let createdUser: any = null;
 
-//   if (!String(password || "").trim() || String(password).length < 6) {
-//     throw new Error("Invalid password");
-//   }
+  try {
+    await session.withTransaction(async () => {
+      const owner = await User.findById(ownerUserId).session(session);
 
-//   const atUsername = normalizeAtUsername(rawUsername);
+      if (!owner) {
+        console.log("❌ [createPaidAccountWithCoinz] Owner not found", {
+          ownerUserId,
+        });
 
-//   // تحقق من وجود المستخدم
-//   const existing = await User.findOne({ atUsername }).lean();
+        throw new Error("Owner user not found");
+      }
 
-//   if (existing) {
-//     throw new Error("Username already exists");
-//   }
+      const currentCoinz = Number((owner as any).CoinzBalance || 0);
 
-//   // role
-//   let finalRole: UserRole = normalizeRole(role);
+      console.log("🔵 [createPaidAccountWithCoinz] Owner balance", {
+        ownerUserId,
+        currentCoinz,
+        cost,
+      });
 
-//   if (finalRole === "admin") {
-//     const required = String(process.env.ADMIN_REGISTER_KEY || "").trim();
+      if (currentCoinz < cost) {
+        console.log("❌ [createPaidAccountWithCoinz] Insufficient coinz", {
+          ownerUserId,
+          currentCoinz,
+          cost,
+        });
 
-//     if (!required) {
-//       finalRole = "user";
-//     } else {
-//       const provided = String(adminKey || "").trim();
+        throw new Error("Insufficient Coinz balance");
+      }
 
-//       if (provided !== required) {
-//         finalRole = "user";
-//       } else {
-//       }
-//     }
-//   }
+      const rawUsername = normalizeDisplayUsername(username);
 
+      console.log("🔵 [createPaidAccountWithCoinz] Username normalized", {
+        rawUsername,
+        length: Array.from(rawUsername).length,
+        maxLength: MAX_USERNAME_LENGTH,
+      });
 
-//   const hashed = await hashPassword(password);
+      if (!String(password || "").trim() || String(password).length < 6) {
+        console.log("❌ [createPaidAccountWithCoinz] Invalid password", {
+          username: rawUsername,
+          passwordLength: String(password || "").length,
+        });
 
-//   const user = await User.create({
-//     username: rawUsername,
-//     atUsername,
-//     password: hashed,
-//     role: finalRole
-//   });
+        throw new Error("Invalid password");
+      }
 
-//   systemBotService.attachBotToNewUser(user._id.toString()).catch((err) => {
-//   });
+      let atUsername = normalizeAtUsername(rawUsername);
 
-//   seedWelcomeMessagesForNewUser(user._id.toString()).catch((err) => {
-//   });
-// inviteNewUserToGirlsRoom(user._id.toString()).catch((err) => {
-//   console.log("❌ inviteNewUserToGirlsRoom failed (register):", err?.message || err);
-// });
-//   const token = generateToken(user);
+      console.log("🔵 [createPaidAccountWithCoinz] Initial atUsername", {
+        rawUsername,
+        atUsername,
+      });
 
-//   const response = {
-//     token,
-//     user: {
-//       _id: user._id,
-//       username: user.username,
-//       atUsername: user.atUsername,
-//       avatar: user.avatar,
-//       role: (user as any).role || "user",
-//       isVerified: user.isVerified,
-//       isOnline: false,
-//       isInvisible: false,
-//       lastSeen: null
-//     }
-//   };
+      if (!atUsername || atUsername.length < 3) {
+        atUsername = await generateUniqueUsername(rawUsername);
 
+        console.log("✅ [createPaidAccountWithCoinz] Generated atUsername", {
+          rawUsername,
+          atUsername,
+        });
+      } else {
+        const existingAtUsername = await User.findOne({ atUsername })
+          .session(session)
+          .lean();
 
-//   return response;
-// };
+        if (existingAtUsername) {
+          console.log("🟠 [createPaidAccountWithCoinz] atUsername exists, generating another", {
+            atUsername,
+            existingUserId: String(existingAtUsername._id),
+          });
+
+          atUsername = await generateUniqueUsername(rawUsername);
+
+          console.log("✅ [createPaidAccountWithCoinz] New generated atUsername", {
+            rawUsername,
+            atUsername,
+          });
+        }
+      }
+
+      const existingUsername = await User.findOne({
+        username: rawUsername,
+      })
+        .session(session)
+        .lean();
+
+      if (existingUsername) {
+        console.log("❌ [createPaidAccountWithCoinz] Username already exists", {
+          username: rawUsername,
+          existingUserId: String(existingUsername._id),
+        });
+
+        throw new Error("Username already exists");
+      }
+
+      const hashed = await hashPassword(password);
+
+      console.log("🔵 [createPaidAccountWithCoinz] Creating paid account", {
+        username: rawUsername,
+        atUsername,
+      });
+
+      const users = await User.create(
+        [
+          {
+            username: rawUsername,
+            atUsername,
+            password: hashed,
+            role: "user",
+          },
+        ],
+        { session }
+      );
+
+      createdUser = users[0];
+
+      console.log("✅ [createPaidAccountWithCoinz] Account created", {
+        createdUserId: String(createdUser._id),
+        username: createdUser.username,
+        atUsername: createdUser.atUsername,
+      });
+
+      // ✅ الخصم بعد نجاح إنشاء الحساب فقط
+      // ✅ اسم الحقل الصحيح في User model عندك هو CoinzBalance
+      (owner as any).CoinzBalance = currentCoinz - cost;
+
+      await owner.save({ session });
+
+      console.log("✅ [createPaidAccountWithCoinz] Coinz debited after account creation", {
+        ownerUserId,
+        oldBalance: currentCoinz,
+        newBalance: currentCoinz - cost,
+        debited: cost,
+      });
+    });
+
+    // الخدمات الجانبية بعد نجاح العملية كلها
+    if (createdUser?._id) {
+      systemBotService
+        .attachBotToNewUser(createdUser._id.toString())
+        .catch((err) => {
+          console.log("❌ [createPaidAccountWithCoinz] attachBot failed", {
+            userId: String(createdUser._id),
+            error: err?.message || err,
+          });
+        });
+
+      seedWelcomeMessagesForNewUser(createdUser._id.toString()).catch((err) => {
+        console.log("❌ [createPaidAccountWithCoinz] welcome messages failed", {
+          userId: String(createdUser._id),
+          error: err?.message || err,
+        });
+      });
+
+      inviteNewUserToGirlsRoom(createdUser._id.toString()).catch((err) => {
+        console.log("❌ [createPaidAccountWithCoinz] invite failed", {
+          userId: String(createdUser._id),
+          error: err?.message || err,
+        });
+      });
+    }
+
+    console.log("✅ [createPaidAccountWithCoinz] DONE", {
+      createdUserId: String(createdUser?._id || ""),
+      username: createdUser?.username,
+      atUsername: createdUser?.atUsername,
+    });
+
+    return {
+      success: true,
+      cost,
+      credentials: {
+        username: createdUser.username,
+        password,
+      },
+      user: {
+        _id: createdUser._id,
+        username: createdUser.username,
+        atUsername: createdUser.atUsername,
+        avatar: createdUser.avatar,
+        role: (createdUser as any).role || "user",
+        isVerified: createdUser.isVerified,
+        isOnline: false,
+        isInvisible: false,
+        lastSeen: null,
+      },
+    };
+  } catch (err: any) {
+    console.log("❌ [createPaidAccountWithCoinz] ERROR", {
+      ownerUserId,
+      username,
+      message: err?.message || err,
+    });
+
+    throw err;
+  } finally {
+    session.endSession();
+  }
+};
 /* =====================================================
    LOGIN
 ===================================================== */

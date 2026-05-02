@@ -36,6 +36,7 @@ import {
   forgotPassword,
   verifyResetOtp,
   resetPassword,
+  createPaidAccountController,
 } from "../controllers/auth.controller";
 import { protect } from "../middlewares/auth.middleware";
 import { blockGuard } from "../middlewares/blockGuard";
@@ -67,5 +68,9 @@ router.patch(
 router.post("/forgot-password", asHandler(forgotPassword));
 router.post("/verify-reset-otp", asHandler(verifyResetOtp));
 router.post("/reset-password", asHandler(resetPassword));
-
+router.post(
+  "/coinz/create-account",
+  protect as RequestHandler,
+  asHandler(createPaidAccountController)
+);
 export default router;

@@ -19,10 +19,94 @@
           "totalWon": 4448,
           "totalLost": 0,
           "updatedAt": "2026-04-30T09:20:34.036Z"
+        },
+        "69f597d925997142a0965370": {
+          "userId": "69f597d925997142a0965370",
+          "username": "ۅٲٳنـآا꙳ۦْٰﻋڷــــےۦْٰٱٳﺳيآݚڪﻡۦْٰ꙳ﺳيݚ",
+          "points": 100010000,
+          "wins": 1,
+          "losses": 1,
+          "neutral": 0,
+          "millionWins": 0,
+          "investmentWins": 0,
+          "speculationWins": 0,
+          "duelWins": 0,
+          "duelLosses": 0,
+          "totalWon": 10000,
+          "totalLost": 57,
+          "updatedAt": "2026-05-02T07:11:39.757Z"
+        },
+        "69e3b052fd939be46f6615fe": {
+          "userId": "69e3b052fd939be46f6615fe",
+          "username": "luna",
+          "points": 9990000,
+          "wins": 0,
+          "losses": 1,
+          "neutral": 0,
+          "millionWins": 0,
+          "investmentWins": 0,
+          "speculationWins": 0,
+          "duelWins": 0,
+          "duelLosses": 0,
+          "totalWon": 0,
+          "totalLost": 10000,
+          "updatedAt": "2026-05-02T07:11:39.751Z"
         }
       },
       "cooldowns": {},
       "history": [
+        {
+          "id": "fp-1777705899757-3d834b",
+          "userId": "69f597d925997142a0965370",
+          "username": "ۅٲٳنـآا꙳ۦْٰﻋڷــــےۦْٰٱٳﺳيآݚڪﻡۦْٰ꙳ﺳيݚ",
+          "roomId": "69d62c8c2059258e1c4cf6b3",
+          "amount": 10000,
+          "balanceAfter": 100010000,
+          "reason": "bomb_color_timeout_win",
+          "meta": {
+            "challengeId": "bomb_1777705869741_7a8435",
+            "targetId": "69e3b052fd939be46f6615fe",
+            "targetName": "luna",
+            "correctColor": "red",
+            "chosenColor": "",
+            "timeout": true
+          },
+          "createdAt": "2026-05-02T07:11:39.757Z"
+        },
+        {
+          "id": "fp-1777705899751-d1639f",
+          "userId": "69e3b052fd939be46f6615fe",
+          "username": "luna",
+          "roomId": "69d62c8c2059258e1c4cf6b3",
+          "amount": -10000,
+          "balanceAfter": 9990000,
+          "reason": "bomb_color_timeout_loss",
+          "meta": {
+            "challengeId": "bomb_1777705869741_7a8435",
+            "attackerId": "69f597d925997142a0965370",
+            "attackerName": "ۅٲٳنـآا꙳ۦْٰﻋڷــــےۦْٰٱٳﺳيآݚڪﻡۦْٰ꙳ﺳيݚ",
+            "correctColor": "red",
+            "chosenColor": "",
+            "timeout": true
+          },
+          "createdAt": "2026-05-02T07:11:39.751Z"
+        },
+        {
+          "id": "fp-1777705596654-6a69fa",
+          "userId": "69f597d925997142a0965370",
+          "username": "ۅٲٳنـآا꙳ۦْٰﻋڷــــےۦْٰٱٳﺳيآݚڪﻡۦْٰ꙳ﺳيݚ",
+          "roomId": "69d62c8c2059258e1c4cf6b3",
+          "amount": 1000000000,
+          "balanceAfter": 1000000000,
+          "reason": "luck",
+          "meta": {
+            "command": "luck",
+            "choice": 1,
+            "winningChoice": 1,
+            "outcome": "luck_turned"
+          },
+          "createdAt": "2026-05-02T07:06:36.654Z"
+        },
         {
           "id": "fp-1777540834036-5db6a9",
           "userId": "69ce260036d8133aa1806b2d",
