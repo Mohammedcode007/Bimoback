@@ -23,8 +23,8 @@
         "69f597d925997142a0965370": {
           "userId": "69f597d925997142a0965370",
           "username": "ۅٲٳنـآا꙳ۦْٰﻋڷــــےۦْٰٱٳﺳيآݚڪﻡۦْٰ꙳ﺳيݚ",
-          "points": 100010000,
-          "wins": 1,
+          "points": 100010191,
+          "wins": 2,
           "losses": 1,
           "neutral": 0,
           "millionWins": 0,
@@ -32,9 +32,9 @@
           "speculationWins": 0,
           "duelWins": 0,
           "duelLosses": 0,
-          "totalWon": 10000,
+          "totalWon": 10191,
           "totalLost": 57,
-          "updatedAt": "2026-05-02T07:11:39.757Z"
+          "updatedAt": "2026-05-03T08:06:29.214Z"
         },
         "69e3b052fd939be46f6615fe": {
           "userId": "69e3b052fd939be46f6615fe",
@@ -55,6 +55,22 @@
       },
       "cooldowns": {},
       "history": [
+        {
+          "id": "fp-1777795589214-776dbc",
+          "userId": "69f597d925997142a0965370",
+          "username": "ۅٲٳنـآا꙳ۦْٰﻋڷــــےۦْٰٱٳﺳيآݚڪﻡۦْٰ꙳ﺳيݚ",
+          "roomId": "69d62c8c2059258e1c4cf6b3",
+          "amount": 191,
+          "balanceAfter": 100010191,
+          "reason": "luck",
+          "meta": {
+            "command": "luck",
+            "choice": 1,
+            "winningChoice": 1,
+            "outcome": "win"
+          },
+          "createdAt": "2026-05-03T08:06:29.214Z"
+        },
         {
           "id": "fp-1777705899757-3d834b",
           "userId": "69f597d925997142a0965370",
