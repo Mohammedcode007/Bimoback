@@ -59,7 +59,8 @@ import {
   createRoom,
   getRoomsByType,
   searchRooms,
-  inviteToRoom
+  inviteToRoom,
+  leaveAllMyActiveRooms
 } from "../controllers/room.controller";
 
 const router = Router();
@@ -82,7 +83,8 @@ router.get("/", getRoomsByType);
 
 // POST /api/rooms
 router.post("/", createRoom);
-
+// POST /api/rooms/leave-all-active
+router.post("/leave-all-active", leaveAllMyActiveRooms);
 /* =====================================================
    ROOM SETTINGS
 ===================================================== */
@@ -115,7 +117,6 @@ router.delete("/:roomId/poll", endPoll);
 router.patch("/:roomId/voice/seats", setMaxVoiceSeats);
 router.post("/:roomId/voice/raise-hand", raiseHand);
 router.delete("/:roomId/voice/raise-hand", clearRaisedHand);
-
 /* =====================================================
    LEVEL / XP
 ===================================================== */

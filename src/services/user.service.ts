@@ -67,26 +67,47 @@ class UserService {
     return user;
   }
 async getUserProfileWithView(viewerId: string, profileUserId: string) {
-  if (!Types.ObjectId.isValid(viewerId) || !Types.ObjectId.isValid(profileUserId)) {
+  if (
+    !Types.ObjectId.isValid(viewerId) ||
+    !Types.ObjectId.isValid(profileUserId)
+  ) {
     throw new Error("Invalid user id");
   }
 
   const user = await User.findById(profileUserId).select("-password -__v");
-  if (!user) throw new Error("User not found");
+
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  const profileObjectId = new Types.ObjectId(profileUserId);
+
+  const friendsCount = await Friend.countDocuments({
+    status: "accepted",
+    $or: [
+      { requester: profileObjectId },
+      { recipient: profileObjectId },
+    ],
+  });
 
   // لا تحتسب مشاهدة الشخص لنفسه
   if (viewerId === profileUserId) {
-    return user.toObject();
+    return {
+      ...user.toObject(),
+      friendsCount,
+    };
   }
 
   const now = new Date();
   const DAY_MS = 24 * 60 * 60 * 1000;
 
-  // تنظيف المشاهدات الأقدم من 24 ساعة
-  user.profileViewTimestamps = (user.profileViewTimestamps || []).filter((entry: any) => {
-    if (!entry?.viewedAt) return false;
-    return now.getTime() - new Date(entry.viewedAt).getTime() < DAY_MS;
-  });
+  user.profileViewTimestamps = (user.profileViewTimestamps || []).filter(
+    (entry: any) => {
+      if (!entry?.viewedAt) return false;
+
+      return now.getTime() - new Date(entry.viewedAt).getTime() < DAY_MS;
+    }
+  );
 
   const alreadyViewedInLast24h = user.profileViewTimestamps.some(
     (entry: any) => entry?.viewer?.toString() === viewerId
@@ -103,7 +124,10 @@ async getUserProfileWithView(viewerId: string, profileUserId: string) {
     await user.save();
   }
 
-  return user.toObject();
+  return {
+    ...user.toObject(),
+    friendsCount,
+  };
 }
 
 async updateFullProfileSettings(

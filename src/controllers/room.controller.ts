@@ -222,7 +222,18 @@ export const boostRoom = asyncHandler(async (req, res) => {
   const room = await roomService.boost(roomId, userId, level, hours);
   return send(res, room, "Room boosted");
 });
+/* =====================================================
+   LOGOUT / LEAVE ALL ACTIVE ROOMS
+   يخرج المستخدم الحالي من كل الغرف النشطة
+===================================================== */
 
+export const leaveAllMyActiveRooms = asyncHandler(async (req, res) => {
+  const userId = getUserId(req);
+
+  const data = await roomService.leaveAllActiveRoomsForUser(userId);
+
+  return send(res, data, "Left all active rooms");
+});
 /* =====================================================
    MEMBERSHIP
 ===================================================== */

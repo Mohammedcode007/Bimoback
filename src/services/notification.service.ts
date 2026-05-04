@@ -73,7 +73,85 @@ class NotificationService {
     console.log("🏁 NotificationService.create finished");
     return populatedNotification;
   }
+/* =====================================================
+   MARK RELATED NOTIFICATIONS AS READ
+   مثال:
+   - فتح محادثة => relatedChat
+   - فتح تويتة => relatedTweet
+   - فتح رسالة/تعليق => relatedMessage
+   - فتح غرفة => relatedRoom
+===================================================== */
+async markRelatedAsRead(
+  userId: string,
+  input: {
+    relatedChat?: string;
+    relatedTweet?: string;
+    relatedMessage?: string;
+    relatedRoom?: string;
+    types?: string[];
+  }
+) {
+  console.log("📖 markRelatedAsRead called", {
+    userId,
+    input,
+  });
 
+  const or: any[] = [];
+
+  if (input.relatedChat) {
+    or.push({ relatedChat: input.relatedChat });
+  }
+
+  if (input.relatedTweet) {
+    or.push({ relatedTweet: input.relatedTweet });
+  }
+
+  if (input.relatedMessage) {
+    or.push({ relatedMessage: input.relatedMessage });
+  }
+
+  if (input.relatedRoom) {
+    or.push({ relatedRoom: input.relatedRoom });
+  }
+
+  if (!or.length) {
+    console.log("⚠️ markRelatedAsRead skipped: no related target");
+    return {
+      matchedCount: 0,
+      modifiedCount: 0,
+    };
+  }
+
+  const filter: any = {
+    recipient: userId,
+    isDeleted: false,
+    isRead: false,
+    $or: or,
+  };
+
+  if (Array.isArray(input.types) && input.types.length > 0) {
+    filter.type = { $in: input.types };
+  }
+
+  const result = await Notification.updateMany(filter, {
+    $set: {
+      isRead: true,
+      readAt: new Date(),
+    },
+  });
+
+  console.log("✅ markRelatedAsRead result", {
+    matchedCount: result.matchedCount,
+    modifiedCount: result.modifiedCount,
+  });
+
+  await notificationGateway.syncUser(userId);
+
+  return {
+    matchedCount: result.matchedCount,
+    modifiedCount: result.modifiedCount,
+  };
+}
   /* =====================================================
      MARK AS READ
   ===================================================== */

@@ -1863,6 +1863,96 @@ class RoomService {
       }
     };
   }
+  async leaveAllActiveRoomsForUser(userId: string) {
+  const uid = String(userId || "").trim();
+
+  console.log("🚪 [leaveAllActiveRoomsForUser] START", { userId: uid });
+
+  if (!this.isValidObjectId(uid)) {
+    console.log("❌ [leaveAllActiveRoomsForUser] Invalid userId", { uid });
+    return {
+      success: false,
+      leftRooms: 0,
+      roomIds: [],
+    };
+  }
+
+  const userObjectId = new Types.ObjectId(uid);
+
+  const activeRooms = await Room.find({
+    activeUsers: userObjectId,
+  }).select("_id activeUsers usersCount");
+
+  console.log("🔎 [leaveAllActiveRoomsForUser] Active rooms found", {
+    count: activeRooms.length,
+    roomIds: activeRooms.map((r: any) => String(r._id)),
+  });
+
+  if (!activeRooms.length) {
+    return {
+      success: true,
+      leftRooms: 0,
+      roomIds: [],
+    };
+  }
+
+  const roomIds = activeRooms.map((room: any) => room._id);
+
+  await Room.updateMany(
+    {
+      _id: { $in: roomIds },
+      activeUsers: userObjectId,
+    },
+    {
+      $pull: {
+        activeUsers: userObjectId,
+      },
+      $inc: {
+        usersCount: -1,
+      },
+    }
+  );
+
+  await Room.updateMany(
+    {
+      _id: { $in: roomIds },
+      usersCount: { $lt: 0 },
+    },
+    {
+      $set: {
+        usersCount: 0,
+      },
+    }
+  );
+
+  for (const roomId of roomIds) {
+    const rid = String(roomId);
+
+    this.io().to(`room:${rid}`).emit("room:user:left", {
+      roomId: rid,
+      userId: uid,
+      reason: "logout",
+    });
+
+    const activeCount = await this.emitActiveCount(rid);
+
+    console.log("📡 [leaveAllActiveRoomsForUser] Room updated", {
+      roomId: rid,
+      activeCount,
+    });
+  }
+
+  console.log("✅ [leaveAllActiveRoomsForUser] DONE", {
+    userId: uid,
+    leftRooms: roomIds.length,
+  });
+
+  return {
+    success: true,
+    leftRooms: roomIds.length,
+    roomIds: roomIds.map((id: any) => String(id)),
+  };
+}
   /**
    * ✅ leave:
    * نفس الفكرة: حتى لو دخل مرة أخرى لاحقًا، لا يرى الرسائل قبل (آخر Leave)

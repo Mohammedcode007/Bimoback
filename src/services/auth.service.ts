@@ -938,7 +938,6 @@ export const authWithGoogle = async ({
 ===================================================== */
 
 export const logoutUser = async (userId: string) => {
-
   const user = await User.findById(userId);
 
   if (!user) {
@@ -952,8 +951,14 @@ export const logoutUser = async (userId: string) => {
 
   await user.save();
 
+  /* ===== Leave All Active Rooms ===== */
+
+  const leaveRoomsResult = await roomService.leaveAllActiveRoomsForUser(userId);
+
   return {
-    message: "Logged out successfully"
+    message: "Logged out successfully",
+    leftRooms: leaveRoomsResult.leftRooms,
+    roomIds: leaveRoomsResult.roomIds,
   };
 };
 

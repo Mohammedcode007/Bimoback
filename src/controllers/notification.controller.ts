@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import { NextFunction, Request, Response } from "express";
 import notificationService from "../services/notification.service";
 import Notification from "../models/Notification";
 import User from "../models/User";
@@ -54,6 +54,48 @@ export const sendTestNotification = async (req: Request, res: Response) => {
     return res.status(500).json({
       message: "Failed to send test notification"
     });
+  }
+};
+
+function getAuthUserId(req: Request) {
+  return String(
+    (req as any).user?._id ||
+      (req as any).user?.id ||
+      (req as any).userId ||
+      ""
+  );
+}
+
+export const markRelatedNotificationsAsRead = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const userId = getAuthUserId(req);
+
+    const {
+      relatedChat,
+      relatedTweet,
+      relatedMessage,
+      relatedRoom,
+      types,
+    } = req.body || {};
+
+    const result = await notificationService.markRelatedAsRead(userId, {
+      relatedChat: relatedChat ? String(relatedChat) : undefined,
+      relatedTweet: relatedTweet ? String(relatedTweet) : undefined,
+      relatedMessage: relatedMessage ? String(relatedMessage) : undefined,
+      relatedRoom: relatedRoom ? String(relatedRoom) : undefined,
+      types: Array.isArray(types) ? types.map(String) : undefined,
+    });
+
+    return res.json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    next(error);
   }
 };
 export const saveDeviceToken = async (req: Request, res: Response) => {

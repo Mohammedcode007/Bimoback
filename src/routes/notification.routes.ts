@@ -9,7 +9,8 @@ import {
   deleteNotification,
   saveDeviceToken,
   sendTestNotification,
-  removeDeviceToken
+  removeDeviceToken,
+  markRelatedNotificationsAsRead
 } from "../controllers/notification.controller";
 
 const router = Router();
@@ -29,6 +30,7 @@ router.get("/", getUserNotifications);
 router.post("/test-send", sendTestNotification);
 /* GET UNREAD COUNT */
 router.get("/unread-count", getUnreadCount);
+router.patch("/mark-related-read", markRelatedNotificationsAsRead);
 
 /* MARK ONE */
 router.patch("/:id/read", markAsRead);
