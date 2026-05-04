@@ -1863,13 +1863,15 @@ class RoomService {
       }
     };
   }
-  async leaveAllActiveRoomsForUser(userId: string) {
+async leaveAllActiveRoomsForUser(userId: string) {
   const uid = String(userId || "").trim();
+  const leaveAt = new Date();
 
   console.log("🚪 [leaveAllActiveRoomsForUser] START", { userId: uid });
 
   if (!this.isValidObjectId(uid)) {
     console.log("❌ [leaveAllActiveRoomsForUser] Invalid userId", { uid });
+
     return {
       success: false,
       leftRooms: 0,
@@ -1897,6 +1899,31 @@ class RoomService {
   }
 
   const roomIds = activeRooms.map((room: any) => room._id);
+
+  /*
+    ✅ مهم جدًا:
+    قبل أو بعد إزالة المستخدم من activeUsers، احفظ وقت الخروج.
+    هذا هو الذي يمنع ظهور الرسائل القديمة عند الرجوع.
+  */
+  for (const roomId of roomIds) {
+    const rid = String(roomId);
+
+    const keepPinnedId = await this.getLastPinnedBefore(rid, leaveAt);
+
+    await this.setClearedAt(
+      rid,
+      uid,
+      leaveAt,
+      keepPinnedId
+    );
+
+    console.log("🧹 [leaveAllActiveRoomsForUser] clearedAt saved", {
+      roomId: rid,
+      userId: uid,
+      clearedAt: leaveAt,
+      keepPinnedId,
+    });
+  }
 
   await Room.updateMany(
     {
@@ -1935,6 +1962,10 @@ class RoomService {
     });
 
     const activeCount = await this.emitActiveCount(rid);
+
+    this.io().to(`room:${rid}`).emit("room:users:update", {
+      roomId: rid,
+    });
 
     console.log("📡 [leaveAllActiveRoomsForUser] Room updated", {
       roomId: rid,
