@@ -11,7 +11,7 @@ type ScheduleOptions = {
 };
 
 const TEST_ENGAGEMENT_CONFIG = {
-    enabled: true,
+    enabled: false,
     allowInProduction: false,
     minDelayMs: 30_000,
     maxDelayMs: 60_000,
