@@ -8,7 +8,7 @@ import Chat from "../models/Chats";
 import Message from "../models/Message";
 import roomBotService from "./bot/room-bot/roomBot.service";
 import { executeRoomBotCommand } from "./bot/room-bot/roomBot.commands";
-import { executeRoomMusicCommand } from "./bot/room-bot/roomMusic.command";
+import { executeRoomMusicCommand, recordSongLike } from "./bot/room-bot/roomMusic.command";
 import { handleCricketCommand } from "./cricket/commands-runner";
 import User from "../models/User";
 import { executeRoomSpinCommand } from "./bot/room-bot/roomSpin.command";
@@ -104,7 +104,7 @@ type SendMessageInput = {
     roomName?: string;
   };
 
-gameType?: "" | "cricket" | "chess" | "quiz" | "xo" | "cards" | "luck" | "duel" | "bomb";
+  gameType?: "" | "cricket" | "chess" | "quiz" | "xo" | "cards" | "luck" | "duel" | "bomb";
   game?: {
     gameId?: string;
     title?: string;
@@ -193,24 +193,24 @@ class RoomService {
 
     if (msgType === "game") {
       const gt = String(message?.gameType || "").trim();
-     const label =
-  gt === "cricket"
-    ? "لعبة كريكت"
-    : gt === "luck"
-      ? "لعبة سُــــــكَّــــــر"
-      : gt === "bomb"
-        ? "لعبة القنبلة"
-        : gt === "duel"
-          ? "لعبة تحدي"
-          : gt === "chess"
-            ? "لعبة شطرنج"
-            : gt === "quiz"
-              ? "لعبة أسئلة"
-              : gt === "xo"
-                ? "لعبة XO"
-                : gt === "cards"
-                  ? "لعبة ورق"
-                  : "لعبة";
+      const label =
+        gt === "cricket"
+          ? "لعبة كريكت"
+          : gt === "luck"
+            ? "لعبة سُــــــكَّــــــر"
+            : gt === "bomb"
+              ? "لعبة القنبلة"
+              : gt === "duel"
+                ? "لعبة تحدي"
+                : gt === "chess"
+                  ? "لعبة شطرنج"
+                  : gt === "quiz"
+                    ? "لعبة أسئلة"
+                    : gt === "xo"
+                      ? "لعبة XO"
+                      : gt === "cards"
+                        ? "لعبة ورق"
+                        : "لعبة";
       return {
         kind: "game",
         labelAr: label,
@@ -1863,127 +1863,127 @@ class RoomService {
       }
     };
   }
-async leaveAllActiveRoomsForUser(userId: string) {
-  const uid = String(userId || "").trim();
-  const leaveAt = new Date();
+  async leaveAllActiveRoomsForUser(userId: string) {
+    const uid = String(userId || "").trim();
+    const leaveAt = new Date();
 
-  console.log("🚪 [leaveAllActiveRoomsForUser] START", { userId: uid });
+    console.log("🚪 [leaveAllActiveRoomsForUser] START", { userId: uid });
 
-  if (!this.isValidObjectId(uid)) {
-    console.log("❌ [leaveAllActiveRoomsForUser] Invalid userId", { uid });
+    if (!this.isValidObjectId(uid)) {
+      console.log("❌ [leaveAllActiveRoomsForUser] Invalid userId", { uid });
 
-    return {
-      success: false,
-      leftRooms: 0,
-      roomIds: [],
-    };
-  }
+      return {
+        success: false,
+        leftRooms: 0,
+        roomIds: [],
+      };
+    }
 
-  const userObjectId = new Types.ObjectId(uid);
+    const userObjectId = new Types.ObjectId(uid);
 
-  const activeRooms = await Room.find({
-    activeUsers: userObjectId,
-  }).select("_id activeUsers usersCount");
-
-  console.log("🔎 [leaveAllActiveRoomsForUser] Active rooms found", {
-    count: activeRooms.length,
-    roomIds: activeRooms.map((r: any) => String(r._id)),
-  });
-
-  if (!activeRooms.length) {
-    return {
-      success: true,
-      leftRooms: 0,
-      roomIds: [],
-    };
-  }
-
-  const roomIds = activeRooms.map((room: any) => room._id);
-
-  /*
-    ✅ مهم جدًا:
-    قبل أو بعد إزالة المستخدم من activeUsers، احفظ وقت الخروج.
-    هذا هو الذي يمنع ظهور الرسائل القديمة عند الرجوع.
-  */
-  for (const roomId of roomIds) {
-    const rid = String(roomId);
-
-    const keepPinnedId = await this.getLastPinnedBefore(rid, leaveAt);
-
-    await this.setClearedAt(
-      rid,
-      uid,
-      leaveAt,
-      keepPinnedId
-    );
-
-    console.log("🧹 [leaveAllActiveRoomsForUser] clearedAt saved", {
-      roomId: rid,
-      userId: uid,
-      clearedAt: leaveAt,
-      keepPinnedId,
-    });
-  }
-
-  await Room.updateMany(
-    {
-      _id: { $in: roomIds },
+    const activeRooms = await Room.find({
       activeUsers: userObjectId,
-    },
-    {
-      $pull: {
+    }).select("_id activeUsers usersCount");
+
+    console.log("🔎 [leaveAllActiveRoomsForUser] Active rooms found", {
+      count: activeRooms.length,
+      roomIds: activeRooms.map((r: any) => String(r._id)),
+    });
+
+    if (!activeRooms.length) {
+      return {
+        success: true,
+        leftRooms: 0,
+        roomIds: [],
+      };
+    }
+
+    const roomIds = activeRooms.map((room: any) => room._id);
+
+    /*
+      ✅ مهم جدًا:
+      قبل أو بعد إزالة المستخدم من activeUsers، احفظ وقت الخروج.
+      هذا هو الذي يمنع ظهور الرسائل القديمة عند الرجوع.
+    */
+    for (const roomId of roomIds) {
+      const rid = String(roomId);
+
+      const keepPinnedId = await this.getLastPinnedBefore(rid, leaveAt);
+
+      await this.setClearedAt(
+        rid,
+        uid,
+        leaveAt,
+        keepPinnedId
+      );
+
+      console.log("🧹 [leaveAllActiveRoomsForUser] clearedAt saved", {
+        roomId: rid,
+        userId: uid,
+        clearedAt: leaveAt,
+        keepPinnedId,
+      });
+    }
+
+    await Room.updateMany(
+      {
+        _id: { $in: roomIds },
         activeUsers: userObjectId,
       },
-      $inc: {
-        usersCount: -1,
+      {
+        $pull: {
+          activeUsers: userObjectId,
+        },
+        $inc: {
+          usersCount: -1,
+        },
+      }
+    );
+
+    await Room.updateMany(
+      {
+        _id: { $in: roomIds },
+        usersCount: { $lt: 0 },
       },
+      {
+        $set: {
+          usersCount: 0,
+        },
+      }
+    );
+
+    for (const roomId of roomIds) {
+      const rid = String(roomId);
+
+      this.io().to(`room:${rid}`).emit("room:user:left", {
+        roomId: rid,
+        userId: uid,
+        reason: "logout",
+      });
+
+      const activeCount = await this.emitActiveCount(rid);
+
+      this.io().to(`room:${rid}`).emit("room:users:update", {
+        roomId: rid,
+      });
+
+      console.log("📡 [leaveAllActiveRoomsForUser] Room updated", {
+        roomId: rid,
+        activeCount,
+      });
     }
-  );
 
-  await Room.updateMany(
-    {
-      _id: { $in: roomIds },
-      usersCount: { $lt: 0 },
-    },
-    {
-      $set: {
-        usersCount: 0,
-      },
-    }
-  );
-
-  for (const roomId of roomIds) {
-    const rid = String(roomId);
-
-    this.io().to(`room:${rid}`).emit("room:user:left", {
-      roomId: rid,
+    console.log("✅ [leaveAllActiveRoomsForUser] DONE", {
       userId: uid,
-      reason: "logout",
+      leftRooms: roomIds.length,
     });
 
-    const activeCount = await this.emitActiveCount(rid);
-
-    this.io().to(`room:${rid}`).emit("room:users:update", {
-      roomId: rid,
-    });
-
-    console.log("📡 [leaveAllActiveRoomsForUser] Room updated", {
-      roomId: rid,
-      activeCount,
-    });
+    return {
+      success: true,
+      leftRooms: roomIds.length,
+      roomIds: roomIds.map((id: any) => String(id)),
+    };
   }
-
-  console.log("✅ [leaveAllActiveRoomsForUser] DONE", {
-    userId: uid,
-    leftRooms: roomIds.length,
-  });
-
-  return {
-    success: true,
-    leftRooms: roomIds.length,
-    roomIds: roomIds.map((id: any) => String(id)),
-  };
-}
   /**
    * ✅ leave:
    * نفس الفكرة: حتى لو دخل مرة أخرى لاحقًا، لا يرى الرسائل قبل (آخر Leave)
@@ -2602,258 +2602,258 @@ async leaveAllActiveRoomsForUser(userId: string) {
       /* =====================================================
   ROOM SETTINGS COMMANDS
 ===================================================== */
-try {
-  const text = String(content || "").trim();
-
-  if (type === "text" && text) {
-    const settingsResult = await executeRoomSettingsCommand({
-      roomId: String(roomId),
-      userId: String(senderId),
-      content: text,
-    });
-
-    if (settingsResult?.handled) {
-      if (settingsResult.message?._id) {
-        const settingsMessage = await RoomMessage.findById(
-          settingsResult.message._id
-        )
-          .populate("sender", USER_PUBLIC_FIELDS)
-          .populate({
-            path: "reactions.user",
-            select: USER_PUBLIC_FIELDS,
-          })
-          .populate(this.replyToPopulate())
-          .lean();
-
-        if (settingsMessage) {
-          this.io()
-            .to(`room:${roomId}`)
-            .emit("room:message:new", settingsMessage);
-        }
-      }
-
-      /**
-       * تنفيذ events الخاصة بالتحديثات
-       * السبب مخزن JSON في settingsResult.reason
-       */
       try {
-        const events = settingsResult.reason
-          ? JSON.parse(settingsResult.reason)
-          : [];
+        const text = String(content || "").trim();
 
-        if (Array.isArray(events)) {
-          for (const item of events) {
-            if (!item?.event) continue;
+        if (type === "text" && text) {
+          const settingsResult = await executeRoomSettingsCommand({
+            roomId: String(roomId),
+            userId: String(senderId),
+            content: text,
+          });
 
-            this.io()
-              .to(`room:${roomId}`)
-              .emit(item.event, item.payload);
+          if (settingsResult?.handled) {
+            if (settingsResult.message?._id) {
+              const settingsMessage = await RoomMessage.findById(
+                settingsResult.message._id
+              )
+                .populate("sender", USER_PUBLIC_FIELDS)
+                .populate({
+                  path: "reactions.user",
+                  select: USER_PUBLIC_FIELDS,
+                })
+                .populate(this.replyToPopulate())
+                .lean();
+
+              if (settingsMessage) {
+                this.io()
+                  .to(`room:${roomId}`)
+                  .emit("room:message:new", settingsMessage);
+              }
+            }
+
+            /**
+             * تنفيذ events الخاصة بالتحديثات
+             * السبب مخزن JSON في settingsResult.reason
+             */
+            try {
+              const events = settingsResult.reason
+                ? JSON.parse(settingsResult.reason)
+                : [];
+
+              if (Array.isArray(events)) {
+                for (const item of events) {
+                  if (!item?.event) continue;
+
+                  this.io()
+                    .to(`room:${roomId}`)
+                    .emit(item.event, item.payload);
+                }
+              }
+            } catch { }
+
+            return message;
           }
         }
-      } catch {}
-
-      return message;
-    }
-  }
-} catch (error) {
-  console.log("❌ room settings command error:", error);
-}
-/* =====================================================
-  ROOM GAMES COMMANDS
-  - GLOBAL HIT / SLAP / BOX DUEL GAME
-  - SUGAR LUCK GAME
-===================================================== */
-try {
-  const text = String(content || "").trim();
-
-  if (type === "text" && text) {
-    const senderUser = await User.findById(senderId)
-      .select("username atUsername")
-      .lean();
-
-    const username = String(
-      (senderUser as any)?.username ||
-        (senderUser as any)?.atUsername ||
-        "مستخدم"
-    );
-/* =====================================================
-  BOMB COLOR GAME
-  أوامر:
-  bomb@username
-  bomb@username@roomname
-
-  الرد:
-  أحمر / أخضر / أزرق
-===================================================== */
-const bombResult = await executeBombColorCommand({
-  roomId: String(roomId),
-  userId: String(senderId),
-  username,
-  content: text,
-});
-
-if (bombResult?.handled) {
-  const createdMessages = Array.isArray(bombResult.messages)
-    ? bombResult.messages
-    : bombResult.message
-      ? [bombResult.message]
-      : [];
-
-  for (const rawMsg of createdMessages) {
-    if (!rawMsg?._id) continue;
-
-    const bombMessage = await RoomMessage.findById(rawMsg._id)
-      .populate("sender", USER_PUBLIC_FIELDS)
-      .populate({
-        path: "reactions.user",
-        select: USER_PUBLIC_FIELDS,
-      })
-      .populate(this.replyToPopulate())
-      .lean();
-
-    if (!bombMessage) continue;
-
-    const targetRoomId = String((bombMessage as any).room || roomId);
-
-    this.io()
-      .to(`room:${targetRoomId}`)
-      .emit("room:message:new", bombMessage);
-  }
-
-  if (bombResult.text && !createdMessages.length) {
-    await this.system(
-      roomId,
-      bombResult.text,
-      bombResult.success ? "game" : "system",
-      {
-        systemType: bombResult.success
-          ? "bomb_color"
-          : "bomb_color_error",
-        sender: senderId,
-        mentions: [senderId],
-        gameType: "bomb",
-        meta: bombResult.meta || {},
+      } catch (error) {
+        console.log("❌ room settings command error:", error);
       }
-    );
-  }
+      /* =====================================================
+        ROOM GAMES COMMANDS
+        - GLOBAL HIT / SLAP / BOX DUEL GAME
+        - SUGAR LUCK GAME
+      ===================================================== */
+      try {
+        const text = String(content || "").trim();
 
-  return message;
-}
-    /* =====================================================
-      GLOBAL HIT / SLAP / BOX DUEL GAME
-      أوامر: كف / ضرب / بوكس
-    ===================================================== */
-    const duelResult = await executeGlobalHitDuelCommand({
-      roomId: String(roomId),
-      userId: String(senderId),
-      username,
-      content: text,
-    });
+        if (type === "text" && text) {
+          const senderUser = await User.findById(senderId)
+            .select("username atUsername")
+            .lean();
 
-    if (duelResult?.handled) {
-      const createdMessages = Array.isArray(duelResult.messages)
-        ? duelResult.messages
-        : duelResult.message
-          ? [duelResult.message]
-          : [];
+          const username = String(
+            (senderUser as any)?.username ||
+            (senderUser as any)?.atUsername ||
+            "مستخدم"
+          );
+          /* =====================================================
+            BOMB COLOR GAME
+            أوامر:
+            bomb@username
+            bomb@username@roomname
+          
+            الرد:
+            أحمر / أخضر / أزرق
+          ===================================================== */
+          const bombResult = await executeBombColorCommand({
+            roomId: String(roomId),
+            userId: String(senderId),
+            username,
+            content: text,
+          });
 
-      for (const rawMsg of createdMessages) {
-        if (!rawMsg?._id) continue;
+          if (bombResult?.handled) {
+            const createdMessages = Array.isArray(bombResult.messages)
+              ? bombResult.messages
+              : bombResult.message
+                ? [bombResult.message]
+                : [];
 
-        const msg = await RoomMessage.findById(rawMsg._id)
-          .populate("sender", USER_PUBLIC_FIELDS)
-          .populate({
-            path: "reactions.user",
-            select: USER_PUBLIC_FIELDS,
-          })
-          .populate(this.replyToPopulate())
-          .lean();
+            for (const rawMsg of createdMessages) {
+              if (!rawMsg?._id) continue;
 
-        if (!msg) continue;
+              const bombMessage = await RoomMessage.findById(rawMsg._id)
+                .populate("sender", USER_PUBLIC_FIELDS)
+                .populate({
+                  path: "reactions.user",
+                  select: USER_PUBLIC_FIELDS,
+                })
+                .populate(this.replyToPopulate())
+                .lean();
 
-        const targetRoomId = String((msg as any).room || roomId);
+              if (!bombMessage) continue;
 
-        this.io()
-          .to(`room:${targetRoomId}`)
-          .emit("room:message:new", msg);
-      }
+              const targetRoomId = String((bombMessage as any).room || roomId);
 
-      if (duelResult.text && !createdMessages.length) {
-        await this.system(
-          roomId,
-          duelResult.text,
-          duelResult.success ? "game" : "system",
-          {
-            systemType: duelResult.success ? "global_hit_duel" : "global_hit_duel_error",
-            sender: senderId,
-            mentions: [senderId],
+              this.io()
+                .to(`room:${targetRoomId}`)
+                .emit("room:message:new", bombMessage);
+            }
+
+            if (bombResult.text && !createdMessages.length) {
+              await this.system(
+                roomId,
+                bombResult.text,
+                bombResult.success ? "game" : "system",
+                {
+                  systemType: bombResult.success
+                    ? "bomb_color"
+                    : "bomb_color_error",
+                  sender: senderId,
+                  mentions: [senderId],
+                  gameType: "bomb",
+                  meta: bombResult.meta || {},
+                }
+              );
+            }
+
+            return message;
           }
-        );
-      }
+          /* =====================================================
+            GLOBAL HIT / SLAP / BOX DUEL GAME
+            أوامر: كف / ضرب / بوكس
+          ===================================================== */
+          const duelResult = await executeGlobalHitDuelCommand({
+            roomId: String(roomId),
+            userId: String(senderId),
+            username,
+            content: text,
+          });
 
-      return message;
-    }
+          if (duelResult?.handled) {
+            const createdMessages = Array.isArray(duelResult.messages)
+              ? duelResult.messages
+              : duelResult.message
+                ? [duelResult.message]
+                : [];
 
-    /* =====================================================
-      SUGAR LUCK GAME COMMANDS
-      أوامر: حظ 1 / حظ 2 / حظ 3 / مليون / استثمار / مضاربة / .list
-    ===================================================== */
-    const sugarResult = await executeSugarLuckCommand({
-      roomId: String(roomId),
-      userId: String(senderId),
-      username,
-      content: text,
-    });
+            for (const rawMsg of createdMessages) {
+              if (!rawMsg?._id) continue;
 
-    if (sugarResult?.handled) {
-      const createdMessages = Array.isArray((sugarResult as any).messages)
-        ? (sugarResult as any).messages
-        : sugarResult.message
-          ? [sugarResult.message]
-          : [];
+              const msg = await RoomMessage.findById(rawMsg._id)
+                .populate("sender", USER_PUBLIC_FIELDS)
+                .populate({
+                  path: "reactions.user",
+                  select: USER_PUBLIC_FIELDS,
+                })
+                .populate(this.replyToPopulate())
+                .lean();
 
-      for (const rawMsg of createdMessages) {
-        if (!rawMsg?._id) continue;
+              if (!msg) continue;
 
-        const sugarMessage = await RoomMessage.findById(rawMsg._id)
-          .populate("sender", USER_PUBLIC_FIELDS)
-          .populate({
-            path: "reactions.user",
-            select: USER_PUBLIC_FIELDS,
-          })
-          .populate(this.replyToPopulate())
-          .lean();
+              const targetRoomId = String((msg as any).room || roomId);
 
-        if (!sugarMessage) continue;
+              this.io()
+                .to(`room:${targetRoomId}`)
+                .emit("room:message:new", msg);
+            }
 
-        const targetRoomId = String((sugarMessage as any).room || roomId);
+            if (duelResult.text && !createdMessages.length) {
+              await this.system(
+                roomId,
+                duelResult.text,
+                duelResult.success ? "game" : "system",
+                {
+                  systemType: duelResult.success ? "global_hit_duel" : "global_hit_duel_error",
+                  sender: senderId,
+                  mentions: [senderId],
+                }
+              );
+            }
 
-        this.io()
-          .to(`room:${targetRoomId}`)
-          .emit("room:message:new", sugarMessage);
-      }
-
-      if (sugarResult.text && !createdMessages.length) {
-        await this.system(
-          roomId,
-          sugarResult.text,
-          sugarResult.success ? "game" : "system",
-          {
-            systemType: sugarResult.success ? "sugar_luck" : "sugar_luck_error",
-            sender: senderId,
-            mentions: [senderId],
-            gameType: "luck",
-            meta: sugarResult.meta || {},
+            return message;
           }
-        );
-      }
 
-      return message;
-    }
-  }
-} catch (error) {
-  console.log("❌ room games command error:", error);
-}
+          /* =====================================================
+            SUGAR LUCK GAME COMMANDS
+            أوامر: حظ 1 / حظ 2 / حظ 3 / مليون / استثمار / مضاربة / .list
+          ===================================================== */
+          const sugarResult = await executeSugarLuckCommand({
+            roomId: String(roomId),
+            userId: String(senderId),
+            username,
+            content: text,
+          });
+
+          if (sugarResult?.handled) {
+            const createdMessages = Array.isArray((sugarResult as any).messages)
+              ? (sugarResult as any).messages
+              : sugarResult.message
+                ? [sugarResult.message]
+                : [];
+
+            for (const rawMsg of createdMessages) {
+              if (!rawMsg?._id) continue;
+
+              const sugarMessage = await RoomMessage.findById(rawMsg._id)
+                .populate("sender", USER_PUBLIC_FIELDS)
+                .populate({
+                  path: "reactions.user",
+                  select: USER_PUBLIC_FIELDS,
+                })
+                .populate(this.replyToPopulate())
+                .lean();
+
+              if (!sugarMessage) continue;
+
+              const targetRoomId = String((sugarMessage as any).room || roomId);
+
+              this.io()
+                .to(`room:${targetRoomId}`)
+                .emit("room:message:new", sugarMessage);
+            }
+
+            if (sugarResult.text && !createdMessages.length) {
+              await this.system(
+                roomId,
+                sugarResult.text,
+                sugarResult.success ? "game" : "system",
+                {
+                  systemType: sugarResult.success ? "sugar_luck" : "sugar_luck_error",
+                  sender: senderId,
+                  mentions: [senderId],
+                  gameType: "luck",
+                  meta: sugarResult.meta || {},
+                }
+              );
+            }
+
+            return message;
+          }
+        }
+      } catch (error) {
+        console.log("❌ room games command error:", error);
+      }
       /* =====================================================
         CRICKET COMMANDS FIRST
       ===================================================== */
@@ -3010,7 +3010,13 @@ if (bombResult?.handled) {
               .lean();
 
             const senderName = String((senderUser as any)?.username || "مستخدم");
-
+            recordSongLike({
+              targetUserId: String(songInfo.playedById),
+              targetName: String(songInfo.playedByName || "مستخدم"),
+              likedById: String(senderId),
+              songCode,
+              songTitle: String(songInfo.title || ""),
+            });
             await notificationService.create({
               recipient: songInfo.playedById,
               sender: senderId,
@@ -3168,249 +3174,213 @@ if (bombResult?.handled) {
 
             return message;
           }
-          // 1) أوامر الموسيقى
-          console.log("🎵 Checking music command...");
+      // 1) أوامر الموسيقى
+console.log("🎵 Checking music command...");
 
-          const musicReply = await executeRoomMusicCommand(text);
+const musicReply = await executeRoomMusicCommand(text);
 
-          console.log("🎵 Music reply:", JSON.stringify(musicReply, null, 2));
-          if (musicReply?.handled) {
-            console.log("✅ Music command handled");
+console.log("🎵 Music reply:", JSON.stringify(musicReply, null, 2));
 
-            if (musicReply?.success) {
-              console.log("✅ Music command success");
+if (musicReply?.handled) {
+  console.log("✅ Music command handled");
 
-              const title = String(musicReply?.meta?.youtubeTitle || "Unknown Track");
-              const audioUrl = String(musicReply?.meta?.mp3Url || "");
-              const thumbnail = String(musicReply?.meta?.thumbnail || "");
-              const channelTitle = String(musicReply?.meta?.channelTitle || "");
-              const youtubeUrl = String(musicReply?.meta?.youtubeUrl || "");
-              const filename = String(musicReply?.meta?.filename || "");
-              const expiresInMs = Number(musicReply?.meta?.expiresInMs || 0);
-              const provider = String(musicReply?.meta?.provider || "temporary_local_cache");
-              const senderUser = await User.findById(senderId)
-                .select("username atUsername")
-                .lean();
+  const musicAction = String(musicReply?.meta?.action || "");
 
-              const playedByName = String((senderUser as any)?.username || "مستخدم");
-              const playedByAtUsername = String((senderUser as any)?.atUsername || "");
-              const songCode = createRoomSongCode(5);
-              const loveCommand = `love@${songCode}`;
+  /*
+    ✅ مهم:
+    أمر .likes يرجع success:true
+    لكنه ليس أغنية ولا يحتوي على mp3Url.
+    لذلك نرسله كرسالة system ونخرج مباشرة.
+  */
+  if (musicAction === "song_likes_leaderboard") {
+    await this.system(
+      roomId,
+      musicReply.text || "🎵 لا يوجد لايكات على الأغاني حتى الآن.",
+      "system",
+      {
+        systemType: "song_likes_leaderboard",
+        sender: senderId,
+        mentions: [senderId],
+        meta: musicReply.meta || {},
+      }
+    );
 
-              GLOBAL_SONG_CODES.set(songCode, {
-                songCode,
-                title,
-                playedById: String(senderId),
-                playedByName,
-                sourceRoomId: String(roomId),
-                sourceRoomName: String(room.name || ""),
-                createdAt: Date.now(),
-              });
+    console.log("✅ Song likes leaderboard sent");
 
-              cleanupGlobalSongCodes();
-              console.log("🎧 Title:", title);
-              console.log("🎧 Audio URL:", audioUrl);
-              console.log("🖼 Thumbnail:", thumbnail);
-              console.log("📺 Channel:", channelTitle);
-              console.log("🔗 YouTube:", youtubeUrl);
+    return message;
+  }
 
-              if (!audioUrl) {
-                console.error("❌ audioUrl is EMPTY");
-              }
+  if (musicReply?.success) {
+    console.log("✅ Music command success");
 
-              // رسالة الأغنية الأساسية
-              // await this.system(
-              //   roomId,
-              //   `🎵 ${title}\n🎤 ${channelTitle}\n🔗 ${audioUrl}`,
-              //   "song",
-              //   {
-              //     sender: senderId,
-              //     mentions: [senderId],
-              //     song: {
-              //       title,
-              //       audioUrl,
-              //       youtubeUrl,
-              //       thumbnail,
-              //       channelTitle,
-              //       provider,
-              //       filename,
-              //       expiresInMs
-              //     },
-              //     media: thumbnail
-              //       ? {
-              //         url: thumbnail,
-              //         mimeType: "image/jpeg",
-              //         fileName: "thumbnail.jpg"
-              //       }
-              //       : undefined
-              //   }
-              // );
+    const title = String(musicReply?.meta?.youtubeTitle || "Unknown Track");
+    const audioUrl = String(musicReply?.meta?.mp3Url || "");
+    const thumbnail = String(musicReply?.meta?.thumbnail || "");
+    const channelTitle = String(musicReply?.meta?.channelTitle || "");
+    const youtubeUrl = String(musicReply?.meta?.youtubeUrl || "");
+    const filename = String(musicReply?.meta?.filename || "");
+    const expiresInMs = Number(musicReply?.meta?.expiresInMs || 0);
+    const provider = String(
+      musicReply?.meta?.provider || "temporary_local_cache"
+    );
 
-              console.log("✅ Song info message sent");
+    console.log("🎧 Title:", title);
+    console.log("🎧 Audio URL:", audioUrl);
+    console.log("🖼 Thumbnail:", thumbnail);
+    console.log("📺 Channel:", channelTitle);
+    console.log("🔗 YouTube:", youtubeUrl);
 
-              // رسالة ملف الصوت نفسه لكن بنفس النوع song
-              if (audioUrl) {
-                await this.system(
-                  roomId,
-                  title,
-                  "song",
-                  {
-                    sender: senderId,
-                    mentions: [senderId],
-                    media: {
-                      url: audioUrl,
-                      mimeType: "audio/mpeg",
-                      fileName: `${title}.mp3`
-                    },
-                    song: {
-                      title,
-                      audioUrl,
-                      youtubeUrl,
-                      thumbnail,
-                      channelTitle,
-                      provider,
-                      filename: filename || `${title}.mp3`,
-                      expiresInMs,
+    /*
+      ✅ حماية إضافية:
+      لو أي أمر رجع success:true بدون audioUrl
+      لا نرسل رسالة أغنية فارغة.
+    */
+    if (!audioUrl) {
+      console.warn("❌ audioUrl is EMPTY");
 
-                      songCode,
-                      loveCommand,
+      await this.system(
+        roomId,
+        musicReply.text || "تعذر تجهيز ملف الصوت.",
+        "system",
+        {
+          systemType: "room_music_error",
+          sender: senderId,
+          mentions: [senderId],
+          meta: musicReply.meta || {},
+        }
+      );
 
-                      playedById: String(senderId),
-                      playedByName,
-                      playedByAtUsername,
+      return message;
+    }
 
-                      sourceRoomId: String(roomId),
-                      sourceRoomName: String(room.name || ""),
-                      roomId: String(roomId),
-                      roomName: String(room.name || ""),
-                    }
-                  }
-                );
+    const senderUser = await User.findById(senderId)
+      .select("username atUsername")
+      .lean();
 
-                console.log("✅ Song audio message sent:", audioUrl);
-              } else {
-                console.warn("⚠️ Audio URL missing, song audio message skipped");
-              }
-            } else {
-              console.warn("⚠️ Music command failed:", musicReply.text);
+    const playedByName = String((senderUser as any)?.username || "مستخدم");
+    const playedByAtUsername = String((senderUser as any)?.atUsername || "");
 
-              await this.system(
-                roomId,
-                musicReply.text || "تعذر تشغيل الأغنية",
-                "system",
-                {
-                  systemType: "room_music_error",
-                  sender: senderId,
-                  mentions: [senderId]
-                }
-              );
+    /*
+      ✅ رسالة معلومات الأغنية
+    */
+    await this.system(
+      roomId,
+      `🎵 ${title}\n🎤 ${channelTitle || "Unknown Channel"}\n🔗 ${audioUrl}`,
+      "system",
+      {
+        systemType: "room_music",
+        sender: senderId,
+        mentions: [senderId],
+
+        song: {
+          title,
+          audioUrl,
+          youtubeUrl,
+          thumbnail,
+          channelTitle,
+          provider,
+          filename,
+          expiresInMs,
+
+          playedById: String(senderId),
+          playedByName,
+          playedByAtUsername,
+
+          sourceRoomId: String(roomId),
+          sourceRoomName: String(room.name || ""),
+          roomId: String(roomId),
+          roomName: String(room.name || ""),
+        },
+
+        media: thumbnail
+          ? {
+              url: thumbnail,
+              mimeType: "image/jpeg",
+              fileName: "thumbnail.jpg",
             }
+          : undefined,
 
-            return message;
-          }
-          // if (musicReply?.handled) {
-          //   console.log("✅ Music command handled");
+        meta: {
+          action: "room_music_info",
+          title,
+          audioUrl,
+          youtubeUrl,
+          thumbnail,
+          channelTitle,
+          playedById: String(senderId),
+          playedByName,
+        },
+      }
+    );
 
-          //   if (musicReply?.success) {
-          //     console.log("✅ Music command success");
+    console.log("✅ Song info message sent");
 
-          //     const title = String(musicReply?.meta?.youtubeTitle || "Unknown Track");
-          //     const audioUrl = String(musicReply?.meta?.mp3Url || "");
-          //     const thumbnail = String(musicReply?.meta?.thumbnail || "");
-          //     const channelTitle = String(musicReply?.meta?.channelTitle || "");
-          //     const youtubeUrl = String(musicReply?.meta?.youtubeUrl || "");
+    /*
+      ✅ رسالة الصوت نفسها
+      خلي type = "song" لأن موديل RoomMessage عندك يدعم song.
+    */
+    await this.system(roomId, title, "song", {
+      systemType: "room_music_audio",
+      sender: senderId,
+      mentions: [senderId],
 
-          //     console.log("🎧 Title:", title);
-          //     console.log("🎧 Audio URL:", audioUrl);
-          //     console.log("🖼 Thumbnail:", thumbnail);
-          //     console.log("📺 Channel:", channelTitle);
-          //     console.log("🔗 YouTube:", youtubeUrl);
+      media: {
+        url: audioUrl,
+        mimeType: "audio/mpeg",
+        fileName: filename || `${title}.mp3`,
+      },
 
-          //     // تأكد أن الرابط ليس فارغ
-          //     if (!audioUrl) {
-          //       console.error("❌ audioUrl is EMPTY");
-          //     }
+      song: {
+        title,
+        audioUrl,
+        youtubeUrl,
+        thumbnail,
+        channelTitle,
+        provider,
+        filename: filename || `${title}.mp3`,
+        expiresInMs,
 
-          //     // رسالة نصية
-          //     console.log("📤 Sending system text message...");
+        playedById: String(senderId),
+        playedByName,
+        playedByAtUsername,
 
-          //     await this.system(
-          //       roomId,
-          //       `🎵 ${title}\n🎤 ${channelTitle}\n🔗 ${audioUrl}`,
-          //       "system",
-          //       {
-          //         systemType: "room_music",
-          //         sender: senderId,
-          //         mentions: [senderId],
-          //         music: {
-          //           title,
-          //           audioUrl,
-          //           thumbnail,
-          //           channelTitle,
-          //           youtubeUrl,
-          //         },
-          //         media: thumbnail
-          //           ? {
-          //             url: thumbnail,
-          //             mimeType: "image/jpeg",
-          //             fileName: "thumbnail.jpg",
-          //           }
-          //           : undefined,
-          //       }
-          //     );
+        sourceRoomId: String(roomId),
+        sourceRoomName: String(room.name || ""),
+        roomId: String(roomId),
+        roomName: String(room.name || ""),
+      },
 
-          //     console.log("✅ System text message sent");
+      meta: {
+        action: "room_music_audio",
+        title,
+        audioUrl,
+        youtubeUrl,
+        thumbnail,
+        channelTitle,
+        playedById: String(senderId),
+        playedByName,
+      },
+    });
 
-          //     // رسالة صوتية
-          //     if (audioUrl) {
-          //       console.log("📤 Sending audio message...");
+    console.log("✅ Song audio message sent:", audioUrl);
+  } else {
+    console.warn("⚠️ Music command failed:", musicReply.text);
 
-          //       await this.system(
-          //         roomId,
-          //         title,
-          //         "audio",
-          //         {
-          //           systemType: "room_music_audio",
-          //           sender: senderId,
-          //           mentions: [senderId],
-          //           media: {
-          //             url: audioUrl,
-          //             mimeType: "audio/mpeg",
-          //             fileName: `${title}.mp3`,
-          //           },
-          //           music: {
-          //             title,
-          //             audioUrl,
-          //             thumbnail,
-          //             channelTitle,
-          //             youtubeUrl,
-          //           },
-          //         }
-          //       );
+    await this.system(
+      roomId,
+      musicReply.text || "تعذر تشغيل الأغنية",
+      "system",
+      {
+        systemType: "room_music_error",
+        sender: senderId,
+        mentions: [senderId],
+        meta: musicReply.meta || {},
+      }
+    );
+  }
 
-          //       console.log("✅ Audio message sent:", audioUrl);
-          //     } else {
-          //       console.warn("⚠️ Audio URL missing, audio message skipped");
-          //     }
-
-          //   } else {
-          //     console.warn("⚠️ Music command failed:", musicReply.text);
-
-          //     await this.system(
-          //       roomId,
-          //       musicReply.text || "تعذر تشغيل الأغنية",
-          //       "system",
-          //       {
-          //         systemType: "room_music_error",
-          //         sender: senderId,
-          //         mentions: [senderId],
-          //       }
-          //     );
-          //   }
-
-          //   return message;
-          // }
-
+  return message;
+}
           // 2) أوامر البوت العادية
           if (text.startsWith("!cricket")) {
             console.log("🏏 Checking cricket command...");
