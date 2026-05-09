@@ -11,13 +11,15 @@ function normalizeText(value?: string) {
   return String(value || "").trim();
 }
 
+// function normalizeAtUsername(value?: string) {
+//   return String(value || "")
+//     .trim()
+//     .replace(/^@+/, "")
+//     .toLowerCase();
+// }
 function normalizeAtUsername(value?: string) {
-  return String(value || "")
-    .trim()
-    .replace(/^@+/, "")
-    .toLowerCase();
+  return String(value || "");
 }
-
 function splitAndTrim(rawText?: string) {
   return String(rawText || "")
     .split("@")

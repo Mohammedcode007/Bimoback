@@ -41,13 +41,15 @@ import Room from "../../../models/Room";
 function normalizeText(value?: string) {
   return String(value || "").trim();
 }
-
 function normalizeAtUsername(value?: string) {
-  return String(value || "")
-    .trim()
-    .replace(/^@+/, "")
-    .toLowerCase();
+  return String(value || "");
 }
+// function normalizeAtUsername(value?: string) {
+//   return String(value || "")
+//     .trim()
+//     .replace(/^@+/, "")
+//     .toLowerCase();
+// }
 
 function escapeRegex(value: string) {
   return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -376,9 +378,7 @@ if (!allowed) {
   };
 }
     const normalizedTargetUsername = String(username || "")
-      .trim()
-      .replace(/^@+/, "")
-      .toLowerCase();
+     
 
     if (!normalizedTargetUsername || !Number.isFinite(amount) || amount <= 0) {
       const sentLast24hBefore = unlimited ? 0 : getSentLast24Hours(logs, String(senderUser._id));
@@ -428,10 +428,12 @@ if (!allowed) {
       };
     }
 
-    targetUser = await User.findOne({
-      atUsername: normalizedTargetUsername,
-    }).select("_id username atUsername CoinzBalance");
-
+targetUser = await User.findOne({
+  $or: [
+    { username: normalizedTargetUsername },
+    { atUsername: normalizedTargetUsername },
+  ],
+}).select("_id username atUsername CoinzBalance");
     const sentLast24hBefore = unlimited ? 0 : getSentLast24Hours(logs, String(senderUser._id));
     const remainingBefore = unlimited
       ? Number.MAX_SAFE_INTEGER
@@ -724,20 +726,139 @@ if (!allowed) {
    bot@username@password@room
 ===================================================== */
 
+// export async function executeBotJoinRoomCommand(
+//   payload: JoinRoomByCredentialsPayload,
+//   lang: BotLang
+// ): Promise<BotReplyPayload> {
+//   try {
+//     const username = normalizeAtUsername(payload.username);
+//     const password = normalizeText(payload.password);
+//     const roomName = normalizeText(payload.roomName);
+
+//     const user = await User.findOne({ atUsername: username }).select(
+//       "_id username atUsername password provider"
+//     );
+
+//     if (!user) {
+//       return {
+//         handled: true,
+//         intent: "join_room_by_credentials",
+//         text: getJoinRoomUserNotFoundReply(lang, username),
+//       };
+//     }
+
+//     if (!user.password) {
+//       return {
+//         handled: true,
+//         intent: "join_room_by_credentials",
+//         text: getJoinRoomLoginFailedReply(lang),
+//       };
+//     }
+
+//     const isMatch = await comparePassword(password, user.password);
+//     if (!isMatch) {
+//       return {
+//         handled: true,
+//         intent: "join_room_by_credentials",
+//         text: getJoinRoomLoginFailedReply(lang),
+//       };
+//     }
+
+//     const room = await Room.findOne({
+//       name: {
+//         $regex: `^${escapeRegex(roomName)}$`,
+//         $options: "i",
+//       },
+//     }).select("_id name");
+
+//     if (!room) {
+//       return {
+//         handled: true,
+//         intent: "join_room_by_credentials",
+//         text: getJoinRoomRoomNotFoundReply(lang, roomName),
+//       };
+//     }
+
+//     await roomService.joinRoom(
+//       String(room._id),
+//       String(user._id),
+//       password
+//     );
+
+//     return {
+//       handled: true,
+//       intent: "join_room_by_credentials",
+//       text: getJoinRoomSuccessReply(lang, room.name),
+//       meta: {
+//         roomId: String(room._id),
+//         roomName: room.name,
+//         loggedInUserId: String(user._id),
+//         loggedInUsername: user.username,
+//         source: "bot",
+//       },
+//     };
+//   } catch (error: any) {
+//     return {
+//       handled: true,
+//       intent: "join_room_by_credentials",
+//       text: getJoinRoomFailedReply(lang, error?.message),
+//     };
+//   }
+// }
 export async function executeBotJoinRoomCommand(
   payload: JoinRoomByCredentialsPayload,
   lang: BotLang
 ): Promise<BotReplyPayload> {
   try {
+    console.log("🤖 [executeBotJoinRoomCommand] START");
+    console.log("📦 [executeBotJoinRoomCommand] raw payload:", {
+      username: JSON.stringify(payload.username),
+      password: payload.password ? "***" : "",
+      roomName: JSON.stringify(payload.roomName),
+      lang,
+    });
+
     const username = normalizeAtUsername(payload.username);
     const password = normalizeText(payload.password);
     const roomName = normalizeText(payload.roomName);
 
-    const user = await User.findOne({ atUsername: username }).select(
-      "_id username atUsername password provider"
+    console.log("🧾 [executeBotJoinRoomCommand] after normalize:", {
+      username: JSON.stringify(username),
+      usernameLength: username.length,
+      passwordLength: password.length,
+      roomName: JSON.stringify(roomName),
+      roomNameLength: roomName.length,
+    });
+
+    console.log("🔎 [executeBotJoinRoomCommand] searching user by atUsername:", {
+      atUsername: JSON.stringify(username),
+    });
+
+const user = await User.findOne({
+  $or: [
+    { username: username },
+    { atUsername: username },
+  ],
+}).select("_id username atUsername password provider");
+    console.log(
+      "👤 [executeBotJoinRoomCommand] user result:",
+      user
+        ? {
+            id: String(user._id),
+            username: JSON.stringify(user.username),
+            atUsername: JSON.stringify(user.atUsername),
+            hasPassword: !!user.password,
+            provider: user.provider,
+          }
+        : null
     );
 
     if (!user) {
+      console.log("❌ [executeBotJoinRoomCommand] USER NOT FOUND:", {
+        searchedAtUsername: JSON.stringify(username),
+        usernameLength: username.length,
+      });
+
       return {
         handled: true,
         intent: "join_room_by_credentials",
@@ -746,6 +867,12 @@ export async function executeBotJoinRoomCommand(
     }
 
     if (!user.password) {
+      console.log("❌ [executeBotJoinRoomCommand] user has no password:", {
+        userId: String(user._id),
+        username: JSON.stringify(user.username),
+        provider: user.provider,
+      });
+
       return {
         handled: true,
         intent: "join_room_by_credentials",
@@ -753,14 +880,29 @@ export async function executeBotJoinRoomCommand(
       };
     }
 
+    console.log("🔐 [executeBotJoinRoomCommand] comparing password...");
+
     const isMatch = await comparePassword(password, user.password);
+
+    console.log("🔐 [executeBotJoinRoomCommand] password match:", isMatch);
+
     if (!isMatch) {
+      console.log("❌ [executeBotJoinRoomCommand] password not match:", {
+        userId: String(user._id),
+        username: JSON.stringify(user.username),
+      });
+
       return {
         handled: true,
         intent: "join_room_by_credentials",
         text: getJoinRoomLoginFailedReply(lang),
       };
     }
+
+    console.log("🏠 [executeBotJoinRoomCommand] searching room:", {
+      roomName: JSON.stringify(roomName),
+      regex: `^${escapeRegex(roomName)}$`,
+    });
 
     const room = await Room.findOne({
       name: {
@@ -769,7 +911,21 @@ export async function executeBotJoinRoomCommand(
       },
     }).select("_id name");
 
+    console.log(
+      "🏠 [executeBotJoinRoomCommand] room result:",
+      room
+        ? {
+            id: String(room._id),
+            name: JSON.stringify(room.name),
+          }
+        : null
+    );
+
     if (!room) {
+      console.log("❌ [executeBotJoinRoomCommand] ROOM NOT FOUND:", {
+        searchedRoomName: JSON.stringify(roomName),
+      });
+
       return {
         handled: true,
         intent: "join_room_by_credentials",
@@ -777,11 +933,25 @@ export async function executeBotJoinRoomCommand(
       };
     }
 
+    console.log("🚪 [executeBotJoinRoomCommand] joining room:", {
+      roomId: String(room._id),
+      userId: String(user._id),
+      roomName: JSON.stringify(room.name),
+      username: JSON.stringify(user.username),
+    });
+
     await roomService.joinRoom(
       String(room._id),
       String(user._id),
       password
     );
+
+    console.log("✅ [executeBotJoinRoomCommand] joined room successfully:", {
+      roomId: String(room._id),
+      roomName: JSON.stringify(room.name),
+      userId: String(user._id),
+      username: JSON.stringify(user.username),
+    });
 
     return {
       handled: true,
@@ -796,6 +966,11 @@ export async function executeBotJoinRoomCommand(
       },
     };
   } catch (error: any) {
+    console.log("❌ [executeBotJoinRoomCommand] CATCH ERROR:", {
+      message: error?.message,
+      stack: error?.stack,
+    });
+
     return {
       handled: true,
       intent: "join_room_by_credentials",
@@ -803,7 +978,6 @@ export async function executeBotJoinRoomCommand(
     };
   }
 }
-
 /* =====================================================
    BOT LEAVE ROOM
    botleave@username@room
