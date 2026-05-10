@@ -2197,7 +2197,7 @@ class RoomService {
     roomId: string,
     actorId: string,
     targetId: string,
-    inviteMessage = "تعالى انضم للغرفة 🔥"
+    inviteMessage = "Come join our room 🔥"
   ) {
     if (!this.isValidObjectId(roomId)) throw new Error("Invalid roomId");
     if (!this.isValidObjectId(actorId)) throw new Error("Invalid actorId");
@@ -3174,213 +3174,213 @@ class RoomService {
 
             return message;
           }
-      // 1) أوامر الموسيقى
-console.log("🎵 Checking music command...");
+          // 1) أوامر الموسيقى
+          console.log("🎵 Checking music command...");
 
-const musicReply = await executeRoomMusicCommand(text);
+          const musicReply = await executeRoomMusicCommand(text);
 
-console.log("🎵 Music reply:", JSON.stringify(musicReply, null, 2));
+          console.log("🎵 Music reply:", JSON.stringify(musicReply, null, 2));
 
-if (musicReply?.handled) {
-  console.log("✅ Music command handled");
+          if (musicReply?.handled) {
+            console.log("✅ Music command handled");
 
-  const musicAction = String(musicReply?.meta?.action || "");
+            const musicAction = String(musicReply?.meta?.action || "");
 
-  /*
-    ✅ مهم:
-    أمر .likes يرجع success:true
-    لكنه ليس أغنية ولا يحتوي على mp3Url.
-    لذلك نرسله كرسالة system ونخرج مباشرة.
-  */
-  if (musicAction === "song_likes_leaderboard") {
-    await this.system(
-      roomId,
-      musicReply.text || "🎵 لا يوجد لايكات على الأغاني حتى الآن.",
-      "system",
-      {
-        systemType: "song_likes_leaderboard",
-        sender: senderId,
-        mentions: [senderId],
-        meta: musicReply.meta || {},
-      }
-    );
+            /*
+              ✅ مهم:
+              أمر .likes يرجع success:true
+              لكنه ليس أغنية ولا يحتوي على mp3Url.
+              لذلك نرسله كرسالة system ونخرج مباشرة.
+            */
+            if (musicAction === "song_likes_leaderboard") {
+              await this.system(
+                roomId,
+                musicReply.text || "🎵 لا يوجد لايكات على الأغاني حتى الآن.",
+                "system",
+                {
+                  systemType: "song_likes_leaderboard",
+                  sender: senderId,
+                  mentions: [senderId],
+                  meta: musicReply.meta || {},
+                }
+              );
 
-    console.log("✅ Song likes leaderboard sent");
+              console.log("✅ Song likes leaderboard sent");
 
-    return message;
-  }
-
-  if (musicReply?.success) {
-    console.log("✅ Music command success");
-
-    const title = String(musicReply?.meta?.youtubeTitle || "Unknown Track");
-    const audioUrl = String(musicReply?.meta?.mp3Url || "");
-    const thumbnail = String(musicReply?.meta?.thumbnail || "");
-    const channelTitle = String(musicReply?.meta?.channelTitle || "");
-    const youtubeUrl = String(musicReply?.meta?.youtubeUrl || "");
-    const filename = String(musicReply?.meta?.filename || "");
-    const expiresInMs = Number(musicReply?.meta?.expiresInMs || 0);
-    const provider = String(
-      musicReply?.meta?.provider || "temporary_local_cache"
-    );
-
-    console.log("🎧 Title:", title);
-    console.log("🎧 Audio URL:", audioUrl);
-    console.log("🖼 Thumbnail:", thumbnail);
-    console.log("📺 Channel:", channelTitle);
-    console.log("🔗 YouTube:", youtubeUrl);
-
-    /*
-      ✅ حماية إضافية:
-      لو أي أمر رجع success:true بدون audioUrl
-      لا نرسل رسالة أغنية فارغة.
-    */
-    if (!audioUrl) {
-      console.warn("❌ audioUrl is EMPTY");
-
-      await this.system(
-        roomId,
-        musicReply.text || "تعذر تجهيز ملف الصوت.",
-        "system",
-        {
-          systemType: "room_music_error",
-          sender: senderId,
-          mentions: [senderId],
-          meta: musicReply.meta || {},
-        }
-      );
-
-      return message;
-    }
-
-    const senderUser = await User.findById(senderId)
-      .select("username atUsername")
-      .lean();
-
-    const playedByName = String((senderUser as any)?.username || "مستخدم");
-    const playedByAtUsername = String((senderUser as any)?.atUsername || "");
-
-    /*
-      ✅ رسالة معلومات الأغنية
-    */
-    await this.system(
-      roomId,
-      `🎵 ${title}\n🎤 ${channelTitle || "Unknown Channel"}\n🔗 ${audioUrl}`,
-      "system",
-      {
-        systemType: "room_music",
-        sender: senderId,
-        mentions: [senderId],
-
-        song: {
-          title,
-          audioUrl,
-          youtubeUrl,
-          thumbnail,
-          channelTitle,
-          provider,
-          filename,
-          expiresInMs,
-
-          playedById: String(senderId),
-          playedByName,
-          playedByAtUsername,
-
-          sourceRoomId: String(roomId),
-          sourceRoomName: String(room.name || ""),
-          roomId: String(roomId),
-          roomName: String(room.name || ""),
-        },
-
-        media: thumbnail
-          ? {
-              url: thumbnail,
-              mimeType: "image/jpeg",
-              fileName: "thumbnail.jpg",
+              return message;
             }
-          : undefined,
 
-        meta: {
-          action: "room_music_info",
-          title,
-          audioUrl,
-          youtubeUrl,
-          thumbnail,
-          channelTitle,
-          playedById: String(senderId),
-          playedByName,
-        },
-      }
-    );
+            if (musicReply?.success) {
+              console.log("✅ Music command success");
 
-    console.log("✅ Song info message sent");
+              const title = String(musicReply?.meta?.youtubeTitle || "Unknown Track");
+              const audioUrl = String(musicReply?.meta?.mp3Url || "");
+              const thumbnail = String(musicReply?.meta?.thumbnail || "");
+              const channelTitle = String(musicReply?.meta?.channelTitle || "");
+              const youtubeUrl = String(musicReply?.meta?.youtubeUrl || "");
+              const filename = String(musicReply?.meta?.filename || "");
+              const expiresInMs = Number(musicReply?.meta?.expiresInMs || 0);
+              const provider = String(
+                musicReply?.meta?.provider || "temporary_local_cache"
+              );
 
-    /*
-      ✅ رسالة الصوت نفسها
-      خلي type = "song" لأن موديل RoomMessage عندك يدعم song.
-    */
-    await this.system(roomId, title, "song", {
-      systemType: "room_music_audio",
-      sender: senderId,
-      mentions: [senderId],
+              console.log("🎧 Title:", title);
+              console.log("🎧 Audio URL:", audioUrl);
+              console.log("🖼 Thumbnail:", thumbnail);
+              console.log("📺 Channel:", channelTitle);
+              console.log("🔗 YouTube:", youtubeUrl);
 
-      media: {
-        url: audioUrl,
-        mimeType: "audio/mpeg",
-        fileName: filename || `${title}.mp3`,
-      },
+              /*
+                ✅ حماية إضافية:
+                لو أي أمر رجع success:true بدون audioUrl
+                لا نرسل رسالة أغنية فارغة.
+              */
+              if (!audioUrl) {
+                console.warn("❌ audioUrl is EMPTY");
 
-      song: {
-        title,
-        audioUrl,
-        youtubeUrl,
-        thumbnail,
-        channelTitle,
-        provider,
-        filename: filename || `${title}.mp3`,
-        expiresInMs,
+                await this.system(
+                  roomId,
+                  musicReply.text || "تعذر تجهيز ملف الصوت.",
+                  "system",
+                  {
+                    systemType: "room_music_error",
+                    sender: senderId,
+                    mentions: [senderId],
+                    meta: musicReply.meta || {},
+                  }
+                );
 
-        playedById: String(senderId),
-        playedByName,
-        playedByAtUsername,
+                return message;
+              }
 
-        sourceRoomId: String(roomId),
-        sourceRoomName: String(room.name || ""),
-        roomId: String(roomId),
-        roomName: String(room.name || ""),
-      },
+              const senderUser = await User.findById(senderId)
+                .select("username atUsername")
+                .lean();
 
-      meta: {
-        action: "room_music_audio",
-        title,
-        audioUrl,
-        youtubeUrl,
-        thumbnail,
-        channelTitle,
-        playedById: String(senderId),
-        playedByName,
-      },
-    });
+              const playedByName = String((senderUser as any)?.username || "مستخدم");
+              const playedByAtUsername = String((senderUser as any)?.atUsername || "");
 
-    console.log("✅ Song audio message sent:", audioUrl);
-  } else {
-    console.warn("⚠️ Music command failed:", musicReply.text);
+              /*
+                ✅ رسالة معلومات الأغنية
+              */
+              await this.system(
+                roomId,
+                `🎵 ${title}\n🎤 ${channelTitle || "Unknown Channel"}\n🔗 ${audioUrl}`,
+                "system",
+                {
+                  systemType: "room_music",
+                  sender: senderId,
+                  mentions: [senderId],
 
-    await this.system(
-      roomId,
-      musicReply.text || "تعذر تشغيل الأغنية",
-      "system",
-      {
-        systemType: "room_music_error",
-        sender: senderId,
-        mentions: [senderId],
-        meta: musicReply.meta || {},
-      }
-    );
-  }
+                  song: {
+                    title,
+                    audioUrl,
+                    youtubeUrl,
+                    thumbnail,
+                    channelTitle,
+                    provider,
+                    filename,
+                    expiresInMs,
 
-  return message;
-}
+                    playedById: String(senderId),
+                    playedByName,
+                    playedByAtUsername,
+
+                    sourceRoomId: String(roomId),
+                    sourceRoomName: String(room.name || ""),
+                    roomId: String(roomId),
+                    roomName: String(room.name || ""),
+                  },
+
+                  media: thumbnail
+                    ? {
+                      url: thumbnail,
+                      mimeType: "image/jpeg",
+                      fileName: "thumbnail.jpg",
+                    }
+                    : undefined,
+
+                  meta: {
+                    action: "room_music_info",
+                    title,
+                    audioUrl,
+                    youtubeUrl,
+                    thumbnail,
+                    channelTitle,
+                    playedById: String(senderId),
+                    playedByName,
+                  },
+                }
+              );
+
+              console.log("✅ Song info message sent");
+
+              /*
+                ✅ رسالة الصوت نفسها
+                خلي type = "song" لأن موديل RoomMessage عندك يدعم song.
+              */
+              await this.system(roomId, title, "song", {
+                systemType: "room_music_audio",
+                sender: senderId,
+                mentions: [senderId],
+
+                media: {
+                  url: audioUrl,
+                  mimeType: "audio/mpeg",
+                  fileName: filename || `${title}.mp3`,
+                },
+
+                song: {
+                  title,
+                  audioUrl,
+                  youtubeUrl,
+                  thumbnail,
+                  channelTitle,
+                  provider,
+                  filename: filename || `${title}.mp3`,
+                  expiresInMs,
+
+                  playedById: String(senderId),
+                  playedByName,
+                  playedByAtUsername,
+
+                  sourceRoomId: String(roomId),
+                  sourceRoomName: String(room.name || ""),
+                  roomId: String(roomId),
+                  roomName: String(room.name || ""),
+                },
+
+                meta: {
+                  action: "room_music_audio",
+                  title,
+                  audioUrl,
+                  youtubeUrl,
+                  thumbnail,
+                  channelTitle,
+                  playedById: String(senderId),
+                  playedByName,
+                },
+              });
+
+              console.log("✅ Song audio message sent:", audioUrl);
+            } else {
+              console.warn("⚠️ Music command failed:", musicReply.text);
+
+              await this.system(
+                roomId,
+                musicReply.text || "تعذر تشغيل الأغنية",
+                "system",
+                {
+                  systemType: "room_music_error",
+                  sender: senderId,
+                  mentions: [senderId],
+                  meta: musicReply.meta || {},
+                }
+              );
+            }
+
+            return message;
+          }
           // 2) أوامر البوت العادية
           if (text.startsWith("!cricket")) {
             console.log("🏏 Checking cricket command...");

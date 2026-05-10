@@ -13,6 +13,7 @@ import systemBotService from "./bot/private-chat/systemBot.service";
 import roomService from "./room.service";
 import Room from "../models/Room";
 import mongoose from "mongoose";
+const GIRLS_ROOM_INVITER_ID = "6a004428b61a7011d980566d";
 type GoogleAuthInput = {
   idToken: string;
   username?: string;
@@ -87,7 +88,10 @@ function normalizeAtUsername(username: string) {
     .replace(/\s+/g, "")
     .replace(/[^a-z0-9_]/g, "");
 }
-async function inviteNewUserToGirlsRoom(userId: string) {
+async function inviteNewUserToGirlsRoom(
+  userId: string,
+  inviterUserId: string = GIRLS_ROOM_INVITER_ID
+) {
   try {
     const fixedRoomId = String(process.env.GIRLS_ROOM_ID || "").trim();
 
@@ -108,8 +112,39 @@ async function inviteNewUserToGirlsRoom(userId: string) {
       return;
     }
 
-    // ✅ تأكد أن المستخدم عضو في الغرفة
     const uid = String(userId);
+
+    // ✅ هنا نحدد الحساب الذي سيظهر كأنه هو الداعي
+    const actorId = String(inviterUserId || GIRLS_ROOM_INVITER_ID || room.creator).trim();
+
+    if (!mongoose.Types.ObjectId.isValid(actorId)) {
+      console.log("❌ invalid girls room inviter id:", {
+        actorId,
+        userId: uid,
+      });
+      return;
+    }
+
+    if (String(actorId) === uid) {
+      console.log("❌ girls room inviter cannot invite himself:", {
+        actorId,
+        userId: uid,
+      });
+      return;
+    }
+
+    const inviter = await User.findById(actorId)
+      .select("_id username")
+      .lean();
+
+    if (!inviter?._id) {
+      console.log("❌ girls room inviter not found:", {
+        actorId,
+        userId: uid,
+      });
+      return;
+    }
+
     const alreadyMember =
       Array.isArray(room.members) &&
       room.members.some((m: any) => m?.toString?.() === uid);
@@ -135,23 +170,26 @@ async function inviteNewUserToGirlsRoom(userId: string) {
       });
     }
 
-    // ✅ إرسال دعوة شات عادية مثل الزر العادي
+    // ✅ هنا المهم: بدل room.creator نمرر actorId
     await roomService.inviteToRoom(
       room._id.toString(),
-      room.creator.toString(),
+      actorId,
       userId,
-      `أهلاً بك 🌷 تمت دعوتك إلى ${room.name}`
+      `Welcome 🌷 You’ve been invited to join ${room.name}`
     );
 
     console.log("✅ girls room invite sent:", {
       roomId: room._id.toString(),
       roomName: room.name,
       targetUserId: uid,
+      inviterUserId: actorId,
+      inviterName: inviter.username,
     });
   } catch (err: any) {
     console.log("❌ inviteNewUserToGirlsRoom error:", err?.message || err);
   }
 }
+
 function normalizeRole(role: unknown): UserRole {
   const r = String(role || "").trim().toLowerCase();
   return r === "admin" ? "admin" : "user";
@@ -178,94 +216,6 @@ function normalizeDisplayUsername(value: unknown) {
 
   return raw;
 }
-// export const registerUser = async (
-//   username: string,
-//   password: string,
-//   role?: unknown,
-//   adminKey?: unknown
-// ) => {
-//   const rawUsername = normalizeDisplayUsername(username);
-
-//   if (!String(password || "").trim() || String(password).length < 6) {
-//     throw new Error("Invalid password");
-//   }
-
-//   let atUsername = normalizeAtUsername(rawUsername);
-
-//   // لو الاسم كله إيموجي مثل ❤️، atUsername سيكون فارغًا
-//   // لذلك نولّد معرف آمن تلقائيًا
-//   if (!atUsername || atUsername.length < 3) {
-//     atUsername = await generateUniqueUsername(rawUsername);
-//   } else {
-//     const existingAtUsername = await User.findOne({ atUsername }).lean();
-
-//     if (existingAtUsername) {
-//       atUsername = await generateUniqueUsername(rawUsername);
-//     }
-//   }
-
-//   // لو تريد منع تكرار اسم العرض نفسه مثل ❤️
-//   const existingUsername = await User.findOne({
-//     username: rawUsername,
-//   }).lean();
-
-//   if (existingUsername) {
-//     throw new Error("Username already exists");
-//   }
-
-//   let finalRole: UserRole = normalizeRole(role);
-
-//   if (finalRole === "admin") {
-//     const required = String(process.env.ADMIN_REGISTER_KEY || "").trim();
-
-//     if (!required) {
-//       finalRole = "user";
-//     } else {
-//       const provided = String(adminKey || "").trim();
-
-//       if (provided !== required) {
-//         finalRole = "user";
-//       }
-//     }
-//   }
-
-//   const hashed = await hashPassword(password);
-
-//   const user = await User.create({
-//     username: rawUsername, // هنا الإيموجي يبقى كما هو
-//     atUsername,            // هنا معرف آمن للبحث والمنشن
-//     password: hashed,
-//     role: finalRole,
-//   });
-
-//   systemBotService.attachBotToNewUser(user._id.toString()).catch(() => {});
-
-//   seedWelcomeMessagesForNewUser(user._id.toString()).catch(() => {});
-
-//   inviteNewUserToGirlsRoom(user._id.toString()).catch((err) => {
-//     console.log(
-//       "❌ inviteNewUserToGirlsRoom failed (register):",
-//       err?.message || err
-//     );
-//   });
-
-//   const token = generateToken(user);
-
-//   return {
-//     token,
-//     user: {
-//       _id: user._id,
-//       username: user.username,
-//       atUsername: user.atUsername,
-//       avatar: user.avatar,
-//       role: (user as any).role || "user",
-//       isVerified: user.isVerified,
-//       isOnline: false,
-//       isInvisible: false,
-//       lastSeen: null,
-//     },
-//   };
-// };
 
 
 export const registerUser = async (
@@ -462,12 +412,13 @@ export const registerUser = async (
     userId: String(user._id),
   });
 
-  inviteNewUserToGirlsRoom(user._id.toString()).catch((err) => {
-    console.log("❌ inviteNewUserToGirlsRoom failed (register):", {
-      userId: String(user._id),
-      error: err?.message || err,
-    });
+inviteNewUserToGirlsRoom(user._id.toString(), GIRLS_ROOM_INVITER_ID).catch((err) => {
+  console.log("❌ inviteNewUserToGirlsRoom failed (register):", {
+    userId: String(user._id),
+    inviterUserId: GIRLS_ROOM_INVITER_ID,
+    error: err?.message || err,
   });
+});
 
   console.log("🔵 [registerUser] Generating token:", {
     userId: String(user._id),
@@ -680,12 +631,13 @@ export const createPaidAccountWithCoinz = async ({
         });
       });
 
-      inviteNewUserToGirlsRoom(createdUser._id.toString()).catch((err) => {
-        console.log("❌ [createPaidAccountWithCoinz] invite failed", {
-          userId: String(createdUser._id),
-          error: err?.message || err,
-        });
-      });
+inviteNewUserToGirlsRoom(createdUser._id.toString(), GIRLS_ROOM_INVITER_ID).catch((err) => {
+  console.log("❌ [createPaidAccountWithCoinz] invite failed", {
+    userId: String(createdUser._id),
+    inviterUserId: GIRLS_ROOM_INVITER_ID,
+    error: err?.message || err,
+  });
+});
     }
 
     console.log("✅ [createPaidAccountWithCoinz] DONE", {
@@ -729,16 +681,16 @@ export const createPaidAccountWithCoinz = async ({
    LOGIN
 ===================================================== */
 export const loginUser = async (username: string, password: string) => {
-const rawUsername = String(username || "").trim();
-const cleanPassword = String(password || "").trim();
-const atUsername = normalizeAtUsername(rawUsername);
+  const rawUsername = String(username || "").trim();
+  const cleanPassword = String(password || "").trim();
+  const atUsername = normalizeAtUsername(rawUsername);
 
-const user = await User.findOne({
-  $or: [
-    ...(atUsername ? [{ atUsername }] : []),
-    { username: rawUsername },
-  ],
-});
+  const user = await User.findOne({
+    $or: [
+      ...(atUsername ? [{ atUsername }] : []),
+      { username: rawUsername },
+    ],
+  });
 
 
   if (!user) {
