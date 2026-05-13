@@ -4,6 +4,7 @@ import StoreItem from "../models/StoreItem";
 import UserInventory from "../models/UserInventory";
 import CoinzTransaction from "../models/CoinzTransaction";
 import User from "../models/User";
+import { cleanupExpiredStoreForAll, cleanupExpiredStoreForUser } from "../services/storeExpiry.service";
 
 type AuthedReq = Request & { user?: { id: string; role?: string } };
 
@@ -108,6 +109,76 @@ function isExpired(expiresAt?: Date | null): boolean {
 // ✅ تحقق أن meta كائن
 function assertPlainObject(v: any): v is Record<string, any> {
   return !!v && typeof v === "object" && !Array.isArray(v);
+}
+type BadgeKind = "static" | "animated";
+
+function normalizeBadgeMeta(metaInput: any): Record<string, any> {
+  const meta: Record<string, any> = assertPlainObject(metaInput)
+    ? { ...metaInput }
+    : {};
+
+  const lottieUrl = String(meta.lottieUrl || "").trim();
+  const iconUrl = String(meta.iconUrl || "").trim();
+  const previewUrl = String(meta.previewUrl || "").trim();
+
+  const hasLottie =
+    !!lottieUrl ||
+    iconUrl.toLowerCase().endsWith(".json") ||
+    previewUrl.toLowerCase().endsWith(".json");
+
+  let badgeKind: BadgeKind =
+    meta.badgeKind === "animated" || meta.isAnimated === true || hasLottie
+      ? "animated"
+      : "static";
+
+  meta.badgeKind = badgeKind;
+  meta.isAnimated = badgeKind === "animated";
+
+  if (badgeKind === "animated") {
+    if (!meta.lottieUrl && previewUrl.toLowerCase().endsWith(".json")) {
+      meta.lottieUrl = previewUrl;
+    }
+
+    if (!meta.lottieUrl && iconUrl.toLowerCase().endsWith(".json")) {
+      meta.lottieUrl = iconUrl;
+    }
+
+    if (!meta.previewUrl && meta.lottieUrl) {
+      meta.previewUrl = meta.lottieUrl;
+    }
+
+    if (!meta.iconUrl && meta.lottieUrl) {
+      meta.iconUrl = meta.lottieUrl;
+    }
+  }
+
+  if (badgeKind === "static") {
+    meta.isAnimated = false;
+
+    if (!meta.previewUrl && meta.iconUrl) {
+      meta.previewUrl = meta.iconUrl;
+    }
+
+    delete meta.lottieUrl;
+  }
+
+  if (!meta.rarity) {
+    meta.rarity = "common";
+  }
+
+  return meta;
+}
+
+function normalizeStoreItemMeta(type: string, metaInput: any): Record<string, any> {
+  const meta: Record<string, any> = assertPlainObject(metaInput)
+    ? { ...metaInput }
+    : {};
+
+  if (type === "badge") {
+    return normalizeBadgeMeta(meta);
+  }
+
+  return meta;
 }
 
 /* =========================
@@ -226,26 +297,25 @@ export default class StoreController {
       if (meta !== undefined && (typeof meta !== "object" || meta === null || Array.isArray(meta))) {
         return res.status(400).json({ success: false, message: "meta must be an object" });
       }
-
+const normalizedMeta = normalizeStoreItemMeta(type, meta || {});
       // منع تكرار key
       const exists = await StoreItem.findOne({ key }).lean();
       if (exists) {
         return res.status(400).json({ success: false, message: "key already exists" });
       }
 
-      const item = await StoreItem.create({
-        type,
-        key,
-        name,
-        description,
-        priceCoinz,
-        isActive,
-        isConsumable,
-        isStackable,
-        durationDays,
-        meta: meta || {}
-      });
-
+const item = await StoreItem.create({
+  type,
+  key,
+  name,
+  description,
+  priceCoinz,
+  isActive,
+  isConsumable,
+  isStackable,
+  durationDays,
+  meta: normalizedMeta
+});
       return res.status(201).json({ success: true, message: "Item created", item });
     } catch (e: any) {
       return res.status(e?.status || 500).json({ success: false, message: e?.message || "Failed" });
@@ -274,8 +344,17 @@ export default class StoreController {
       const item = await StoreItem.findById(id);
       if (!item) return res.status(404).json({ success: false, message: "Item not found" });
 
-      const oldMeta = assertPlainObject(item.meta) ? (item.meta as any) : {};
+const oldMeta = assertPlainObject(item.meta) ? (item.meta as any) : {};
 
+const mergedMeta = mode === "replace"
+  ? meta
+  : { ...oldMeta, ...meta };
+
+item.meta = normalizeStoreItemMeta(String(item.type), mergedMeta);
+
+item.markModified("meta");
+
+await item.save();
       item.meta = mode === "replace" ? meta : { ...oldMeta, ...meta };
 
       await item.save(); // ✅ مهم: بدون session هنا، وبالتالي لا تمرر { session } إلا إذا كنت داخل transaction
@@ -371,51 +450,165 @@ export default class StoreController {
     return res.json({ success: true, items });
   }
 
-  /** GET /api/store/me/inventory */
-  static async myInventory(req: AuthedReq, res: Response) {
-    try {
-      requireAuth(req);
+/** GET /api/store/me/inventory */
+static async myInventory(req: AuthedReq, res: Response) {
+  try {
+    requireAuth(req);
 
-      const inv = await UserInventory.find({ user: req.user!.id })
-        .populate("item")
-        .sort({ updatedAt: -1 })
-        .lean();
+    const userId = req.user!.id;
+    const now = new Date();
 
-      // const user = await User.findById(req.user!.id, { CoinzBalance: 1, activeCustomization: 1 }).lean();
-      const user = await User.findById(req.user!.id, {
-        CoinzBalance: 1,
-        activeCustomization: 1,
-        customEmojiBadge: 1
+    console.log("==========================================");
+    console.log("🛒 [STORE][myInventory] START");
+    console.log("👤 userId:", userId);
+    console.log("🕒 now:", now.toISOString());
+
+    /**
+     * 1) قراءة المخزون قبل التنظيف حتى نعرف ماذا يوجد فعليًا
+     */
+    const beforeInv = await UserInventory.find({ user: userId })
+      .populate("item")
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    console.log("📦 [STORE][myInventory] inventory BEFORE cleanup count:", beforeInv.length);
+
+    beforeInv.forEach((row: any, index: number) => {
+      const expiresAt = row?.expiresAt ? new Date(row.expiresAt) : null;
+      const isExpired =
+        !!expiresAt &&
+        Number.isFinite(expiresAt.getTime()) &&
+        expiresAt.getTime() <= now.getTime();
+
+      console.log(`📦 [BEFORE][${index + 1}]`, {
+        inventoryId: String(row?._id || ""),
+        itemId: String(row?.item?._id || row?.item || ""),
+        itemType: row?.itemType,
+        itemKey: row?.itemKey,
+        itemName: row?.item?.name,
+        expiresAt: expiresAt ? expiresAt.toISOString() : null,
+        isExpired,
+        remainingMs: expiresAt ? expiresAt.getTime() - now.getTime() : null,
+        remainingMinutes: expiresAt
+          ? Math.floor((expiresAt.getTime() - now.getTime()) / 1000 / 60)
+          : null,
       });
-      if (user) {
-        clearExpiredCustomEmojiBadge(user);
-        await user.save();
-      }
-      return res.json({
-        success: true,
-        coinzBalance: user?.CoinzBalance ?? 0,
-        activeCustomization: user?.activeCustomization ?? {
-          avatarFrame: "",
-          messageEffect: "",
-          profileEntryAnimation: "",
-          badges: [],
-          verificationType: "none",
-          avatarGif: "",
-          usernameColor: "",
-          messageTextColor: ""
-        },
-        customEmojiBadge: user?.customEmojiBadge ?? {
-          emoji: "",
-          isActive: false,
-          purchasedAt: null,
-          expiresAt: null
-        },
-        inventory: inv
+    });
+
+    /**
+     * 2) تنظيف العناصر المنتهية:
+     * - حذف من UserInventory
+     * - حذف من activeCustomization لو كانت مفعلة
+     */
+    const cleanupResult = await cleanupExpiredStoreForUser(userId);
+
+    console.log("🧹 [STORE][myInventory] cleanup result:", cleanupResult);
+
+    /**
+     * 3) حماية إضافية:
+     * حتى لو التنظيف فشل لأي سبب، لا نرجع عنصر منتهي للفرونت.
+     */
+    const inv = await UserInventory.find({
+      user: userId,
+      $or: [
+        { expiresAt: null },
+        { expiresAt: { $exists: false } },
+        { expiresAt: { $gt: now } },
+      ],
+    })
+      .populate("item")
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    console.log("📦 [STORE][myInventory] inventory AFTER cleanup count:", inv.length);
+
+    inv.forEach((row: any, index: number) => {
+      const expiresAt = row?.expiresAt ? new Date(row.expiresAt) : null;
+      const isExpired =
+        !!expiresAt &&
+        Number.isFinite(expiresAt.getTime()) &&
+        expiresAt.getTime() <= now.getTime();
+
+      console.log(`📦 [AFTER][${index + 1}]`, {
+        inventoryId: String(row?._id || ""),
+        itemId: String(row?.item?._id || row?.item || ""),
+        itemType: row?.itemType,
+        itemKey: row?.itemKey,
+        itemName: row?.item?.name,
+        expiresAt: expiresAt ? expiresAt.toISOString() : null,
+        isExpired,
+        remainingMs: expiresAt ? expiresAt.getTime() - now.getTime() : null,
+        remainingMinutes: expiresAt
+          ? Math.floor((expiresAt.getTime() - now.getTime()) / 1000 / 60)
+          : null,
       });
-    } catch (e: any) {
-      return res.status(e?.status || 500).json({ success: false, message: e?.message || "Failed" });
-    }
+    });
+
+    const user = await User.findById(userId, {
+      CoinzBalance: 1,
+      activeCustomization: 1,
+      customEmojiBadge: 1,
+    }).lean();
+
+    console.log("🎨 [STORE][myInventory] activeCustomization AFTER cleanup:", {
+      avatarFrame: user?.activeCustomization?.avatarFrame,
+      avatarGif: user?.activeCustomization?.avatarGif,
+      usernameColor: user?.activeCustomization?.usernameColor,
+      messageTextColor: user?.activeCustomization?.messageTextColor,
+      messageEffect: user?.activeCustomization?.messageEffect,
+      profileEntryAnimation: user?.activeCustomization?.profileEntryAnimation,
+      badges: user?.activeCustomization?.badges,
+      verificationType: user?.activeCustomization?.verificationType,
+    });
+
+    console.log("😀 [STORE][myInventory] customEmojiBadge AFTER cleanup:", {
+      emoji: user?.customEmojiBadge?.emoji,
+      isActive: user?.customEmojiBadge?.isActive,
+      purchasedAt: user?.customEmojiBadge?.purchasedAt,
+      expiresAt: user?.customEmojiBadge?.expiresAt,
+      isExpired:
+        !!user?.customEmojiBadge?.expiresAt &&
+        new Date(user.customEmojiBadge.expiresAt).getTime() <= now.getTime(),
+    });
+
+    console.log("💰 [STORE][myInventory] CoinzBalance:", user?.CoinzBalance ?? 0);
+    console.log("✅ [STORE][myInventory] END");
+    console.log("==========================================");
+
+    return res.json({
+      success: true,
+      coinzBalance: user?.CoinzBalance ?? 0,
+      activeCustomization: user?.activeCustomization ?? {
+        avatarFrame: "",
+        messageEffect: "",
+        profileEntryAnimation: "",
+        badges: [],
+        verificationType: "none",
+        avatarGif: "",
+        usernameColor: "",
+        messageTextColor: "",
+      },
+      customEmojiBadge: user?.customEmojiBadge ?? {
+        emoji: "",
+        isActive: false,
+        purchasedAt: null,
+        expiresAt: null,
+      },
+      inventory: inv,
+    });
+  } catch (e: any) {
+    console.error("❌ [STORE][myInventory] ERROR:", {
+      message: e?.message,
+      status: e?.status,
+      stack: e?.stack,
+    });
+
+    return res.status(e?.status || 500).json({
+      success: false,
+      message: e?.message || "Failed",
+    });
   }
+}
   /**
    * POST /api/store/custom-emoji-badge/buy
    * body:
@@ -725,7 +918,7 @@ export default class StoreController {
 
     try {
       requireAuth(req);
-
+await cleanupExpiredStoreForUser(req.user!.id);
       const userId = req.user!.id;
       const itemsReq = Array.isArray(req.body?.items) ? req.body.items : [];
       const setActive = Boolean(req.body?.setActive);
@@ -1044,7 +1237,52 @@ export default class StoreController {
       return res.status(e?.status || 500).json({ success: false, message: e?.message || "Failed" });
     }
   }
+/**
+ * POST /api/store/cleanup-expired
+ * تنظيف العناصر المنتهية يدويًا.
+ */
+static async cleanupExpired(req: AuthedReq, res: Response) {
+  try {
+    requireAuth(req);
 
+    const result = await cleanupExpiredStoreForUser(req.user!.id);
+
+    return res.json({
+      success: true,
+      message: "Expired store items cleaned",
+      result,
+    });
+  } catch (e: any) {
+    return res.status(e?.status || 500).json({
+      success: false,
+      message: e?.message || "Failed",
+    });
+  }
+}
+
+/**
+ * POST /api/store/admin/cleanup-expired
+ * تنظيف كل المستخدمين، للأدمن فقط.
+ */
+static async cleanupExpiredAll(req: AuthedReq, res: Response) {
+  try {
+    requireAuth(req);
+    requireAdmin(req);
+
+    const result = await cleanupExpiredStoreForAll();
+
+    return res.json({
+      success: true,
+      message: "All expired store items cleaned",
+      result,
+    });
+  } catch (e: any) {
+    return res.status(e?.status || 500).json({
+      success: false,
+      message: e?.message || "Failed",
+    });
+  }
+}
   /**
    * PATCH /api/store/activate
    * body:
@@ -1053,105 +1291,246 @@ export default class StoreController {
    *   mode?: "set" | "add" | "remove"
    * }
    */
-  static async activate(req: AuthedReq, res: Response) {
-    try {
-      requireAuth(req);
+/**
+ * PATCH /api/store/activate
+ * body:
+ * {
+ *   type: "avatarFrame" | "avatarGif" | "usernameColor" | "messageTextColor" |
+ *         "messageEffect" | "profileEntryAnimation" | "badge" | "verification",
+ *   key?: string,
+ *   mode?: "set" | "add" | "remove"
+ * }
+ *
+ * القاعدة:
+ * - كل نوع له عنصر واحد Active فقط.
+ * - عند تفعيل عنصر جديد من نفس النوع يتم إيقاف القديم تلقائيًا.
+ * - badge أيضًا يصبح واحد فقط، وليس قائمة متعددة.
+ */
+static async activate(req: AuthedReq, res: Response) {
+  try {
+    requireAuth(req);
 
-      const userId = req.user!.id;
-      const type = String(req.body?.type || "").trim();
-      const key = String(req.body?.key || "").trim();
-      const mode = String(req.body?.mode || "set").trim();
+    const userId = req.user!.id;
 
-    if (!type) {
-  return res.status(400).json({ success: false, message: "type is required" });
-}
+    await cleanupExpiredStoreForUser(userId);
 
-const needsKey = !(mode === "remove" && [
-  "avatarFrame",
-  "avatarGif",
-  "usernameColor",
-  "messageTextColor",
-  "messageEffect",
-  "profileEntryAnimation",
-  "verification"
-].includes(type));
+    const type = String(req.body?.type || "").trim();
+    const key = String(req.body?.key || "").trim();
+    const mode = String(req.body?.mode || "set").trim();
 
-if (needsKey && !key) {
-  return res.status(400).json({ success: false, message: "key is required" });
-}
+    const allowedTypes = [
+      "avatarFrame",
+      "avatarGif",
+      "usernameColor",
+      "messageTextColor",
+      "badge",
+      "messageEffect",
+      "profileEntryAnimation",
+      "verification",
+    ];
 
-      // تحقق أن المستخدم يمتلك العنصر فعلاً + ليس منتهي
-      const inv = await UserInventory.findOne({ user: userId, itemKey: key, itemType: type as any }).lean();
+    if (!allowedTypes.includes(type)) {
+      return res.status(400).json({
+        success: false,
+        message: "Unsupported activate type",
+      });
+    }
+
+    const allowedModes = ["set", "add", "remove"];
+
+    if (!allowedModes.includes(mode)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid mode",
+      });
+    }
+
+    const removeWithoutKeyTypes = [
+      "avatarFrame",
+      "avatarGif",
+      "usernameColor",
+      "messageTextColor",
+      "messageEffect",
+      "profileEntryAnimation",
+      "verification",
+    ];
+
+    const needsKey = !(mode === "remove" && removeWithoutKeyTypes.includes(type));
+
+    if (needsKey && !key) {
+      return res.status(400).json({
+        success: false,
+        message: "key is required",
+      });
+    }
+
+    /**
+     * لا نحتاج نتحقق من الملكية عند إزالة عنصر مفرد بدون key
+     * مثل remove usernameColor أو remove avatarFrame
+     */
+    if (needsKey) {
+      const inv = await UserInventory.findOne({
+        user: userId,
+        itemKey: key,
+        itemType: type as any,
+      }).lean();
+
       if (!inv) {
-        return res.status(400).json({ success: false, message: "Item not owned" });
+        return res.status(400).json({
+          success: false,
+          message: "Item not owned",
+        });
       }
+
       if (isExpired(inv.expiresAt)) {
-        return res.status(400).json({ success: false, message: "Item expired" });
+        await cleanupExpiredStoreForUser(userId);
+
+        return res.status(400).json({
+          success: false,
+          message: "Item expired",
+        });
+      }
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    ensureActiveCustomization(user);
+
+    /**
+     * مهم:
+     * badges تظل array في schema حتى لا تكسر الفرونت،
+     * لكن سنجعلها تحتوي Badge واحد فقط.
+     *
+     * حتى لو الفرونت أرسل mode = add
+     * سنعاملها كـ set حتى يتم إيقاف باقي البادجات.
+     */
+    if (type === "badge") {
+      if (mode === "remove") {
+        user.activeCustomization.badges = user.activeCustomization.badges.filter(
+          (x: string) => String(x) !== key
+        );
+      } else {
+        user.activeCustomization.badges = [key];
       }
 
-      const user = await User.findById(userId);
-      if (!user) return res.status(404).json({ success: false, message: "User not found" });
-
-      ensureActiveCustomization(user);
-
-      if (type === "badge") {
-        const badges: string[] = user.activeCustomization.badges;
-
-        if (mode === "add") {
-          if (!badges.includes(key)) badges.push(key);
-          user.activeCustomization.badges = badges;
-        } else if (mode === "remove") {
-          user.activeCustomization.badges = badges.filter((x) => x !== key);
-        } else {
-          user.activeCustomization.badges = [key];
-        }
-
-      } else if (type === "avatarFrame") {
-        user.activeCustomization.avatarFrame = mode === "remove" ? "" : key;
-
-      } else if (type === "avatarGif") {
-        user.activeCustomization.avatarGif = mode === "remove" ? "" : key;
-
-      } else if (type === "usernameColor") {
-        user.activeCustomization.usernameColor = mode === "remove" ? "" : key;
-
-      } else if (type === "messageTextColor") {
-        user.activeCustomization.messageTextColor = mode === "remove" ? "" : key;
-
-      } else if (type === "messageEffect") {
-        user.activeCustomization.messageEffect = mode === "remove" ? "" : key;
-
-      } else if (type === "profileEntryAnimation") {
-        user.activeCustomization.profileEntryAnimation = mode === "remove" ? "" : key;
-
-      } else if (type === "verification") {
+      if (Array.isArray((user as any).badges)) {
         if (mode === "remove") {
-          user.activeCustomization.verificationType = "none";
+          (user as any).badges = (user as any).badges.filter(
+            (x: string) => String(x) !== key
+          );
         } else {
-          const item = await StoreItem.findOne({ key, type: "verification", isActive: true }).lean();
-          const v = item?.meta?.verificationType;
+          (user as any).badges = [key];
+        }
+      }
+    }
 
-          if (!isVerificationType(v)) {
-            return res.status(400).json({ success: false, message: "Invalid verificationType in item meta" });
-          }
+    else if (type === "avatarFrame") {
+      user.activeCustomization.avatarFrame = mode === "remove" ? "" : key;
 
-          user.activeCustomization.verificationType = v;
+      if ("avatarFrame" in user) {
+        (user as any).avatarFrame = mode === "remove" ? "" : key;
+      }
+    }
+
+    else if (type === "avatarGif") {
+      user.activeCustomization.avatarGif = mode === "remove" ? "" : key;
+
+      if ("avatarGif" in user) {
+        (user as any).avatarGif = mode === "remove" ? "" : key;
+      }
+    }
+
+    else if (type === "usernameColor") {
+      user.activeCustomization.usernameColor = mode === "remove" ? "" : key;
+
+      if ("usernameColor" in user) {
+        (user as any).usernameColor = mode === "remove" ? "" : key;
+      }
+    }
+
+    else if (type === "messageTextColor") {
+      user.activeCustomization.messageTextColor = mode === "remove" ? "" : key;
+
+      if ("messageTextColor" in user) {
+        (user as any).messageTextColor = mode === "remove" ? "" : key;
+      }
+    }
+
+    else if (type === "messageEffect") {
+      user.activeCustomization.messageEffect = mode === "remove" ? "" : key;
+
+      /**
+       * لو عندك حقل قديم ownedMessageEffects لا تجعله active list.
+       * هذا الحقل يفضل أن يبقى للملكية فقط وليس التفعيل.
+       */
+    }
+
+    else if (type === "profileEntryAnimation") {
+      user.activeCustomization.profileEntryAnimation = mode === "remove" ? "" : key;
+
+      if ("profileEntryAnimation" in user) {
+        (user as any).profileEntryAnimation = mode === "remove" ? "" : key;
+      }
+    }
+
+    else if (type === "verification") {
+      if (mode === "remove") {
+        user.activeCustomization.verificationType = "none";
+
+        if ("verificationType" in user) {
+          (user as any).verificationType = "none";
         }
       } else {
-        return res.status(400).json({ success: false, message: "Unsupported activate type" });
+        const item = await StoreItem.findOne({
+          key,
+          type: "verification",
+          isActive: true,
+        }).lean();
+
+        const v = item?.meta?.verificationType;
+
+        if (!isVerificationType(v)) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid verificationType in item meta",
+          });
+        }
+
+        user.activeCustomization.verificationType = v;
+
+        if ("verificationType" in user) {
+          (user as any).verificationType = v;
+        }
       }
-
-      await user.save();
-
-      return res.json({
-        success: true,
-        message: "Activated",
-        activeCustomization: user.activeCustomization
-      });
-    } catch (e: any) {
-      return res.status(e?.status || 500).json({ success: false, message: e?.message || "Failed" });
     }
+
+    user.markModified("activeCustomization");
+
+    if (Array.isArray((user as any).badges)) {
+      user.markModified("badges");
+    }
+
+    await user.save();
+
+    return res.json({
+      success: true,
+      message: mode === "remove" ? "Deactivated" : "Activated",
+      activeCustomization: user.activeCustomization,
+    });
+  } catch (e: any) {
+    return res.status(e?.status || 500).json({
+      success: false,
+      message: e?.message || "Failed",
+    });
   }
+}
 
   /**
    * PATCH /api/store/coinz/credit  (Admin)

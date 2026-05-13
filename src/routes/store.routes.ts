@@ -25,7 +25,13 @@ router.post("/coinz/buy", protect, StoreController.buyCoinz);
 router.post("/items", protect, StoreController.createItem);
 // شراء عناصر
 router.post("/purchase", protect, StoreController.purchase);
+router.post("/cleanup-expired", protect, StoreController.cleanupExpired);
 
+router.post(
+  "/admin/cleanup-expired",
+  protect,
+  StoreController.cleanupExpiredAll
+);
 // تفعيل / تبديل عنصر
 router.patch("/activate", protect, StoreController.activate);
 router.delete("/items/:id", protect, StoreController.deleteItem);

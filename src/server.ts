@@ -64,8 +64,22 @@ import { initSocket } from "./config/socket";
 import { executeRoomMusicCommand } from "./services/bot/room-bot/roomMusic.command";
 const { ytmp3, tiktok, facebook, instagram, twitter, ytmp4 } = require('sadaslk-dlcore');
 import { cleanupExpiredAudioFiles, downloadAudioToLocal } from "./utils/audioCache";
+import { cleanupExpiredStoreForAll } from "./services/storeExpiry.service";
 dotenv.config();
 cleanupExpiredAudioFiles();
+function startStoreExpiryCleanup() {
+  const STORE_EXPIRY_CLEANUP_INTERVAL_MS = 10 * 60 * 1000;
+
+  cleanupExpiredStoreForAll().catch((err) => {
+    console.error("[STORE_EXPIRY_CLEANUP][BOOT]", err);
+  });
+
+  setInterval(() => {
+    cleanupExpiredStoreForAll().catch((err) => {
+      console.error("[STORE_EXPIRY_CLEANUP][INTERVAL]", err);
+    });
+  }, STORE_EXPIRY_CLEANUP_INTERVAL_MS);
+}
 /* =========================
    Handle Uncaught Errors
 ========================= */
@@ -96,6 +110,7 @@ const PORT = process.env.PORT || 5000;
 
 server.listen(PORT, async () => {
    console.log(`🚀 Server running on port ${PORT}`);
+  startStoreExpiryCleanup();
 
 //    try {
 //       const result = await executeRoomMusicCommand("!تشغيل تملي معاك");
