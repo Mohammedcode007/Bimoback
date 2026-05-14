@@ -106,8 +106,11 @@ roomGames: {
   level: number;
   xp: number;
 
-  boostLevel: number;
-  boostExpiresAt?: Date;
+  roomBoosts: {
+  user: Types.ObjectId;
+  createdAt: Date;
+  expiresAt: Date;
+}[];
 
   usersCount: number;
   messagesCount: number;
@@ -127,7 +130,9 @@ roomGames: {
 /* =====================================================
    SUBSCHEMAS
 ===================================================== */
-
+export interface IRoomModel extends mongoose.Model<IRoom> {
+  getTopBoostedRooms(limit?: number): Promise<any[]>;
+}
 const MutedUserSchema = new Schema(
   {
     user: { type: Schema.Types.ObjectId, ref: "User", required: true },
@@ -144,7 +149,26 @@ const VipUserSchema = new Schema(
   },
   { _id: false }
 );
-
+const RoomBoostSchema = new Schema(
+  {
+    user: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now,
+    },
+    expiresAt: {
+      type: Date,
+      required: true,
+      index: true,
+    },
+  },
+  { _id: false }
+);
 const PollSchema = new Schema(
   {
     question: { type: String, trim: true },
@@ -170,8 +194,12 @@ const RoomSchema = new Schema<IRoom>(
 
     avatar: { type: String, trim: true },
     cover: { type: String, trim: true },
-    boostPoints: { type: Number, default: 0, min: 0, index: true },
+boostPoints: { type: Number, default: 0, min: 0, index: true },
 
+roomBoosts: {
+  type: [RoomBoostSchema],
+  default: [],
+},
     creator: {
       type: Schema.Types.ObjectId,
       ref: "User",
@@ -234,8 +262,7 @@ const RoomSchema = new Schema<IRoom>(
     level: { type: Number, default: 1, min: 1 },
     xp: { type: Number, default: 0, min: 0 },
 
-    boostLevel: { type: Number, default: 0, min: 0, max: 10 },
-    boostExpiresAt: { type: Date, default: undefined, index: true },
+
 
     usersCount: { type: Number, default: 0, min: 0 },
     messagesCount: { type: Number, default: 0, min: 0 },
@@ -376,9 +403,16 @@ if (typeof this.roomBot.welcomeMessage === "string") {
   if (!this.roomBot.language) {
     this.roomBot.language = "ar";
   }
-  const bp = Number((this as any).boostPoints);
-  (this as any).boostPoints =
-    Number.isFinite(bp) && bp > 0 ? Math.trunc(bp) : 0;
+ const now = new Date();
+
+this.roomBoosts = Array.isArray(this.roomBoosts)
+  ? this.roomBoosts.filter((b: any) => {
+      const expiresAt = b?.expiresAt ? new Date(b.expiresAt) : null;
+      return expiresAt && expiresAt.getTime() > now.getTime();
+    })
+  : [];
+
+this.boostPoints = this.roomBoosts.length;
 });
 
 /* =====================================================
@@ -388,7 +422,6 @@ if (typeof this.roomBot.welcomeMessage === "string") {
 // Existing
 RoomSchema.index({ usersCount: -1 });
 RoomSchema.index({ level: -1 });
-RoomSchema.index({ boostLevel: -1 });
 RoomSchema.index({ boostPoints: -1 });
 RoomSchema.index(
   { "roomAgent.userId": 1 },
@@ -401,12 +434,13 @@ RoomSchema.index(
   }
 );
 // Useful for discovery/search
-RoomSchema.index({ type: 1, premiumLevel: -1, usersCount: -1 });
 RoomSchema.index({ "vipUsers.user": 1 });
 RoomSchema.index({ "mutedUsers.user": 1 });
 RoomSchema.index({ activeUsers: 1 });
 RoomSchema.index({ tags: 1 });
 RoomSchema.index({ "roomGames.luckEnabled": 1 });
+RoomSchema.index({ type: 1, boostPoints: -1, createdAt: -1 });
+RoomSchema.index({ "roomBoosts.expiresAt": 1 });
 /* =====================================================
    CASCADE DELETE
 ===================================================== */
@@ -420,9 +454,56 @@ RoomSchema.pre(
     await RoomMessage.deleteMany({ room: room._id });
   }
 );
+/* =====================================================
+   STATICS
+===================================================== */
+
+RoomSchema.statics.getTopBoostedRooms = async function (limit = 10) {
+  const safeLimit = Math.max(1, Math.min(50, Number(limit) || 10));
+  const now = new Date();
+
+  await this.updateMany(
+    {},
+    [
+      {
+        $set: {
+          roomBoosts: {
+            $filter: {
+              input: { $ifNull: ["$roomBoosts", []] },
+              as: "boost",
+              cond: { $gt: ["$$boost.expiresAt", now] },
+            },
+          },
+        },
+      },
+      {
+        $set: {
+          boostPoints: {
+            $size: { $ifNull: ["$roomBoosts", []] },
+          },
+        },
+      },
+    ] as any
+  );
+
+  return this.find({
+    boostPoints: { $gt: 0 },
+    isSuspended: { $ne: true },
+  })
+    .sort({
+      boostPoints: -1,
+      createdAt: -1,
+      _id: -1,
+    })
+    .limit(safeLimit)
+    .select(
+      "name description avatar cover type boostPoints usersCount messagesCount isVerified premiumLevel createdAt updatedAt"
+    )
+    .lean();
+};
 
 /* =====================================================
    EXPORT
 ===================================================== */
 
-export default mongoose.model<IRoom>("Room", RoomSchema);
+export default mongoose.model<IRoom, IRoomModel>("Room", RoomSchema);

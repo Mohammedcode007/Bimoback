@@ -60,7 +60,11 @@ import {
   getRoomsByType,
   searchRooms,
   inviteToRoom,
-  leaveAllMyActiveRooms
+  leaveAllMyActiveRooms,
+  addRoomToFavorites,
+  removeRoomFromFavorites,
+  toggleRoomFavorite,
+  getFavoriteRooms
 } from "../controllers/room.controller";
 
 const router = Router();
@@ -79,6 +83,21 @@ router.get("/search", searchRooms);
 ===================================================== */
 
 router.use(protect);
+/* =====================================================
+   FAVORITE ROOMS
+===================================================== */
+
+// GET /api/rooms/favorites
+router.get("/favorites", getFavoriteRooms);
+
+// POST /api/rooms/:roomId/favorite
+router.post("/:roomId/favorite", addRoomToFavorites);
+
+// DELETE /api/rooms/:roomId/favorite
+router.delete("/:roomId/favorite", removeRoomFromFavorites);
+
+// PATCH /api/rooms/:roomId/favorite/toggle
+router.patch("/:roomId/favorite/toggle", toggleRoomFavorite);
 router.get("/", getRoomsByType);
 
 // POST /api/rooms

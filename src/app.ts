@@ -27,6 +27,7 @@ import { errorHandler } from "./middlewares/error.middleware";
 import { enforceMinVersion } from "./middlewares/enforceMinVersion.middleware";
 import reportRoutes from "./routes/report.routes";
 import blockRoutes from "./routes/block.routes";
+import favoriteRoomRoutes from "./routes/favoriteRoom.routes";
 
 const app = express();
 
@@ -95,6 +96,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/room/control", roomControlRoutes);
 app.use("/api/tweets", tweetRoutes);
 app.use("/api/store", storeRoutes);
+app.use("/api/rooms", favoriteRoomRoutes);
 app.use("/api/stories", storyRoutes);
 app.use("/api/chats", chatRoutes);
 app.use("/api/messages", messageRoutes);

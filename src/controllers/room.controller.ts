@@ -216,11 +216,10 @@ export const addXP = asyncHandler(async (req, res) => {
 export const boostRoom = asyncHandler(async (req, res) => {
   const userId = getUserId(req);
   const roomId = param(req, "roomId");
-  const level = Number(req.body?.level);
-  const hours = Number(req.body?.hours);
 
-  const room = await roomService.boost(roomId, userId, level, hours);
-  return send(res, room, "Room boosted");
+  const data = await roomService.boost(roomId, userId);
+
+  return send(res, data, "Room boosted for 30 days");
 });
 /* =====================================================
    LOGOUT / LEAVE ALL ACTIVE ROOMS
@@ -439,7 +438,51 @@ export const unbanAll = asyncHandler(async (req, res) => {
   const data = await roomService.unbanAll(roomId, userId, reason);
   return send(res, data, "Unbanned all");
 });
+/* =====================================================
+   FAVORITE ROOMS
+===================================================== */
 
+export const addRoomToFavorites = asyncHandler(async (req, res) => {
+  const userId = getUserId(req);
+  const roomId = param(req, "roomId");
+
+  const data = await roomService.addRoomToFavorites(roomId, userId);
+
+  return send(res, data, "Room added to favorites");
+});
+
+export const removeRoomFromFavorites = asyncHandler(async (req, res) => {
+  const userId = getUserId(req);
+  const roomId = param(req, "roomId");
+
+  const data = await roomService.removeRoomFromFavorites(roomId, userId);
+
+  return send(res, data, "Room removed from favorites");
+});
+
+export const toggleRoomFavorite = asyncHandler(async (req, res) => {
+  const userId = getUserId(req);
+  const roomId = param(req, "roomId");
+
+  const data = await roomService.toggleRoomFavorite(roomId, userId);
+
+  return send(
+    res,
+    data,
+    data?.isFavorite ? "Room added to favorites" : "Room removed from favorites"
+  );
+});
+
+export const getFavoriteRooms = asyncHandler(async (req, res) => {
+  const userId = getUserId(req);
+
+  const page = req.query?.page !== undefined ? Number(req.query.page) : 1;
+  const limit = req.query?.limit !== undefined ? Number(req.query.limit) : 30;
+
+  const data = await roomService.getFavoriteRooms(userId, { page, limit });
+
+  return send(res, data, "Favorite rooms fetched");
+});
 export const inviteToRoom = asyncHandler(async (req, res) => {
   const userId = getUserId(req);
   const roomId = param(req, "roomId");

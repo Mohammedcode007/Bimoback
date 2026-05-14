@@ -17,6 +17,7 @@ import { executeRoomSettingsCommand } from "./roomSettings/roomSettingsCommand.s
 import { executeGlobalHitDuelCommand } from "./roomGames/globalHitDuelGame.service";
 import { executeSugarLuckCommand } from "./roomGames/sugarLuckGame.service";
 import { executeBombColorCommand } from "./roomGames/bombColorGame.service";
+import FavoriteRoom from "../models/FavoriteRoom";
 /**
  * ملاحظة مهمة جدًا:
  * - في RoomMessageSchema عندك يوجد Hook يقوم بزيادة messagesCount تلقائيًا عند إنشاء الرسالة.
@@ -178,6 +179,33 @@ class RoomService {
   }
   private isValidObjectId(id: string) {
     return Types.ObjectId.isValid(id);
+  }
+  private async cleanupExpiredRoomBoosts() {
+    const now = new Date();
+
+    await Room.updateMany(
+      {},
+      [
+        {
+          $set: {
+            roomBoosts: {
+              $filter: {
+                input: { $ifNull: ["$roomBoosts", []] },
+                as: "boost",
+                cond: { $gt: ["$$boost.expiresAt", now] },
+              },
+            },
+          },
+        },
+        {
+          $set: {
+            boostPoints: {
+              $size: { $ifNull: ["$roomBoosts", []] },
+            },
+          },
+        },
+      ] as any
+    );
   }
   private buildMessagePreviewForNotification(message: any) {
     const msgType = String(message?.type || "text");
@@ -1750,8 +1778,7 @@ class RoomService {
       messagesCount: Number(safeRoom.messagesCount || 0),
 
       // Boost (ممكن عرض جزء منه للعامة بدون نقاط/إيراد)
-      boostLevel: Number(safeRoom.boostLevel || 0),
-
+      boostPoints: Number(safeRoom.boostPoints || 0),
       createdAt: safeRoom.createdAt,
       updatedAt: safeRoom.updatedAt
     };
@@ -1784,8 +1811,7 @@ class RoomService {
         level: Number(safeRoom.level || 1),
 
         boostPoints: Number(safeRoom.boostPoints || 0),
-        boostExpiresAt: safeRoom.boostExpiresAt || null,
-
+        activeBoostsCount: Number(safeRoom.boostPoints || 0),
         passwordProtected
       }
       : {
@@ -2099,8 +2125,8 @@ class RoomService {
       level: 1,
       xp: 0,
 
-      boostLevel: 0,
-
+      boostPoints: 0,
+      roomBoosts: [],
       usersCount: 0,
       messagesCount: 0,
 
@@ -2126,62 +2152,65 @@ class RoomService {
 
     return room;
   }
-
   async getRoomsByType(
     type: RoomType,
     viewerId?: string,
     pagination: { limit?: number; page?: number } = {}
   ) {
-    const t: RoomType = Object.values(RoomType).includes(type) ? type : RoomType.PUBLIC;
+    const t: RoomType = Object.values(RoomType).includes(type)
+      ? type
+      : RoomType.PUBLIC;
 
     const limit = Math.max(1, Math.min(100, Number(pagination.limit) || 30));
     const page = Math.max(1, Number(pagination.page) || 1);
     const skip = (page - 1) * limit;
 
-    const filter: any = {};
+    await this.cleanupExpiredRoomBoosts();
+
+    const filter: any = {
+      isSuspended: { $ne: true },
+    };
+
     if (t === RoomType.PUBLIC) {
       filter.type = { $in: [RoomType.PUBLIC, RoomType.PROTECTED] };
     } else {
       filter.type = t;
     }
 
-    const viewerStr = viewerId ? String(viewerId).trim() : "";
-
     const pipeline: any[] = [
       { $match: filter },
 
       {
         $addFields: {
-          isActive: viewerStr
-            ? {
-              $in: [
-                viewerStr,
-                {
-                  $map: {
-                    input: { $ifNull: ["$activeUsers", []] },
-                    as: "u",
-                    in: { $toString: "$$u" }
-                  }
-                }
-              ]
-            }
-            : false
-        }
+          boostPoints: {
+            $size: { $ifNull: ["$roomBoosts", []] },
+          },
+        },
       },
 
-      // لا نرجع password ولا activeUsers
-      { $project: { password: 0, activeUsers: 0 } },
+      {
+        $project: {
+          password: 0,
+          activeUsers: 0,
+          roomBoosts: 0,
+        },
+      },
 
-      // ✅ يُفضّل إضافة _id لضمان ترتيب ثابت
-      { $sort: { boostPoints: -1, usersCount: -1, createdAt: -1, _id: -1 } },
+      {
+        $sort: {
+          boostPoints: -1,
+          createdAt: -1,
+          _id: -1,
+        },
+      },
 
       { $skip: skip },
-      { $limit: limit }
+      { $limit: limit },
     ];
 
     const [items, total] = await Promise.all([
       Room.aggregate(pipeline),
-      Room.countDocuments(filter)
+      Room.countDocuments(filter),
     ]);
 
     return {
@@ -2190,9 +2219,75 @@ class RoomService {
       limit,
       total,
       pages: Math.ceil(total / limit),
-      items
+      items,
     };
   }
+  // async getRoomsByType(
+  //   type: RoomType,
+  //   viewerId?: string,
+  //   pagination: { limit?: number; page?: number } = {}
+  // ) {
+  //   const t: RoomType = Object.values(RoomType).includes(type) ? type : RoomType.PUBLIC;
+
+  //   const limit = Math.max(1, Math.min(100, Number(pagination.limit) || 30));
+  //   const page = Math.max(1, Number(pagination.page) || 1);
+  //   const skip = (page - 1) * limit;
+
+  //   const filter: any = {};
+  //   if (t === RoomType.PUBLIC) {
+  //     filter.type = { $in: [RoomType.PUBLIC, RoomType.PROTECTED] };
+  //   } else {
+  //     filter.type = t;
+  //   }
+
+  //   const viewerStr = viewerId ? String(viewerId).trim() : "";
+
+  //   const pipeline: any[] = [
+  //     { $match: filter },
+
+  //     {
+  //       $addFields: {
+  //         isActive: viewerStr
+  //           ? {
+  //             $in: [
+  //               viewerStr,
+  //               {
+  //                 $map: {
+  //                   input: { $ifNull: ["$activeUsers", []] },
+  //                   as: "u",
+  //                   in: { $toString: "$$u" }
+  //                 }
+  //               }
+  //             ]
+  //           }
+  //           : false
+  //       }
+  //     },
+
+  //     // لا نرجع password ولا activeUsers
+  //     { $project: { password: 0, activeUsers: 0 } },
+
+  //     // ✅ يُفضّل إضافة _id لضمان ترتيب ثابت
+  //     { $sort: { boostPoints: -1, usersCount: -1, createdAt: -1, _id: -1 } },
+
+  //     { $skip: skip },
+  //     { $limit: limit }
+  //   ];
+
+  //   const [items, total] = await Promise.all([
+  //     Room.aggregate(pipeline),
+  //     Room.countDocuments(filter)
+  //   ]);
+
+  //   return {
+  //     type: t,
+  //     page,
+  //     limit,
+  //     total,
+  //     pages: Math.ceil(total / limit),
+  //     items
+  //   };
+  // }
   async inviteToRoom(
     roomId: string,
     actorId: string,
@@ -3682,24 +3777,73 @@ class RoomService {
   /* =====================================================
      BOOST
   ===================================================== */
+  async boost(roomId: string, userId: string) {
+    if (!this.isValidObjectId(roomId)) {
+      throw new Error("Invalid roomId");
+    }
 
-  async boost(roomId: string, userId: string, level: number, hours: number) {
+    if (!this.isValidObjectId(userId)) {
+      throw new Error("Invalid userId");
+    }
+
     const room = await Room.findById(roomId);
     if (!room) throw new Error("Room not found");
+
     this.require(room, userId, ["creator", "owner"]);
 
-    room.boostLevel = Math.max(0, Math.min(10, Number(level) || 0));
-    room.boostExpiresAt = new Date(Date.now() + Math.max(1, Math.min(720, Number(hours) || 0)) * 3600000);
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    const activeBoosts = Array.isArray((room as any).roomBoosts)
+      ? (room as any).roomBoosts.filter((b: any) => {
+        const exp = b?.expiresAt ? new Date(b.expiresAt) : null;
+        return exp && exp.getTime() > now.getTime();
+      })
+      : [];
+
+    activeBoosts.push({
+      user: new Types.ObjectId(userId),
+      createdAt: now,
+      expiresAt,
+    });
+
+    (room as any).roomBoosts = activeBoosts;
+    room.boostPoints = activeBoosts.length;
+
     await room.save();
 
     this.io().to(`room:${roomId}`).emit("room:boost:update", {
-      boostLevel: room.boostLevel,
-      boostExpiresAt: room.boostExpiresAt
+      roomId: String(room._id),
+      boostPoints: room.boostPoints,
+      boostExpiresAt: expiresAt,
     });
 
-    await this.system(roomId, "Room boosted", "announcement");
-    return room;
+    await this.system(roomId, "🚀 Room boosted for 30 days", "announcement");
+
+    return {
+      roomId: String(room._id),
+      boostPoints: room.boostPoints,
+      boostExpiresAt: expiresAt,
+      room,
+    };
   }
+  // async boost(roomId: string, userId: string, level: number, hours: number) {
+  //   const room = await Room.findById(roomId);
+  //   if (!room) throw new Error("Room not found");
+  //   this.require(room, userId, ["creator", "owner"]);
+
+  //   room.boostLevel = Math.max(0, Math.min(10, Number(level) || 0));
+  //   room.boostExpiresAt = new Date(Date.now() + Math.max(1, Math.min(720, Number(hours) || 0)) * 3600000);
+  //   await room.save();
+
+  //   this.io().to(`room:${roomId}`).emit("room:boost:update", {
+  //     boostLevel: room.boostLevel,
+  //     boostExpiresAt: room.boostExpiresAt
+  //   });
+
+  //   await this.system(roomId, "Room boosted", "announcement");
+  //   return room;
+  // }
 
   /* =====================================================
      ROLES MANAGEMENT (Promote / Demote / Membership)
@@ -4941,7 +5085,165 @@ class RoomService {
 
     return room.maxUsers;
   }
+async addRoomToFavorites(roomId: string, userId: string) {
+  if (!this.isValidObjectId(roomId)) {
+    throw new Error("Invalid roomId");
+  }
 
+  if (!this.isValidObjectId(userId)) {
+    throw new Error("Invalid userId");
+  }
+
+  const room = await Room.findOne({
+    _id: roomId,
+    isSuspended: { $ne: true },
+  }).select("_id");
+
+  if (!room) {
+    throw new Error("Room not found");
+  }
+
+  await FavoriteRoom.updateOne(
+    {
+      user: new Types.ObjectId(userId),
+      room: new Types.ObjectId(roomId),
+    },
+    {
+      $setOnInsert: {
+        user: new Types.ObjectId(userId),
+        room: new Types.ObjectId(roomId),
+      },
+    },
+    {
+      upsert: true,
+    }
+  );
+
+  return {
+    roomId,
+    isFavorite: true,
+  };
+}
+
+async removeRoomFromFavorites(roomId: string, userId: string) {
+  if (!this.isValidObjectId(roomId)) {
+    throw new Error("Invalid roomId");
+  }
+
+  if (!this.isValidObjectId(userId)) {
+    throw new Error("Invalid userId");
+  }
+
+  await FavoriteRoom.deleteOne({
+    user: new Types.ObjectId(userId),
+    room: new Types.ObjectId(roomId),
+  });
+
+  return {
+    roomId,
+    isFavorite: false,
+  };
+}
+
+async toggleRoomFavorite(roomId: string, userId: string) {
+  if (!this.isValidObjectId(roomId)) {
+    throw new Error("Invalid roomId");
+  }
+
+  if (!this.isValidObjectId(userId)) {
+    throw new Error("Invalid userId");
+  }
+
+  const exists = await FavoriteRoom.findOne({
+    user: new Types.ObjectId(userId),
+    room: new Types.ObjectId(roomId),
+  }).select("_id");
+
+  if (exists) {
+    await FavoriteRoom.deleteOne({ _id: exists._id });
+
+    return {
+      roomId,
+      isFavorite: false,
+    };
+  }
+
+  const room = await Room.findOne({
+    _id: roomId,
+    isSuspended: { $ne: true },
+  }).select("_id");
+
+  if (!room) {
+    throw new Error("Room not found");
+  }
+
+  await FavoriteRoom.create({
+    user: new Types.ObjectId(userId),
+    room: new Types.ObjectId(roomId),
+  });
+
+  return {
+    roomId,
+    isFavorite: true,
+  };
+}
+
+async getFavoriteRooms(
+  userId: string,
+  pagination: { limit?: number; page?: number } = {}
+) {
+  if (!this.isValidObjectId(userId)) {
+    throw new Error("Invalid userId");
+  }
+
+  const limit = Math.max(1, Math.min(100, Number(pagination.limit) || 30));
+  const page = Math.max(1, Number(pagination.page) || 1);
+  const skip = (page - 1) * limit;
+
+  await this.cleanupExpiredRoomBoosts();
+
+  const filter = {
+    user: new Types.ObjectId(userId),
+  };
+
+  const [favorites, total] = await Promise.all([
+    FavoriteRoom.find(filter)
+      .sort({ createdAt: -1, _id: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate({
+        path: "room",
+        match: {
+          isSuspended: { $ne: true },
+        },
+        select:
+          "name description avatar cover type maxUsers usersCount messagesCount boostPoints isVerified premiumLevel isLocked slowModeSeconds antiSpamEnabled level xp tags createdAt updatedAt",
+      })
+      .lean(),
+
+    FavoriteRoom.countDocuments(filter),
+  ]);
+
+  const items = favorites
+    .map((fav: any) => {
+      if (!fav?.room) return null;
+
+      return {
+        ...fav.room,
+        isFavorite: true,
+        favoriteCreatedAt: fav.createdAt,
+      };
+    })
+    .filter(Boolean);
+
+  return {
+    page,
+    limit,
+    total,
+    pages: Math.ceil(total / limit),
+    items,
+  };
+}
   /* =====================================================
      DELETE ROOM
   ===================================================== */
@@ -4975,16 +5277,15 @@ class RoomService {
     const totalUsersCount = room.usersCount || 0;
     const messagesCount = room.messagesCount || 0;
 
-    return {
-      roomId,
-      activeCount,
-      totalUsersCount,
-      messagesCount,
-      level: room.level,
-      xp: room.xp,
-      boostLevel: room.boostLevel,
-      boostExpiresAt: room.boostExpiresAt
-    };
+return {
+  roomId,
+  activeCount,
+  totalUsersCount,
+  messagesCount,
+  level: room.level,
+  xp: room.xp,
+  boostPoints: room.boostPoints || 0,
+};
   }
 }
 
