@@ -1,9 +1,27 @@
 {
   "version": 1,
-  "active": {},
+  "active": {
+    "box": {
+      "gameId": "box-1778922671569-5127",
+      "command": "box",
+      "lang": "ar",
+      "status": "waiting",
+      "starter": {
+        "userId": "69e3ae08fd939be46f661420",
+        "username": "ا◙☬ځُــۥـ☼ـڈ◄أڵـــســمـــٱ۽►ـۉد☼ــۥــۓ☬◙ا",
+        "roomId": "6a076cbd924acf8caaec1024",
+        "joinedAt": 1778922671570
+      },
+      "createdAt": 1778922671570,
+      "expiresAt": 1778922731570
+    }
+  },
   "cooldowns": {
     "69ce260036d8133aa1806b2d": {
       "slap": 1777540852562
+    },
+    "69e3ae08fd939be46f661420": {
+      "box": 1778923571570
     }
   }
 }

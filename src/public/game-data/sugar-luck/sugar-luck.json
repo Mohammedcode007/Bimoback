@@ -138,6 +138,102 @@
           "createdAt": "2026-04-30T09:20:34.036Z"
         }
       ]
+    },
+    "69ffc4e0b61a7011d97fbcf0": {
+      "roomId": "69ffc4e0b61a7011d97fbcf0",
+      "players": {
+        "69e3ae08fd939be46f661420": {
+          "userId": "69e3ae08fd939be46f661420",
+          "username": "ا◙☬ځُــۥـ☼ـڈ◄أڵـــســمـــٱ۽►ـۉد☼ــۥــۓ☬◙ا",
+          "points": 0,
+          "wins": 0,
+          "losses": 0,
+          "neutral": 1,
+          "millionWins": 0,
+          "investmentWins": 0,
+          "speculationWins": 0,
+          "duelWins": 0,
+          "duelLosses": 0,
+          "totalWon": 0,
+          "totalLost": 0,
+          "updatedAt": "2026-05-16T09:04:27.413Z"
+        }
+      },
+      "cooldowns": {},
+      "history": [
+        {
+          "id": "fp-1778922267413-7ed100",
+          "userId": "69e3ae08fd939be46f661420",
+          "username": "ا◙☬ځُــۥـ☼ـڈ◄أڵـــســمـــٱ۽►ـۉد☼ــۥــۓ☬◙ا",
+          "roomId": "69ffc4e0b61a7011d97fbcf0",
+          "amount": 0,
+          "balanceAfter": 0,
+          "reason": "shot",
+          "meta": {
+            "command": "shot",
+            "outcome": "miss"
+          },
+          "createdAt": "2026-05-16T09:04:27.413Z"
+        }
+      ]
+    },
+    "69f9f14ea28050fe0315ce31": {
+      "roomId": "69f9f14ea28050fe0315ce31",
+      "players": {
+        "69e3ae08fd939be46f661420": {
+          "userId": "69e3ae08fd939be46f661420",
+          "username": "ا◙☬ځُــۥـ☼ـڈ◄أڵـــســمـــٱ۽►ـۉد☼ــۥــۓ☬◙ا",
+          "points": 2289,
+          "wins": 2,
+          "losses": 0,
+          "neutral": 0,
+          "millionWins": 0,
+          "investmentWins": 0,
+          "speculationWins": 0,
+          "duelWins": 0,
+          "duelLosses": 0,
+          "totalWon": 2289,
+          "totalLost": 0,
+          "updatedAt": "2026-05-16T09:18:28.372Z"
+        }
+      },
+      "cooldowns": {},
+      "history": [
+        {
+          "id": "fp-1778923099668-64734a",
+          "userId": "69e3ae08fd939be46f661420",
+          "username": "ا◙☬ځُــۥـ☼ـڈ◄أڵـــســمـــٱ۽►ـۉد☼ــۥــۓ☬◙ا",
+          "roomId": "69f9f14ea28050fe0315ce31",
+          "amount": 1110,
+          "balanceAfter": 2289,
+          "reason": "shot",
+          "meta": {
+            "command": "shot",
+            "outcome": "kill",
+            "target": "ذئب",
+            "emoji": "🐺",
+            "won": 1110
+          },
+          "createdAt": "2026-05-16T09:18:19.668Z"
+        },
+        {
+          "id": "fp-1778922393756-ab1d4b",
+          "userId": "69e3ae08fd939be46f661420",
+          "username": "ا◙☬ځُــۥـ☼ـڈ◄أڵـــســمـــٱ۽►ـۉد☼ــۥــۓ☬◙ا",
+          "roomId": "69f9f14ea28050fe0315ce31",
+          "amount": 1179,
+          "balanceAfter": 1179,
+          "reason": "shot",
+          "meta": {
+            "command": "shot",
+            "outcome": "kill",
+            "target": "ذئب",
+            "emoji": "🐺",
+            "won": 1179
+          },
+          "createdAt": "2026-05-16T09:06:33.756Z"
+        }
+      ]
     }
   }
 }

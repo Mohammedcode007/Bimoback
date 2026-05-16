@@ -43,6 +43,8 @@ export type RoomGameType =
   | "luck"
   |"duel"
   |"bomb"
+      "shot"
+
 
 /* =====================================================
    MESSAGE LENGTH LIMITS
@@ -479,7 +481,7 @@ const RoomMessageSchema = new Schema<IRoomMessage>(
 
 gameType: {
   type: String,
-enum: ["", "cricket", "chess", "quiz", "xo", "cards", "luck", "duel","bomb"],
+enum: ["", "cricket", "chess", "quiz", "xo", "cards", "luck", "duel","bomb","shot"],
   default: "",
   trim: true,
   index: true

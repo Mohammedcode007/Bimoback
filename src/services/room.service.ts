@@ -18,6 +18,10 @@ import { executeGlobalHitDuelCommand } from "./roomGames/globalHitDuelGame.servi
 import { executeSugarLuckCommand } from "./roomGames/sugarLuckGame.service";
 import { executeBombColorCommand } from "./roomGames/bombColorGame.service";
 import FavoriteRoom from "../models/FavoriteRoom";
+import { executeAnaTitleGame } from "./roomGames/anaTitleGame.service";
+import { executeLookalikeGame } from "./roomGames/lookalikeGame.service";
+import { executeShotGameCommand } from "./roomGames/shotGame.service";
+import { executeFakePointsRankCommand } from "./roomGames/fakePointsRankCommand.service";
 /**
  * ملاحظة مهمة جدًا:
  * - في RoomMessageSchema عندك يوجد Hook يقوم بزيادة messagesCount تلقائيًا عند إنشاء الرسالة.
@@ -105,7 +109,17 @@ type SendMessageInput = {
     roomName?: string;
   };
 
-  gameType?: "" | "cricket" | "chess" | "quiz" | "xo" | "cards" | "luck" | "duel" | "bomb";
+  gameType?:
+  | ""
+  | "cricket"
+  | "chess"
+  | "quiz"
+  | "xo"
+  | "cards"
+  | "luck"
+  | "duel"
+  | "bomb"
+  | "shot";
   game?: {
     gameId?: string;
     title?: string;
@@ -181,45 +195,45 @@ class RoomService {
   private isValidObjectId(id: string) {
     return Types.ObjectId.isValid(id);
   }
- private async cleanupExpiredRoomBoosts() {
-  const now = new Date();
+  private async cleanupExpiredRoomBoosts() {
+    const now = new Date();
 
-  const rooms = await Room.find({
-    roomBoosts: {
-      $elemMatch: {
-        expiresAt: { $lte: now },
+    const rooms = await Room.find({
+      roomBoosts: {
+        $elemMatch: {
+          expiresAt: { $lte: now },
+        },
       },
-    },
-  }).select("_id roomBoosts boostPoints");
+    }).select("_id roomBoosts boostPoints");
 
-  if (!rooms.length) return;
+    if (!rooms.length) return;
 
-  const ops = rooms.map((room: any) => {
-    const activeBoosts = Array.isArray(room.roomBoosts)
-      ? room.roomBoosts.filter((boost: any) => {
+    const ops = rooms.map((room: any) => {
+      const activeBoosts = Array.isArray(room.roomBoosts)
+        ? room.roomBoosts.filter((boost: any) => {
           const expiresAt = boost?.expiresAt
             ? new Date(boost.expiresAt)
             : null;
 
           return expiresAt && expiresAt.getTime() > now.getTime();
         })
-      : [];
+        : [];
 
-    return {
-      updateOne: {
-        filter: { _id: room._id },
-        update: {
-          $set: {
-            roomBoosts: activeBoosts,
-            boostPoints: activeBoosts.length,
+      return {
+        updateOne: {
+          filter: { _id: room._id },
+          update: {
+            $set: {
+              roomBoosts: activeBoosts,
+              boostPoints: activeBoosts.length,
+            },
           },
         },
-      },
-    };
-  });
+      };
+    });
 
-  await Room.bulkWrite(ops);
-}
+    await Room.bulkWrite(ops);
+  }
   private buildMessagePreviewForNotification(message: any) {
     const msgType = String(message?.type || "text");
 
@@ -1184,13 +1198,17 @@ class RoomService {
     // =========================
     // Constraints
     // =========================
-    if (actorRole === "owner" && newRole === "owner") {
-      log("BLOCKED: owner cannot promote to owner");
-      throw new Error("Owner cannot promote to owner");
-    }
+    // if (actorRole === "owner" && newRole === "owner") {
+    //   log("BLOCKED: owner cannot promote to owner");
+    //   throw new Error("Owner cannot promote to owner");
+    // }
 
-    if (actorRole !== "creator" && targetRole === "owner") {
-      log("BLOCKED: only creator can change owner role", { actorRole, targetRole });
+    if (actorRole !== "creator" && targetRole === "owner" && newRole !== "owner") {
+      log("BLOCKED: only creator can change existing owner role", {
+        actorRole,
+        targetRole,
+        newRole,
+      });
       throw new Error("Only creator can change owner role");
     }
 
@@ -2633,20 +2651,7 @@ class RoomService {
             : undefined,
         gift: hasGift ? gift : undefined
       });
-      // const message = await RoomMessage.create({
-      //   room: roomId,
-      //   sender: senderId,
-      //   senderSnapshot,
 
-      //   clientId: hasClientId ? cid : undefined, // ✅ جديد
-
-      //   content,
-      //   type,
-      //   replyTo: replyTo && this.isValidObjectId(replyTo) ? replyTo : undefined,
-      //   mentions: cleanMentions,
-      //   media: media?.url ? media : undefined,
-      //   gift: hasGift ? gift : undefined
-      // });
       if (type === "gift" && hasGift && gift?.targetId && this.isValidObjectId(gift.targetId)) {
         await Promise.all([
           mongoose.model("User").updateOne(
@@ -2708,27 +2713,73 @@ class RoomService {
         console.log("❌ spin command error:", error);
       }
       /* =====================================================
-   ROOM BOOST COMMANDS
-   top    => أكثر 10 غرف Boost هذا الشهر
-   boosts => عدد بوستات الغرفة الحالية هذا الشهر
+  FAKE POINTS RANK COMMANDS
+  أوامر:
+  نقاطي
+  .top
+  .nx
 ===================================================== */
 try {
   const text = String(content || "").trim();
 
   if (type === "text" && text) {
-    const boostCommand = await this.handleRoomBoostTextCommand({
+    const senderName =
+      String(
+        (message as any)?.senderSnapshot?.username ||
+          (senderSnapshot as any)?.username ||
+          (message as any)?.senderSnapshot?.atUsername ||
+          (senderSnapshot as any)?.atUsername ||
+          ""
+      ).trim() || "مستخدم";
+
+    const fakePointsRankResult = await executeFakePointsRankCommand({
       roomId: String(roomId),
-      senderId: String(senderId),
-      text,
+      userId: String(senderId),
+      username: senderName,
+      content: text,
     });
 
-    if (boostCommand?.handled) {
+    if (fakePointsRankResult?.handled) {
+      await this.system(
+        roomId,
+        fakePointsRankResult.text || "No result.",
+        "system",
+        {
+          systemType: "fake_points_rank",
+          sender: senderId,
+          mentions: [senderId],
+          meta: fakePointsRankResult.meta || {},
+        }
+      );
+
       return message;
     }
   }
 } catch (error) {
-  console.log("❌ room boost command error:", error);
+  console.log("❌ fake points rank command error:", error);
 }
+      /* =====================================================
+   ROOM BOOST COMMANDS
+   top    => أكثر 10 غرف Boost هذا الشهر
+   boosts => عدد بوستات الغرفة الحالية هذا الشهر
+===================================================== */
+      try {
+        const text = String(content || "").trim();
+
+        if (type === "text" && text) {
+          const boostCommand = await this.handleRoomBoostTextCommand({
+            roomId: String(roomId),
+            senderId: String(senderId),
+            text,
+          });
+
+          if (boostCommand?.handled) {
+            return message;
+          }
+        }
+      } catch (error) {
+        console.log("❌ room boost command error:", error);
+      }
       /* =====================================================
   ROOM SETTINGS COMMANDS
 ===================================================== */
@@ -2923,7 +2974,176 @@ try {
 
             return message;
           }
+          /* =====================================================
+            SHOT GAME
+            أوامر: شوت / shot / .shot
+          ===================================================== */
+          const shotResult = await executeShotGameCommand({
+            roomId: String(roomId),
+            userId: String(senderId),
+            username,
+            content: text,
+          });
 
+          if (shotResult?.handled) {
+            const createdMessages = Array.isArray(shotResult.messages)
+              ? shotResult.messages
+              : shotResult.message
+                ? [shotResult.message]
+                : [];
+
+            for (const rawMsg of createdMessages) {
+              if (!rawMsg?._id) continue;
+
+              const shotMessage = await RoomMessage.findById(rawMsg._id)
+                .populate("sender", USER_PUBLIC_FIELDS)
+                .populate({
+                  path: "reactions.user",
+                  select: USER_PUBLIC_FIELDS,
+                })
+                .populate(this.replyToPopulate())
+                .lean();
+
+              if (!shotMessage) continue;
+
+              const targetRoomId = String((shotMessage as any).room || roomId);
+
+              this.io()
+                .to(`room:${targetRoomId}`)
+                .emit("room:message:new", shotMessage);
+            }
+
+            if (shotResult.text && !createdMessages.length) {
+              await this.system(
+                roomId,
+                shotResult.text,
+                shotResult.success ? "game" : "system",
+                {
+                  systemType: shotResult.success ? "shot_game" : "shot_game_error",
+                  sender: senderId,
+                  mentions: [senderId],
+                  gameType: "shot",
+                  meta: shotResult.meta || {},
+                }
+              );
+            }
+
+            return message;
+          }
+          /* =====================================================
+            ANA TITLE GAME
+            الأمر: انا / أنا
+          ===================================================== */
+          try {
+            const text = String(content || "").trim();
+
+
+
+            if (type === "text" && text) {
+
+
+
+
+              const senderName =
+                String(
+                  (message as any)?.senderSnapshot?.username ||
+                  (senderSnapshot as any)?.username ||
+                  (message as any)?.senderSnapshot?.atUsername ||
+                  (senderSnapshot as any)?.atUsername ||
+                  ""
+                ).trim() || "مستخدم";
+
+
+
+              const anaTitleResult = await executeAnaTitleGame({
+                roomId: String(roomId),
+                content: text,
+                username: senderName,
+              });
+
+
+              if (anaTitleResult?.handled) {
+                if (anaTitleResult.message?._id) {
+                  const gameMessage = await RoomMessage.findById(anaTitleResult.message._id)
+                    .populate("sender", USER_PUBLIC_FIELDS)
+                    .populate({
+                      path: "reactions.user",
+                      select: USER_PUBLIC_FIELDS,
+                    })
+                    .populate(this.replyToPopulate())
+                    .lean();
+
+
+
+                  if (gameMessage) {
+                    const targetName =
+                      String(
+                        (gameMessage as any)?.meta?.targetName ||
+                        (gameMessage as any)?.targetName ||
+                        ""
+                      ).trim();
+
+                    const title =
+                      String(
+                        (gameMessage as any)?.meta?.role ||
+                        (gameMessage as any)?.role ||
+                        (gameMessage as any)?.content ||
+                        ""
+                      ).trim();
+
+
+
+                    this.io()
+                      .to(`room:${roomId}`)
+                      .emit("room:message:new", gameMessage);
+                  }
+                }
+
+
+
+                return message;
+              }
+
+
+            }
+          } catch (error) {
+            console.log("❌ ana title game error:", error);
+          }
+          /* =====================================================
+            LOOKALIKE GAME
+            الأمر: شبيه احمد
+          ===================================================== */
+          try {
+            if (type === "text" && text) {
+              const lookalikeResult = await executeLookalikeGame({
+                roomId: String(roomId),
+                content: text,
+              });
+
+              if (lookalikeResult?.handled) {
+                if (lookalikeResult.message?._id) {
+                  const gameMessage = await RoomMessage.findById(lookalikeResult.message._id)
+                    .populate("sender", USER_PUBLIC_FIELDS)
+                    .populate({
+                      path: "reactions.user",
+                      select: USER_PUBLIC_FIELDS,
+                    })
+                    .populate(this.replyToPopulate())
+                    .lean();
+
+                  if (gameMessage) {
+                    this.io()
+                      .to(`room:${roomId}`)
+                      .emit("room:message:new", gameMessage);
+                  }
+                }
+
+                return message;
+              }
+            }
+          } catch (error) {
+            console.log("❌ lookalike game error:", error);
+          }
           /* =====================================================
             SUGAR LUCK GAME COMMANDS
             أوامر: حظ 1 / حظ 2 / حظ 3 / مليون / استثمار / مضاربة / .list
@@ -3584,26 +3804,7 @@ try {
       } catch (botError: any) {
         console.error("❌ bot/music command error:", botError?.message || botError);
       }
-      // try {
-      //   const text = String(content || "").trim();
 
-      //   if (type === "text" && text && text.startsWith("!")) {
-      //     const reply = await executeRoomBotCommand({
-      //       roomId,
-      //       actorId: senderId,
-      //       raw: text,
-      //       lang: "ar",
-      //     });
-
-      //     if (reply?.handled && reply?.text) {
-      //       await this.system(roomId, reply.text, "system", {
-      //         systemType: "room_bot",
-      //         sender: senderId,
-      //       });
-      //     }
-      //   }
-      // } catch (botError: any) {
-      // }
       if (cleanMentions.length) {
         for (const uid of cleanMentions) {
           this.io().to(uid).emit("room:mention", {
@@ -3812,107 +4013,107 @@ try {
   /* =====================================================
      BOOST
   ===================================================== */
- async boost(roomId: string, userId: string) {
-  if (!this.isValidObjectId(roomId)) {
-    throw new Error("Invalid roomId");
-  }
+  async boost(roomId: string, userId: string) {
+    if (!this.isValidObjectId(roomId)) {
+      throw new Error("Invalid roomId");
+    }
 
-  if (!this.isValidObjectId(userId)) {
-    throw new Error("Invalid userId");
-  }
+    if (!this.isValidObjectId(userId)) {
+      throw new Error("Invalid userId");
+    }
 
-  const room = await Room.findById(roomId);
-  if (!room) {
-    throw new Error("Room not found");
-  }
+    const room = await Room.findById(roomId);
+    if (!room) {
+      throw new Error("Room not found");
+    }
 
-  // this.require(room, userId, ["creator", "owner"]);
+    // this.require(room, userId, ["creator", "owner"]);
 
-  const user: any = await User.findById(userId).select("coinz Coinz coinzBalance CoinzBalance username");
+    const user: any = await User.findById(userId).select("coinz Coinz coinzBalance CoinzBalance username");
 
-  if (!user) {
-    throw new Error("User not found");
-  }
+    if (!user) {
+      throw new Error("User not found");
+    }
 
-  const currentCoinz = Number(
-    user.coinz ??
+    const currentCoinz = Number(
+      user.coinz ??
       user.Coinz ??
       user.coinzBalance ??
       user.CoinzBalance ??
       0
-  );
+    );
 
-  if (currentCoinz < ROOM_BOOST_PRICE) {
-    throw new Error(`Insufficient Coinz. Boost price is ${ROOM_BOOST_PRICE} Coinz`);
-  }
+    if (currentCoinz < ROOM_BOOST_PRICE) {
+      throw new Error(`Insufficient Coinz. Boost price is ${ROOM_BOOST_PRICE} Coinz`);
+    }
 
-  const now = new Date();
-  const expiresAt = new Date(
-    now.getTime() + ROOM_BOOST_DURATION_DAYS * 24 * 60 * 60 * 1000
-  );
+    const now = new Date();
+    const expiresAt = new Date(
+      now.getTime() + ROOM_BOOST_DURATION_DAYS * 24 * 60 * 60 * 1000
+    );
 
-  const activeBoosts = Array.isArray((room as any).roomBoosts)
-    ? (room as any).roomBoosts.filter((boost: any) => {
+    const activeBoosts = Array.isArray((room as any).roomBoosts)
+      ? (room as any).roomBoosts.filter((boost: any) => {
         const exp = boost?.expiresAt ? new Date(boost.expiresAt) : null;
         return exp && exp.getTime() > now.getTime();
       })
-    : [];
+      : [];
 
-  activeBoosts.push({
-    user: new Types.ObjectId(userId),
-    createdAt: now,
-    expiresAt,
-  });
+    activeBoosts.push({
+      user: new Types.ObjectId(userId),
+      createdAt: now,
+      expiresAt,
+    });
 
-  (room as any).roomBoosts = activeBoosts;
-  room.boostPoints = activeBoosts.length;
+    (room as any).roomBoosts = activeBoosts;
+    room.boostPoints = activeBoosts.length;
 
-  // خصم السعر حسب اسم الحقل الموجود عندك
-  if (user.coinz !== undefined) {
-    user.coinz = currentCoinz - ROOM_BOOST_PRICE;
-  } else if (user.Coinz !== undefined) {
-    user.Coinz = currentCoinz - ROOM_BOOST_PRICE;
-  } else if (user.coinzBalance !== undefined) {
-    user.coinzBalance = currentCoinz - ROOM_BOOST_PRICE;
-  } else if (user.CoinzBalance !== undefined) {
-    user.CoinzBalance = currentCoinz - ROOM_BOOST_PRICE;
-  } else {
-    user.coinz = currentCoinz - ROOM_BOOST_PRICE;
-  }
+    // خصم السعر حسب اسم الحقل الموجود عندك
+    if (user.coinz !== undefined) {
+      user.coinz = currentCoinz - ROOM_BOOST_PRICE;
+    } else if (user.Coinz !== undefined) {
+      user.Coinz = currentCoinz - ROOM_BOOST_PRICE;
+    } else if (user.coinzBalance !== undefined) {
+      user.coinzBalance = currentCoinz - ROOM_BOOST_PRICE;
+    } else if (user.CoinzBalance !== undefined) {
+      user.CoinzBalance = currentCoinz - ROOM_BOOST_PRICE;
+    } else {
+      user.coinz = currentCoinz - ROOM_BOOST_PRICE;
+    }
 
-  await user.save();
-  await room.save();
+    await user.save();
+    await room.save();
 
-  this.io().to(`room:${roomId}`).emit("room:boost:update", {
-    roomId: String(room._id),
-    boostPoints: room.boostPoints,
-    boostPrice: ROOM_BOOST_PRICE,
-    boostExpiresAt: expiresAt,
-  });
-
-  await this.system(
-    roomId,
-    `🚀 Room boosted for 30 days. Cost: ${ROOM_BOOST_PRICE} Coinz`,
-    "announcement",
-    {
-      systemType: "room_boost",
-      sender: userId,
-      mentions: [userId],
+    this.io().to(`room:${roomId}`).emit("room:boost:update", {
+      roomId: String(room._id),
       boostPoints: room.boostPoints,
       boostPrice: ROOM_BOOST_PRICE,
       boostExpiresAt: expiresAt,
-    }
-  );
+    });
 
-  return {
-    roomId: String(room._id),
-    boostPoints: room.boostPoints,
-    boostPrice: ROOM_BOOST_PRICE,
-    boostExpiresAt: expiresAt,
-    remainingCoinz: currentCoinz - ROOM_BOOST_PRICE,
-    room,
-  };
-}
+    await this.system(
+      roomId,
+      `🚀 Room boosted for 30 days. Cost: ${ROOM_BOOST_PRICE} Coinz`,
+      "announcement",
+      {
+        systemType: "room_boost",
+        sender: userId,
+        mentions: [userId],
+        boostPoints: room.boostPoints,
+        boostPrice: ROOM_BOOST_PRICE,
+        boostExpiresAt: expiresAt,
+      }
+    );
+
+    return {
+      roomId: String(room._id),
+      boostPoints: room.boostPoints,
+      boostPrice: ROOM_BOOST_PRICE,
+      boostExpiresAt: expiresAt,
+      remainingCoinz: currentCoinz - ROOM_BOOST_PRICE,
+      room,
+    };
+  }
   // async boost(roomId: string, userId: string, level: number, hours: number) {
   //   const room = await Room.findById(roomId);
   //   if (!room) throw new Error("Room not found");
@@ -5047,108 +5248,7 @@ try {
 
     return { total: users.length, users };
   }
-  // async getRoomUsers(roomId: string) {
-  //   const room = await Room.findById(roomId)
-  //     .populate("creator", USER_PUBLIC_FIELDS)
-  //     .populate("owners", USER_PUBLIC_FIELDS)
-  //     .populate("admins", USER_PUBLIC_FIELDS)
-  //     .populate("members", USER_PUBLIC_FIELDS);
 
-  //   if (!room) throw new Error("Room not found");
-  //   this.ensureArrays(room);
-
-  //   const now = new Date();
-
-  //   const formatUser = (user: any, role: Role) => {
-  //     const vip = (room.vipUsers || []).find((v: any) => v.user.toString() === user._id.toString());
-  //     const muted = (room.mutedUsers || []).find((m: any) => m.user.toString() === user._id.toString());
-
-  //     const isActive = (room.activeUsers || []).some(
-  //       (u: any) => u?.toString?.() === user._id.toString()
-  //     );
-
-  //     return {
-  //       _id: user._id,
-  //       username: user.username,
-  //       avatar: user.avatar,
-  //       role,
-  //       isActive,
-
-  //       activeCustomization: user.activeCustomization || {
-  //         avatarFrame: "",
-  //         messageEffect: "",
-  //         profileEntryAnimation: "",
-  //         badges: [],
-  //         verificationType: "none"
-  //       },
-
-  //       customEmojiBadge:
-  //         user?.customEmojiBadge && typeof user.customEmojiBadge === "object"
-  //           ? {
-  //             emoji: String(user.customEmojiBadge.emoji || ""),
-  //             isActive: Boolean(user.customEmojiBadge.isActive),
-  //             expiresAt: user.customEmojiBadge.expiresAt || null
-  //           }
-  //           : null,
-
-  //       isVip: !!vip,
-  //       vipExpiresAt: vip?.expiresAt || null,
-  //       isMuted: !!muted && muted.until > now,
-  //       mutedUntil: muted?.until || null
-  //     };
-  //   };
-
-  //   // ✅ أولوية الأدوار (الأعلى يغلب)
-  //   const rank: Record<Role, number> = {
-  //     none: 0,
-  //     member: 1,
-  //     admin: 2,
-  //     owner: 3,
-  //     creator: 4
-  //   };
-
-  //   // ✅ خريطة فريدة حسب userId
-  //   const byId = new Map<string, any>();
-
-  //   const upsert = (user: any, role: Role) => {
-  //     if (!user?._id) return;
-  //     const id = user._id.toString();
-
-  //     const existing = byId.get(id);
-  //     if (!existing) {
-  //       byId.set(id, formatUser(user, role));
-  //       return;
-  //     }
-
-  //     // إذا الدور الجديد أعلى، استبدله
-  //     if (rank[role] > rank[existing.role as Role]) {
-  //       const merged = formatUser(user, role);
-  //       byId.set(id, { ...existing, ...merged, role });
-  //     } else {
-  //       // فقط حدّث flags (active/vip/muted) لو تغيرت
-  //       const refreshed = formatUser(user, existing.role as Role);
-  //       byId.set(id, { ...existing, ...refreshed });
-  //     }
-  //   };
-
-  //   // ✅ أدخلهم جميعًا، وDedup سيضمن ظهورهم مرة واحدة بأعلى Role
-  //   upsert(room.creator, "creator");
-  //   for (const u of room.owners || []) upsert(u, "owner");
-  //   for (const u of room.admins || []) upsert(u, "admin");
-  //   for (const u of room.members || []) upsert(u, "member");
-
-  //   // ✅ ترتيب العرض: الأعلى Role أولاً ثم الاسم
-  //   let users = Array.from(byId.values()).sort((a, b) => {
-  //     const diff = rank[b.role as Role] - rank[a.role as Role];
-  //     if (diff !== 0) return diff;
-  //     return String(a.username || "").localeCompare(String(b.username || ""));
-  //   });
-
-  //   // ✅ الحل الأول: اعرض الموجودين داخل الغرفة فقط (Active Users)
-  //   users = users.filter((u) => u.isActive);
-
-  //   return { total: users.length, users };
-  // }
   /* =====================================================
      INCREASE MAX USERS LIMIT
   ===================================================== */
@@ -5171,82 +5271,59 @@ try {
 
     return room.maxUsers;
   }
-async addRoomToFavorites(roomId: string, userId: string) {
-  if (!this.isValidObjectId(roomId)) {
-    throw new Error("Invalid roomId");
-  }
+  async addRoomToFavorites(roomId: string, userId: string) {
+    if (!this.isValidObjectId(roomId)) {
+      throw new Error("Invalid roomId");
+    }
 
-  if (!this.isValidObjectId(userId)) {
-    throw new Error("Invalid userId");
-  }
+    if (!this.isValidObjectId(userId)) {
+      throw new Error("Invalid userId");
+    }
 
-  const room = await Room.findOne({
-    _id: roomId,
-    isSuspended: { $ne: true },
-  }).select("_id");
+    const room = await Room.findOne({
+      _id: roomId,
+      isSuspended: { $ne: true },
+    }).select("_id");
 
-  if (!room) {
-    throw new Error("Room not found");
-  }
+    if (!room) {
+      throw new Error("Room not found");
+    }
 
-  await FavoriteRoom.updateOne(
-    {
-      user: new Types.ObjectId(userId),
-      room: new Types.ObjectId(roomId),
-    },
-    {
-      $setOnInsert: {
+    await FavoriteRoom.updateOne(
+      {
         user: new Types.ObjectId(userId),
         room: new Types.ObjectId(roomId),
       },
-    },
-    {
-      upsert: true,
+      {
+        $setOnInsert: {
+          user: new Types.ObjectId(userId),
+          room: new Types.ObjectId(roomId),
+        },
+      },
+      {
+        upsert: true,
+      }
+    );
+
+    return {
+      roomId,
+      isFavorite: true,
+    };
+  }
+
+  async removeRoomFromFavorites(roomId: string, userId: string) {
+    if (!this.isValidObjectId(roomId)) {
+      throw new Error("Invalid roomId");
     }
-  );
 
-  return {
-    roomId,
-    isFavorite: true,
-  };
-}
+    if (!this.isValidObjectId(userId)) {
+      throw new Error("Invalid userId");
+    }
 
-async removeRoomFromFavorites(roomId: string, userId: string) {
-  if (!this.isValidObjectId(roomId)) {
-    throw new Error("Invalid roomId");
-  }
-
-  if (!this.isValidObjectId(userId)) {
-    throw new Error("Invalid userId");
-  }
-
-  await FavoriteRoom.deleteOne({
-    user: new Types.ObjectId(userId),
-    room: new Types.ObjectId(roomId),
-  });
-
-  return {
-    roomId,
-    isFavorite: false,
-  };
-}
-
-async toggleRoomFavorite(roomId: string, userId: string) {
-  if (!this.isValidObjectId(roomId)) {
-    throw new Error("Invalid roomId");
-  }
-
-  if (!this.isValidObjectId(userId)) {
-    throw new Error("Invalid userId");
-  }
-
-  const exists = await FavoriteRoom.findOne({
-    user: new Types.ObjectId(userId),
-    room: new Types.ObjectId(roomId),
-  }).select("_id");
-
-  if (exists) {
-    await FavoriteRoom.deleteOne({ _id: exists._id });
+    await FavoriteRoom.deleteOne({
+      user: new Types.ObjectId(userId),
+      room: new Types.ObjectId(roomId),
+    });
 
     return {
       roomId,
@@ -5254,82 +5331,105 @@ async toggleRoomFavorite(roomId: string, userId: string) {
     };
   }
 
-  const room = await Room.findOne({
-    _id: roomId,
-    isSuspended: { $ne: true },
-  }).select("_id");
+  async toggleRoomFavorite(roomId: string, userId: string) {
+    if (!this.isValidObjectId(roomId)) {
+      throw new Error("Invalid roomId");
+    }
 
-  if (!room) {
-    throw new Error("Room not found");
-  }
+    if (!this.isValidObjectId(userId)) {
+      throw new Error("Invalid userId");
+    }
 
-  await FavoriteRoom.create({
-    user: new Types.ObjectId(userId),
-    room: new Types.ObjectId(roomId),
-  });
+    const exists = await FavoriteRoom.findOne({
+      user: new Types.ObjectId(userId),
+      room: new Types.ObjectId(roomId),
+    }).select("_id");
 
-  return {
-    roomId,
-    isFavorite: true,
-  };
-}
-
-async getFavoriteRooms(
-  userId: string,
-  pagination: { limit?: number; page?: number } = {}
-) {
-  if (!this.isValidObjectId(userId)) {
-    throw new Error("Invalid userId");
-  }
-
-  const limit = Math.max(1, Math.min(100, Number(pagination.limit) || 30));
-  const page = Math.max(1, Number(pagination.page) || 1);
-  const skip = (page - 1) * limit;
-
-  await this.cleanupExpiredRoomBoosts();
-
-  const filter = {
-    user: new Types.ObjectId(userId),
-  };
-
-  const [favorites, total] = await Promise.all([
-    FavoriteRoom.find(filter)
-      .sort({ createdAt: -1, _id: -1 })
-      .skip(skip)
-      .limit(limit)
-      .populate({
-        path: "room",
-        match: {
-          isSuspended: { $ne: true },
-        },
-        select:
-          "name description avatar cover type maxUsers usersCount messagesCount boostPoints isVerified premiumLevel isLocked slowModeSeconds antiSpamEnabled level xp tags createdAt updatedAt",
-      })
-      .lean(),
-
-    FavoriteRoom.countDocuments(filter),
-  ]);
-
-  const items = favorites
-    .map((fav: any) => {
-      if (!fav?.room) return null;
+    if (exists) {
+      await FavoriteRoom.deleteOne({ _id: exists._id });
 
       return {
-        ...fav.room,
-        isFavorite: true,
-        favoriteCreatedAt: fav.createdAt,
+        roomId,
+        isFavorite: false,
       };
-    })
-    .filter(Boolean);
+    }
 
-  return {
-    page,
-    limit,
-    total,
-    pages: Math.ceil(total / limit),
-    items,
-  };
-}
+    const room = await Room.findOne({
+      _id: roomId,
+      isSuspended: { $ne: true },
+    }).select("_id");
+
+    if (!room) {
+      throw new Error("Room not found");
+    }
+
+    await FavoriteRoom.create({
+      user: new Types.ObjectId(userId),
+      room: new Types.ObjectId(roomId),
+    });
+
+    return {
+      roomId,
+      isFavorite: true,
+    };
+  }
+
+  async getFavoriteRooms(
+    userId: string,
+    pagination: { limit?: number; page?: number } = {}
+  ) {
+    if (!this.isValidObjectId(userId)) {
+      throw new Error("Invalid userId");
+    }
+
+    const limit = Math.max(1, Math.min(100, Number(pagination.limit) || 30));
+    const page = Math.max(1, Number(pagination.page) || 1);
+    const skip = (page - 1) * limit;
+
+    await this.cleanupExpiredRoomBoosts();
+
+    const filter = {
+      user: new Types.ObjectId(userId),
+    };
+
+    const [favorites, total] = await Promise.all([
+      FavoriteRoom.find(filter)
+        .sort({ createdAt: -1, _id: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate({
+          path: "room",
+          match: {
+            isSuspended: { $ne: true },
+          },
+          select:
+            "name description avatar cover type maxUsers usersCount messagesCount boostPoints isVerified premiumLevel isLocked slowModeSeconds antiSpamEnabled level xp tags createdAt updatedAt",
+        })
+        .lean(),
+
+      FavoriteRoom.countDocuments(filter),
+    ]);
+
+    const items = favorites
+      .map((fav: any) => {
+        if (!fav?.room) return null;
+
+        return {
+          ...fav.room,
+          isFavorite: true,
+          favoriteCreatedAt: fav.createdAt,
+        };
+      })
+      .filter(Boolean);
+
+    return {
+      page,
+      limit,
+      total,
+      pages: Math.ceil(total / limit),
+      items,
+    };
+  }
   /* =====================================================
      DELETE ROOM
   ===================================================== */
@@ -5348,241 +5448,241 @@ async getFavoriteRooms(
 
     return { success: true };
   }
-private getCurrentMonthRange() {
-  const now = new Date();
+  private getCurrentMonthRange() {
+    const now = new Date();
 
-  const monthStart = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    1,
-    0,
-    0,
-    0,
-    0
-  );
+    const monthStart = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      1,
+      0,
+      0,
+      0,
+      0
+    );
 
-  return {
-    now,
-    monthStart,
-  };
-}
-
-private isActiveMonthlyBoost(boost: any, monthStart: Date, now: Date) {
-  const createdAt = boost?.createdAt ? new Date(boost.createdAt) : null;
-  const expiresAt = boost?.expiresAt ? new Date(boost.expiresAt) : null;
-
-  if (!createdAt || !expiresAt) return false;
-
-  return (
-    createdAt.getTime() >= monthStart.getTime() &&
-    createdAt.getTime() <= now.getTime() &&
-    expiresAt.getTime() > now.getTime()
-  );
-}
-
-async getRoomActiveMonthlyBoostCount(roomId: string) {
-  if (!this.isValidObjectId(roomId)) {
-    throw new Error("Invalid roomId");
+    return {
+      now,
+      monthStart,
+    };
   }
 
-  const { now, monthStart } = this.getCurrentMonthRange();
+  private isActiveMonthlyBoost(boost: any, monthStart: Date, now: Date) {
+    const createdAt = boost?.createdAt ? new Date(boost.createdAt) : null;
+    const expiresAt = boost?.expiresAt ? new Date(boost.expiresAt) : null;
 
-  const room = await Room.findById(roomId)
-    .select("name roomBoosts")
-    .lean();
+    if (!createdAt || !expiresAt) return false;
 
-  if (!room) {
-    throw new Error("Room not found");
+    return (
+      createdAt.getTime() >= monthStart.getTime() &&
+      createdAt.getTime() <= now.getTime() &&
+      expiresAt.getTime() > now.getTime()
+    );
   }
 
-  const boosts = Array.isArray((room as any).roomBoosts)
-    ? (room as any).roomBoosts
-    : [];
+  async getRoomActiveMonthlyBoostCount(roomId: string) {
+    if (!this.isValidObjectId(roomId)) {
+      throw new Error("Invalid roomId");
+    }
 
-  const count = boosts.filter((boost: any) =>
-    this.isActiveMonthlyBoost(boost, monthStart, now)
-  ).length;
+    const { now, monthStart } = this.getCurrentMonthRange();
 
-  return {
-    roomId,
-    roomName: String((room as any).name || "Room"),
-    count,
-    monthStart,
-    now,
-  };
-}
+    const room = await Room.findById(roomId)
+      .select("name roomBoosts")
+      .lean();
 
-async getTopMonthlyBoostedRooms(limit = 10) {
-  const { now, monthStart } = this.getCurrentMonthRange();
+    if (!room) {
+      throw new Error("Room not found");
+    }
 
-  const safeLimit = Math.max(1, Math.min(50, Number(limit) || 10));
+    const boosts = Array.isArray((room as any).roomBoosts)
+      ? (room as any).roomBoosts
+      : [];
 
-  const rooms = await Room.aggregate([
-    {
-      $match: {
-        isSuspended: { $ne: true },
-        roomBoosts: {
-          $elemMatch: {
-            createdAt: {
-              $gte: monthStart,
-              $lte: now,
-            },
-            expiresAt: {
-              $gt: now,
-            },
-          },
-        },
-      },
-    },
-    {
-      $project: {
-        name: 1,
-        avatar: 1,
-        cover: 1,
-        type: 1,
-        usersCount: 1,
-        messagesCount: 1,
-        isVerified: 1,
-        premiumLevel: 1,
-        createdAt: 1,
-        monthlyBoostsCount: {
-          $size: {
-            $filter: {
-              input: { $ifNull: ["$roomBoosts", []] },
-              as: "boost",
-              cond: {
-                $and: [
-                  { $gte: ["$$boost.createdAt", monthStart] },
-                  { $lte: ["$$boost.createdAt", now] },
-                  { $gt: ["$$boost.expiresAt", now] },
-                ],
+    const count = boosts.filter((boost: any) =>
+      this.isActiveMonthlyBoost(boost, monthStart, now)
+    ).length;
+
+    return {
+      roomId,
+      roomName: String((room as any).name || "Room"),
+      count,
+      monthStart,
+      now,
+    };
+  }
+
+  async getTopMonthlyBoostedRooms(limit = 10) {
+    const { now, monthStart } = this.getCurrentMonthRange();
+
+    const safeLimit = Math.max(1, Math.min(50, Number(limit) || 10));
+
+    const rooms = await Room.aggregate([
+      {
+        $match: {
+          isSuspended: { $ne: true },
+          roomBoosts: {
+            $elemMatch: {
+              createdAt: {
+                $gte: monthStart,
+                $lte: now,
+              },
+              expiresAt: {
+                $gt: now,
               },
             },
           },
         },
       },
-    },
-    {
-      $match: {
-        monthlyBoostsCount: { $gt: 0 },
+      {
+        $project: {
+          name: 1,
+          avatar: 1,
+          cover: 1,
+          type: 1,
+          usersCount: 1,
+          messagesCount: 1,
+          isVerified: 1,
+          premiumLevel: 1,
+          createdAt: 1,
+          monthlyBoostsCount: {
+            $size: {
+              $filter: {
+                input: { $ifNull: ["$roomBoosts", []] },
+                as: "boost",
+                cond: {
+                  $and: [
+                    { $gte: ["$$boost.createdAt", monthStart] },
+                    { $lte: ["$$boost.createdAt", now] },
+                    { $gt: ["$$boost.expiresAt", now] },
+                  ],
+                },
+              },
+            },
+          },
+        },
       },
-    },
-    {
-      $sort: {
-        monthlyBoostsCount: -1,
-        createdAt: -1,
-        _id: -1,
+      {
+        $match: {
+          monthlyBoostsCount: { $gt: 0 },
+        },
       },
-    },
-    {
-      $limit: safeLimit,
-    },
-  ]);
+      {
+        $sort: {
+          monthlyBoostsCount: -1,
+          createdAt: -1,
+          _id: -1,
+        },
+      },
+      {
+        $limit: safeLimit,
+      },
+    ]);
 
-  return {
-    items: rooms,
-    monthStart,
-    now,
-  };
-}
-private async handleRoomBoostTextCommand(params: {
-  roomId: string;
-  senderId: string;
-  text: string;
-}) {
-  const roomId = String(params.roomId || "");
-  const senderId = String(params.senderId || "");
-  const text = String(params.text || "").trim().toLowerCase();
-
-  if (!text) {
     return {
-      handled: false,
+      items: rooms,
+      monthStart,
+      now,
     };
   }
+  private async handleRoomBoostTextCommand(params: {
+    roomId: string;
+    senderId: string;
+    text: string;
+  }) {
+    const roomId = String(params.roomId || "");
+    const senderId = String(params.senderId || "");
+    const text = String(params.text || "").trim().toLowerCase();
 
-  /**
-   * top
-   * يعرض أكثر 10 غرف حصلت على بوستات نشطة خلال هذا الشهر
-   */
-if (text === "top" || text === "توب") {
+    if (!text) {
+      return {
+        handled: false,
+      };
+    }
+
+    /**
+     * top
+     * يعرض أكثر 10 غرف حصلت على بوستات نشطة خلال هذا الشهر
+     */
+    if (text === "top" || text === "توب") {
       const result = await this.getTopMonthlyBoostedRooms(10);
-    const items = Array.isArray(result.items) ? result.items : [];
+      const items = Array.isArray(result.items) ? result.items : [];
 
-    if (!items.length) {
-      await this.system(
-        roomId,
-        "🚀 لا توجد غرف حصلت على Boost نشط هذا الشهر حتى الآن.",
-        "announcement",
-        {
-          systemType: "monthly_boost_top_empty",
-          sender: senderId,
-        }
-      );
+      if (!items.length) {
+        await this.system(
+          roomId,
+          "🚀 لا توجد غرف حصلت على Boost نشط هذا الشهر حتى الآن.",
+          "announcement",
+          {
+            systemType: "monthly_boost_top_empty",
+            sender: senderId,
+          }
+        );
+
+        return {
+          handled: true,
+        };
+      }
+
+      const lines = items.map((room: any, index: number) => {
+        const rank = index + 1;
+        const name = String(room?.name || "Room");
+        const count = Number(room?.monthlyBoostsCount || 0);
+
+        return `${rank}. ${name} — ${count} Boost`;
+      });
+
+      const message =
+        `🚀 Top 10 boosted rooms this month\n\n` +
+        lines.join("\n");
+
+      await this.system(roomId, message, "announcement", {
+        systemType: "monthly_boost_top",
+        sender: senderId,
+        meta: {
+          items: items.map((room: any) => ({
+            roomId: String(room._id),
+            name: room.name,
+            monthlyBoostsCount: Number(room.monthlyBoostsCount || 0),
+          })),
+        },
+      });
 
       return {
         handled: true,
       };
     }
 
-    const lines = items.map((room: any, index: number) => {
-      const rank = index + 1;
-      const name = String(room?.name || "Room");
-      const count = Number(room?.monthlyBoostsCount || 0);
-
-      return `${rank}. ${name} — ${count} Boost`;
-    });
-
-    const message =
-      `🚀 Top 10 boosted rooms this month\n\n` +
-      lines.join("\n");
-
-    await this.system(roomId, message, "announcement", {
-      systemType: "monthly_boost_top",
-      sender: senderId,
-      meta: {
-        items: items.map((room: any) => ({
-          roomId: String(room._id),
-          name: room.name,
-          monthlyBoostsCount: Number(room.monthlyBoostsCount || 0),
-        })),
-      },
-    });
-
-    return {
-      handled: true,
-    };
-  }
-
-  /**
-   * boosts
-   * يعرض عدد البوستات النشطة لهذا الشهر في الغرفة الحالية
-   */
-if (text === "boosts" || text === "بوستات") {
+    /**
+     * boosts
+     * يعرض عدد البوستات النشطة لهذا الشهر في الغرفة الحالية
+     */
+    if (text === "boosts" || text === "بوستات") {
       const result = await this.getRoomActiveMonthlyBoostCount(roomId);
 
-    const message =
-      `🚀 Boosts this month\n\n` +
-      `Room: ${result.roomName}\n` +
-      `Active monthly boosts: ${result.count}`;
+      const message =
+        `🚀 Boosts this month\n\n` +
+        `Room: ${result.roomName}\n` +
+        `Active monthly boosts: ${result.count}`;
 
-    await this.system(roomId, message, "announcement", {
-      systemType: "room_monthly_boost_count",
-      sender: senderId,
-      meta: {
-        roomId,
-        monthlyBoostsCount: result.count,
-      },
-    });
+      await this.system(roomId, message, "announcement", {
+        systemType: "room_monthly_boost_count",
+        sender: senderId,
+        meta: {
+          roomId,
+          monthlyBoostsCount: result.count,
+        },
+      });
+
+      return {
+        handled: true,
+      };
+    }
 
     return {
-      handled: true,
+      handled: false,
     };
   }
-
-  return {
-    handled: false,
-  };
-}
   /* =====================================================
      BASIC ROOM STATS
   ===================================================== */
@@ -5597,15 +5697,15 @@ if (text === "boosts" || text === "بوستات") {
     const totalUsersCount = room.usersCount || 0;
     const messagesCount = room.messagesCount || 0;
 
-return {
-  roomId,
-  activeCount,
-  totalUsersCount,
-  messagesCount,
-  level: room.level,
-  xp: room.xp,
-  boostPoints: room.boostPoints || 0,
-};
+    return {
+      roomId,
+      activeCount,
+      totalUsersCount,
+      messagesCount,
+      level: room.level,
+      xp: room.xp,
+      boostPoints: room.boostPoints || 0,
+    };
   }
 }
 

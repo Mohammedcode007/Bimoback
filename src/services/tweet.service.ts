@@ -15,6 +15,52 @@ import CommentLike from "../models/CommentLike";
 import tweetDemoEngagementService from "./tweetDemoEngagement.service";
 
 class TweetService {
+  private normalizeMentionName(value: string) {
+    return String(value || "")
+      .trim()
+      .replace(/^@+/, "");
+  }
+
+  private escapeRegex(value: string) {
+    return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  private getNotifyName(user?: any) {
+    const username = String(user?.username || "").trim();
+
+    if (username) return username;
+
+    const atUsername = String(user?.atUsername || "")
+      .trim()
+      .replace(/^@+/, "");
+
+    if (atUsername) return `@${atUsername}`;
+
+    return "Someone";
+  }
+
+  private async findMentionedUsers(mentions: string[]) {
+    const names = Array.from(
+      new Set(
+        (mentions || [])
+          .map((v) => this.normalizeMentionName(v))
+          .filter(Boolean)
+      )
+    );
+
+    if (!names.length) return [];
+
+    const regexList = names.map(
+      (name) => new RegExp(`^${this.escapeRegex(name)}$`, "i")
+    );
+
+    return User.find({
+      $or: [
+        { username: { $in: regexList } },
+        { atUsername: { $in: regexList } },
+      ],
+    }).select("_id username atUsername");
+  }
   private extractPublicId(url: string): string | null {
     try {
       const parts = url.split("/");
@@ -37,8 +83,8 @@ class TweetService {
     const content = data.content?.trim() || "";
 
     /* ================= FORMAT MEDIA ================= */
-const senderUser = await User.findById(userId).select("username");
-const senderName = senderUser?.username || "Someone";
+    const senderUser = await User.findById(userId).select("username atUsername");
+    const senderName = this.getNotifyName(senderUser);
     const formattedMedia = (data.media || []).map((url: string) => {
       const isVideo = url.includes("/video/");
 
@@ -90,9 +136,7 @@ const senderName = senderUser?.username || "Someone";
     const mentionedUsernames = extractMentions(content);
     const hashtags = extractHashtags(content);
 
-    const mentionedUsers = await User.find({
-      atUsername: { $in: mentionedUsernames }
-    }).select("_id");
+    const mentionedUsers = await this.findMentionedUsers(mentionedUsernames);
 
     /* ================= CREATE ================= */
 
@@ -107,19 +151,19 @@ const senderName = senderUser?.username || "Someone";
       quoteTweet: data.quoteTweet,
       poll: data.poll
     });
-try {
-  await tweetDemoEngagementService.scheduleLikesForTweet(
-    tweet._id.toString(),
-    userId,
-    {
-      minDelayMs: 30_000,
-      maxDelayMs: 60_000,
-      maxLikes: 15,
+    try {
+      await tweetDemoEngagementService.scheduleLikesForTweet(
+        tweet._id.toString(),
+        userId,
+        {
+          minDelayMs: 30_000,
+          maxDelayMs: 60_000,
+          maxLikes: 15,
+        }
+      );
+    } catch (error) {
+      console.log("❌ schedule demo engagement failed:", error);
     }
-  );
-} catch (error) {
-  console.log("❌ schedule demo engagement failed:", error);
-}
     /* ================= NOTIFICATIONS ================= */
 
     for (const user of mentionedUsers) {
@@ -129,50 +173,50 @@ try {
           sender: userId,
           type: "mention",
           relatedTweet: tweet._id,
-      body: `${senderUser?.username || "Someone"} mentioned you in a tweet`
+          body: `${senderName} mentioned you in a tweet`
         });
       }
     }
 
     // return tweet;
-const populatedTweet = await Tweet.findById(tweet._id)
-  .populate(
-    "author",
-    "username atUsername avatar isVerified badges verificationType activeCustomization customEmojiBadge"
-  )
-  .lean();
+    const populatedTweet = await Tweet.findById(tweet._id)
+      .populate(
+        "author",
+        "username atUsername avatar isVerified badges verificationType activeCustomization customEmojiBadge"
+      )
+      .lean();
 
-if (!populatedTweet) {
-  throw new Error("Tweet created but not found");
-}
+    if (!populatedTweet) {
+      throw new Error("Tweet created but not found");
+    }
 
-const author: any = populatedTweet.author;
+    const author: any = populatedTweet.author;
 
-return {
-  ...populatedTweet,
+    return {
+      ...populatedTweet,
 
-  author: {
-    ...author,
+      author: {
+        ...author,
 
-    displayBadges:
-      Array.isArray(author?.activeCustomization?.badges) &&
-      author.activeCustomization.badges.length > 0
-        ? author.activeCustomization.badges
-        : author?.badges || [],
+        displayBadges:
+          Array.isArray(author?.activeCustomization?.badges) &&
+            author.activeCustomization.badges.length > 0
+            ? author.activeCustomization.badges
+            : author?.badges || [],
 
-    displayVerificationType:
-      author?.activeCustomization?.verificationType ||
-      author?.verificationType ||
-      "none",
-  },
+        displayVerificationType:
+          author?.activeCustomization?.verificationType ||
+          author?.verificationType ||
+          "none",
+      },
 
-  likesCount: populatedTweet.likesCount ?? 0,
-  retweetsCount: populatedTweet.retweetsCount ?? 0,
-  repliesCount: populatedTweet.repliesCount ?? 0,
-  isLiked: false,
-  isRetweeted: false,
-  isBookmarked: false,
-};
+      likesCount: populatedTweet.likesCount ?? 0,
+      retweetsCount: populatedTweet.retweetsCount ?? 0,
+      repliesCount: populatedTweet.repliesCount ?? 0,
+      isLiked: false,
+      isRetweeted: false,
+      isBookmarked: false,
+    };
   }
 
   /* ======================================================
@@ -273,700 +317,696 @@ return {
      COMMENT
   ====================================================== */
 
-//   async comment(userId: string, tweetId: string, content: string) {
-//     const tweet = await Tweet.findOne({
-//       _id: tweetId,
-//       deleted: false,
-//       isHidden: false
-//     });
+  //   async comment(userId: string, tweetId: string, content: string) {
+  //     const tweet = await Tweet.findOne({
+  //       _id: tweetId,
+  //       deleted: false,
+  //       isHidden: false
+  //     });
 
-//     if (!tweet) throw new Error("Tweet not found");
+  //     if (!tweet) throw new Error("Tweet not found");
 
-//     const cleanContent = content.trim();
-// const senderUser = await User.findById(userId).select("username");
-// const senderName = senderUser?.username || "Someone";
-//     const mentionedUsernames = extractMentions(cleanContent);
+  //     const cleanContent = content.trim();
+  // const senderUser = await User.findById(userId).select("username");
+  // const senderName = senderUser?.username || "Someone";
+  //     const mentionedUsernames = extractMentions(cleanContent);
 
-//     const mentionedUsers = await User.find({
-//       atUsername: { $in: mentionedUsernames }
-//     }).select("_id");
+  //     const mentionedUsers = await User.find({
+  //       atUsername: { $in: mentionedUsernames }
+  //     }).select("_id");
 
-//     const comment = await Comment.create({
-//       tweet: tweetId,
-//       user: userId,
-//       content: cleanContent
-//     });
+  //     const comment = await Comment.create({
+  //       tweet: tweetId,
+  //       user: userId,
+  //       content: cleanContent
+  //     });
 
-//     await Tweet.updateOne(
-//       { _id: tweetId },
-//       { $inc: { repliesCount: 1 } }
-//     );
+  //     await Tweet.updateOne(
+  //       { _id: tweetId },
+  //       { $inc: { repliesCount: 1 } }
+  //     );
 
-//     if (tweet.author.toString() !== userId) {
-//       await notificationService.create({
-//         recipient: tweet.author,
-//         sender: userId,
-//         type: "tweet_reply",
-//         relatedTweet: tweetId,
-//         body: "قام بالرد على تويتتك"
-//       });
-//     }
+  //     if (tweet.author.toString() !== userId) {
+  //       await notificationService.create({
+  //         recipient: tweet.author,
+  //         sender: userId,
+  //         type: "tweet_reply",
+  //         relatedTweet: tweetId,
+  //         body: "قام بالرد على تويتتك"
+  //       });
+  //     }
 
-//     for (const user of mentionedUsers) {
-//       if (user._id.toString() !== userId) {
-//         await notificationService.create({
-//           recipient: user._id,
-//           sender: userId,
-//           type: "mention",
-//           relatedTweet: tweetId,
-//       body: `${senderUser?.username || "Someone"} mentioned you in a comment`
+  //     for (const user of mentionedUsers) {
+  //       if (user._id.toString() !== userId) {
+  //         await notificationService.create({
+  //           recipient: user._id,
+  //           sender: userId,
+  //           type: "mention",
+  //           relatedTweet: tweetId,
+  //       body: `${senderUser?.username || "Someone"} mentioned you in a comment`
 
-//     });
-//       }
-//     }
+  //     });
+  //       }
+  //     }
 
-//     return comment;
-//   }
-async comment(userId: string, tweetId: string, content: string) {
-  const tweet = await Tweet.findOne({
-    _id: tweetId,
-    deleted: false,
-    isHidden: false,
-  });
-
-  if (!tweet) throw new Error("Tweet not found");
-
-  const cleanContent = content.trim();
-  if (!cleanContent) throw new Error("Comment content is required");
-
-  const senderUser = await User.findById(userId).select("username");
-  const senderName = senderUser?.username || "Someone";
-
-  const mentionedUsernames = extractMentions(cleanContent);
-
-  const mentionedUsers = await User.find({
-    atUsername: { $in: mentionedUsernames },
-  }).select("_id");
-
-  const comment = await Comment.create({
-    tweet: tweetId,
-    user: userId,
-    content: cleanContent,
-    mentions: mentionedUsers.map((u) => u._id),
-  });
-
-  await Tweet.updateOne(
-    { _id: tweetId },
-    { $inc: { repliesCount: 1 } }
-  );
-
-  if (tweet.author.toString() !== userId) {
-    await notificationService.create({
-      recipient: tweet.author,
-      sender: userId,
-      type: "tweet_reply",
-      relatedTweet: tweetId,
-      body: `${senderName} replied to your tweet`,
+  //     return comment;
+  //   }
+  async comment(userId: string, tweetId: string, content: string) {
+    const tweet = await Tweet.findOne({
+      _id: tweetId,
+      deleted: false,
+      isHidden: false,
     });
-  }
 
-  for (const user of mentionedUsers) {
-    if (user._id.toString() !== userId) {
-      await notificationService.create({
-        recipient: user._id,
-        sender: userId,
-        type: "mention",
-        relatedTweet: tweetId,
-        body: `${senderName} mentioned you in a comment`,
-      });
-    }
-  }
+    if (!tweet) throw new Error("Tweet not found");
 
-  const populatedComment = await Comment.findById(comment._id)
-    .populate(
-      "user",
-      "username atUsername avatar isVerified badges verificationType activeCustomization customEmojiBadge"
-    )
-    .lean();
+    const cleanContent = content.trim();
+    if (!cleanContent) throw new Error("Comment content is required");
 
-  if (!populatedComment) {
-    throw new Error("Comment created but not found");
-  }
+ const senderUser = await User.findById(userId).select("username atUsername");
+const senderName = this.getNotifyName(senderUser);
 
-  const commentUser: any = populatedComment.user;
+    const mentionedUsernames = extractMentions(cleanContent);
 
-  return {
-    ...populatedComment,
+    const mentionedUsers = await this.findMentionedUsers(mentionedUsernames);
 
-    user: {
-      ...commentUser,
+    const comment = await Comment.create({
+      tweet: tweetId,
+      user: userId,
+      content: cleanContent,
+      mentions: mentionedUsers.map((u) => u._id),
+    });
 
-      displayBadges:
-        Array.isArray(commentUser?.activeCustomization?.badges) &&
-        commentUser.activeCustomization.badges.length > 0
-          ? commentUser.activeCustomization.badges
-          : commentUser?.badges || [],
-
-      displayVerificationType:
-        commentUser?.activeCustomization?.verificationType ||
-        commentUser?.verificationType ||
-        "none",
-    },
-
-    likesCount: populatedComment.likesCount ?? 0,
-    repliesCount: populatedComment.repliesCount ?? 0,
-    isLiked: false,
-  };
-}
-  async toggleCommentLike(userId: string, commentId: string) {
-  const comment = await Comment.findOne({
-    _id: commentId,
-    isHidden: false
-  });
-
-  if (!comment) throw new Error("Comment not found");
-
-  const existing = await CommentLike.findOne({
-    user: userId,
-    comment: commentId
-  });
-
-  if (existing) {
-    await existing.deleteOne();
-
-    await Comment.updateOne(
-      { _id: commentId, likesCount: { $gt: 0 } },
-      { $inc: { likesCount: -1 } }
+    await Tweet.updateOne(
+      { _id: tweetId },
+      { $inc: { repliesCount: 1 } }
     );
 
-    return { liked: false };
-  }
-
-  await CommentLike.create({
-    user: userId,
-    comment: commentId
-  });
-
-  await Comment.updateOne(
-    { _id: commentId },
-    { $inc: { likesCount: 1 } }
-  );
-
-  if (comment.user.toString() !== userId) {
-    const senderUser = await User.findById(userId).select("username");
-    const senderName = senderUser?.username || "Someone";
-
-    try {
+    if (tweet.author.toString() !== userId) {
       await notificationService.create({
-        recipient: comment.user,
+        recipient: tweet.author,
         sender: userId,
-        type: "comment_like",
-        relatedTweet: comment.tweet,
-        relatedMessage: comment._id,
-        body: `${senderName} liked your comment`
+        type: "tweet_reply",
+        relatedTweet: tweetId,
+        body: `${senderName} replied to your tweet`,
       });
-    } catch (error) {
-      console.log("❌ comment like notification error:", error);
     }
-  }
 
-  return { liked: true };
-}
-/* ======================================================
-   GET COMMENT REPLIES
-====================================================== */
-
-async getCommentReplies(
-  commentId: string,
-  page: number = 1,
-  limit: number = 10,
-  userId: string
-) {
-  const skip = (page - 1) * limit;
-
-  const commentObjectId = new mongoose.Types.ObjectId(commentId);
-  const userObjectId = new mongoose.Types.ObjectId(userId);
-
-  const replies = await Comment.aggregate([
-    {
-      $match: {
-        parentComment: commentObjectId,
-        isHidden: false,
-      },
-    },
-
-    { $sort: { createdAt: 1 } },
-    { $skip: skip },
-    { $limit: limit },
-
-    /* ================= USER ================= */
-
-    {
-      $lookup: {
-        from: "users",
-        localField: "user",
-        foreignField: "_id",
-        as: "user",
-        pipeline: [
-          {
-            $project: {
-              username: 1,
-              atUsername: 1,
-              avatar: 1,
-              isVerified: 1,
-              badges: 1,
-              verificationType: 1,
-              activeCustomization: {
-                badges: 1,
-                verificationType: 1,
-              },
-            },
-          },
-        ],
-      },
-    },
-
-    { $unwind: "$user" },
-
-    /* ================= DISPLAY BADGES ================= */
-
-    {
-      $addFields: {
-        "user.displayBadges": {
-          $cond: [
-            {
-              $gt: [
-                { $size: { $ifNull: ["$user.activeCustomization.badges", []] } },
-                0,
-              ],
-            },
-            "$user.activeCustomization.badges",
-            { $ifNull: ["$user.badges", []] },
-          ],
-        },
-        "user.displayVerificationType": {
-          $ifNull: [
-            "$user.activeCustomization.verificationType",
-            "$user.verificationType",
-          ],
-        },
-      },
-    },
-
-    /* ================= IS LIKED ================= */
-
-    {
-      $lookup: {
-        from: "commentlikes",
-        let: { commentId: "$_id" },
-        pipeline: [
-          {
-            $match: {
-              $expr: {
-                $and: [
-                  { $eq: ["$comment", "$$commentId"] },
-                  { $eq: ["$user", userObjectId] },
-                ],
-              },
-            },
-          },
-        ],
-        as: "liked",
-      },
-    },
-
-    {
-      $addFields: {
-        isLiked: { $gt: [{ $size: "$liked" }, 0] },
-      },
-    },
-
-    {
-      $project: {
-        liked: 0,
-      },
-    },
-  ]);
-
-  return replies;
-}
-
-/* ======================================================
-   GET TWEET LIKES USERS
-====================================================== */
-
-async getTweetLikesUsers(tweetId: string, page: number = 1, limit: number = 20) {
-  const skip = (page - 1) * limit;
-
-  const tweet = await Tweet.findOne({
-    _id: tweetId,
-    deleted: false,
-    isHidden: false,
-  }).select("_id");
-
-  if (!tweet) throw new Error("Tweet not found");
-
-  const likes = await Like.find({ tweet: tweetId })
-    .populate(
-      "user",
-      "username atUsername avatar isVerified badges verificationType activeCustomization"
-    )
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limit)
-    .lean();
-
-  return likes
-    .map((item: any) => item.user)
-    .filter(Boolean);
-}
-
-/* ======================================================
-   GET COMMENT LIKES USERS
-====================================================== */
-
-async getCommentLikesUsers(commentId: string, page: number = 1, limit: number = 20) {
-  const skip = (page - 1) * limit;
-
-  const comment = await Comment.findOne({
-    _id: commentId,
-    isHidden: false,
-  }).select("_id");
-
-  if (!comment) throw new Error("Comment not found");
-
-  const likes = await CommentLike.find({ comment: commentId })
-    .populate(
-      "user",
-      "username atUsername avatar isVerified badges verificationType activeCustomization"
-    )
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limit)
-    .lean();
-
-  return likes
-    .map((item: any) => item.user)
-    .filter(Boolean);
-}
-async getUserTweets(
-  currentUserId: string,
-  profileUserId: string,
-  page: number = 1,
-  limit: number = 10
-) {
-  const skip = (page - 1) * limit;
-
-  const currentUserObjectId = new mongoose.Types.ObjectId(currentUserId);
-  const profileUserObjectId = new mongoose.Types.ObjectId(profileUserId);
-
-  const currentUser = await User.findById(currentUserObjectId).select("blockedUsers");
-  const blockedIds = currentUser?.blockedUsers || [];
-
-  if (blockedIds.some((id: any) => id.toString() === profileUserId)) {
-    return { tweets: [], total: 0, page, limit };
-  }
-
-  const total = await Tweet.countDocuments({
-    author: profileUserObjectId,
-    deleted: false,
-    isHidden: false,
-  });
-
-  const tweets = await Tweet.aggregate([
-    {
-      $match: {
-        author: profileUserObjectId,
-        deleted: false,
-        isHidden: false,
-      },
-    },
-    { $sort: { createdAt: -1 } },
-    { $skip: skip },
-    { $limit: limit },
-
-    {
-      $lookup: {
-        from: "users",
-        localField: "author",
-        foreignField: "_id",
-        as: "author",
-        pipeline: [
-          {
-            $project: {
-              username: 1,
-              atUsername: 1,
-              avatar: 1,
-              isVerified: 1,
-              badges: 1,
-              verificationType: 1,
-              activeCustomization: {
-                badges: 1,
-                verificationType: 1,
-              },
-              blockedUsers: 1,
-            },
-          },
-        ],
-      },
-    },
-    { $unwind: "$author" },
-
-    {
-      $match: {
-        "author.blockedUsers": { $ne: currentUserObjectId },
-      },
-    },
-
-    {
-      $addFields: {
-        "author.displayBadges": {
-          $cond: [
-            {
-              $gt: [
-                { $size: { $ifNull: ["$author.activeCustomization.badges", []] } },
-                0,
-              ],
-            },
-            "$author.activeCustomization.badges",
-            { $ifNull: ["$author.badges", []] },
-          ],
-        },
-        "author.displayVerificationType": {
-          $ifNull: [
-            "$author.activeCustomization.verificationType",
-            "$author.verificationType",
-          ],
-        },
-      },
-    },
-
-    {
-      $lookup: {
-        from: "follows",
-        let: { authorId: "$author._id" },
-        pipeline: [
-          {
-            $match: {
-              $expr: {
-                $and: [
-                  { $eq: ["$follower", currentUserObjectId] },
-                  { $eq: ["$following", "$$authorId"] },
-                ],
-              },
-            },
-          },
-        ],
-        as: "followRelation",
-      },
-    },
-
-    {
-      $addFields: {
-        "author.isFollowing": {
-          $gt: [{ $size: "$followRelation" }, 0],
-        },
-      },
-    },
-
-    {
-      $lookup: {
-        from: "likes",
-        let: { tweetId: "$_id" },
-        pipeline: [
-          {
-            $match: {
-              $expr: {
-                $and: [
-                  { $eq: ["$tweet", "$$tweetId"] },
-                  { $eq: ["$user", currentUserObjectId] },
-                ],
-              },
-            },
-          },
-        ],
-        as: "liked",
-      },
-    },
-    {
-      $addFields: {
-        isLiked: { $gt: [{ $size: "$liked" }, 0] },
-      },
-    },
-
-    {
-      $lookup: {
-        from: "retweets",
-        let: { tweetId: "$_id" },
-        pipeline: [
-          {
-            $match: {
-              $expr: {
-                $and: [
-                  { $eq: ["$tweet", "$$tweetId"] },
-                  { $eq: ["$user", currentUserObjectId] },
-                ],
-              },
-            },
-          },
-        ],
-        as: "retweeted",
-      },
-    },
-    {
-      $addFields: {
-        isRetweeted: { $gt: [{ $size: "$retweeted" }, 0] },
-      },
-    },
-
-    {
-      $lookup: {
-        from: "bookmarks",
-        let: { tweetId: "$_id" },
-        pipeline: [
-          {
-            $match: {
-              $expr: {
-                $and: [
-                  { $eq: ["$tweet", "$$tweetId"] },
-                  { $eq: ["$user", currentUserObjectId] },
-                ],
-              },
-            },
-          },
-        ],
-        as: "bookmarked",
-      },
-    },
-    {
-      $addFields: {
-        isBookmarked: { $gt: [{ $size: "$bookmarked" }, 0] },
-      },
-    },
-
-    {
-      $project: {
-        followRelation: 0,
-        liked: 0,
-        retweeted: 0,
-        bookmarked: 0,
-        "author.blockedUsers": 0,
-      },
-    },
-  ]);
-
-  return {
-    tweets,
-    total,
-    page,
-    limit,
-    hasMore: skip + tweets.length < total,
-  };
-}
-async replyToComment(userId: string, commentId: string, content: string) {
-  const parentComment = await Comment.findOne({
-    _id: commentId,
-    isHidden: false,
-  });
-
-  if (!parentComment) throw new Error("Comment not found");
-
-  const cleanContent = content.trim();
-  if (!cleanContent) throw new Error("Reply content is required");
-
-  const senderUser = await User.findById(userId).select("username");
-  const senderName = senderUser?.username || "Someone";
-
-  const mentionedUsernames = extractMentions(cleanContent);
-
-  const mentionedUsers = await User.find({
-    atUsername: { $in: mentionedUsernames },
-  }).select("_id");
-
-  const reply = await Comment.create({
-    tweet: parentComment.tweet,
-    user: userId,
-    content: cleanContent,
-    parentComment: parentComment._id,
-    mentions: mentionedUsers.map((u) => u._id),
-  });
-
-  await Comment.updateOne(
-    { _id: parentComment._id },
-    { $inc: { repliesCount: 1 } }
-  );
-
-  if (parentComment.user.toString() !== userId) {
-    try {
-      await notificationService.create({
-        recipient: parentComment.user,
-        sender: userId,
-        type: "comment_reply",
-        relatedTweet: parentComment.tweet,
-        relatedMessage: reply._id,
-        body: `${senderName} replied to your comment`,
-      });
-    } catch (error) {
-      console.log("❌ comment reply notification error:", error);
-    }
-  }
-
-  for (const user of mentionedUsers) {
-    if (
-      user._id.toString() !== userId &&
-      user._id.toString() !== parentComment.user.toString()
-    ) {
-      try {
+    for (const user of mentionedUsers) {
+      if (user._id.toString() !== userId) {
         await notificationService.create({
           recipient: user._id,
           sender: userId,
           type: "mention",
-          relatedTweet: parentComment.tweet,
-          relatedMessage: reply._id,
+          relatedTweet: tweetId,
           body: `${senderName} mentioned you in a comment`,
         });
-      } catch (error) {
-        console.log("❌ mention in comment reply notification error:", error);
       }
     }
+
+    const populatedComment = await Comment.findById(comment._id)
+      .populate(
+        "user",
+        "username atUsername avatar isVerified badges verificationType activeCustomization customEmojiBadge"
+      )
+      .lean();
+
+    if (!populatedComment) {
+      throw new Error("Comment created but not found");
+    }
+
+    const commentUser: any = populatedComment.user;
+
+    return {
+      ...populatedComment,
+
+      user: {
+        ...commentUser,
+
+        displayBadges:
+          Array.isArray(commentUser?.activeCustomization?.badges) &&
+            commentUser.activeCustomization.badges.length > 0
+            ? commentUser.activeCustomization.badges
+            : commentUser?.badges || [],
+
+        displayVerificationType:
+          commentUser?.activeCustomization?.verificationType ||
+          commentUser?.verificationType ||
+          "none",
+      },
+
+      likesCount: populatedComment.likesCount ?? 0,
+      repliesCount: populatedComment.repliesCount ?? 0,
+      isLiked: false,
+    };
+  }
+  async toggleCommentLike(userId: string, commentId: string) {
+    const comment = await Comment.findOne({
+      _id: commentId,
+      isHidden: false
+    });
+
+    if (!comment) throw new Error("Comment not found");
+
+    const existing = await CommentLike.findOne({
+      user: userId,
+      comment: commentId
+    });
+
+    if (existing) {
+      await existing.deleteOne();
+
+      await Comment.updateOne(
+        { _id: commentId, likesCount: { $gt: 0 } },
+        { $inc: { likesCount: -1 } }
+      );
+
+      return { liked: false };
+    }
+
+    await CommentLike.create({
+      user: userId,
+      comment: commentId
+    });
+
+    await Comment.updateOne(
+      { _id: commentId },
+      { $inc: { likesCount: 1 } }
+    );
+
+    if (comment.user.toString() !== userId) {
+     const senderUser = await User.findById(userId).select("username atUsername");
+const senderName = this.getNotifyName(senderUser);
+
+      try {
+        await notificationService.create({
+          recipient: comment.user,
+          sender: userId,
+          type: "comment_like",
+          relatedTweet: comment.tweet,
+          relatedMessage: comment._id,
+          body: `${senderName} liked your comment`
+        });
+      } catch (error) {
+        console.log("❌ comment like notification error:", error);
+      }
+    }
+
+    return { liked: true };
+  }
+  /* ======================================================
+     GET COMMENT REPLIES
+  ====================================================== */
+
+  async getCommentReplies(
+    commentId: string,
+    page: number = 1,
+    limit: number = 10,
+    userId: string
+  ) {
+    const skip = (page - 1) * limit;
+
+    const commentObjectId = new mongoose.Types.ObjectId(commentId);
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+
+    const replies = await Comment.aggregate([
+      {
+        $match: {
+          parentComment: commentObjectId,
+          isHidden: false,
+        },
+      },
+
+      { $sort: { createdAt: 1 } },
+      { $skip: skip },
+      { $limit: limit },
+
+      /* ================= USER ================= */
+
+      {
+        $lookup: {
+          from: "users",
+          localField: "user",
+          foreignField: "_id",
+          as: "user",
+          pipeline: [
+            {
+              $project: {
+                username: 1,
+                atUsername: 1,
+                avatar: 1,
+                isVerified: 1,
+                badges: 1,
+                verificationType: 1,
+                activeCustomization: {
+                  badges: 1,
+                  verificationType: 1,
+                },
+              },
+            },
+          ],
+        },
+      },
+
+      { $unwind: "$user" },
+
+      /* ================= DISPLAY BADGES ================= */
+
+      {
+        $addFields: {
+          "user.displayBadges": {
+            $cond: [
+              {
+                $gt: [
+                  { $size: { $ifNull: ["$user.activeCustomization.badges", []] } },
+                  0,
+                ],
+              },
+              "$user.activeCustomization.badges",
+              { $ifNull: ["$user.badges", []] },
+            ],
+          },
+          "user.displayVerificationType": {
+            $ifNull: [
+              "$user.activeCustomization.verificationType",
+              "$user.verificationType",
+            ],
+          },
+        },
+      },
+
+      /* ================= IS LIKED ================= */
+
+      {
+        $lookup: {
+          from: "commentlikes",
+          let: { commentId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$comment", "$$commentId"] },
+                    { $eq: ["$user", userObjectId] },
+                  ],
+                },
+              },
+            },
+          ],
+          as: "liked",
+        },
+      },
+
+      {
+        $addFields: {
+          isLiked: { $gt: [{ $size: "$liked" }, 0] },
+        },
+      },
+
+      {
+        $project: {
+          liked: 0,
+        },
+      },
+    ]);
+
+    return replies;
   }
 
-  const populatedReply = await Comment.findById(reply._id)
-    .populate(
-      "user",
-      "username atUsername avatar isVerified badges verificationType activeCustomization customEmojiBadge"
-    )
-    .lean();
+  /* ======================================================
+     GET TWEET LIKES USERS
+  ====================================================== */
 
-  if (!populatedReply) {
-    throw new Error("Reply created but not found");
+  async getTweetLikesUsers(tweetId: string, page: number = 1, limit: number = 20) {
+    const skip = (page - 1) * limit;
+
+    const tweet = await Tweet.findOne({
+      _id: tweetId,
+      deleted: false,
+      isHidden: false,
+    }).select("_id");
+
+    if (!tweet) throw new Error("Tweet not found");
+
+    const likes = await Like.find({ tweet: tweetId })
+      .populate(
+        "user",
+        "username atUsername avatar isVerified badges verificationType activeCustomization"
+      )
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    return likes
+      .map((item: any) => item.user)
+      .filter(Boolean);
   }
 
-  const replyUser: any = populatedReply.user;
+  /* ======================================================
+     GET COMMENT LIKES USERS
+  ====================================================== */
 
-  return {
-    ...populatedReply,
+  async getCommentLikesUsers(commentId: string, page: number = 1, limit: number = 20) {
+    const skip = (page - 1) * limit;
 
-    user: {
-      ...replyUser,
+    const comment = await Comment.findOne({
+      _id: commentId,
+      isHidden: false,
+    }).select("_id");
 
-      displayBadges:
-        Array.isArray(replyUser?.activeCustomization?.badges) &&
-        replyUser.activeCustomization.badges.length > 0
-          ? replyUser.activeCustomization.badges
-          : replyUser?.badges || [],
+    if (!comment) throw new Error("Comment not found");
 
-      displayVerificationType:
-        replyUser?.activeCustomization?.verificationType ||
-        replyUser?.verificationType ||
-        "none",
-    },
+    const likes = await CommentLike.find({ comment: commentId })
+      .populate(
+        "user",
+        "username atUsername avatar isVerified badges verificationType activeCustomization"
+      )
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
 
-    likesCount: populatedReply.likesCount ?? 0,
-    repliesCount: populatedReply.repliesCount ?? 0,
-    isLiked: false,
-  };
-}
+    return likes
+      .map((item: any) => item.user)
+      .filter(Boolean);
+  }
+  async getUserTweets(
+    currentUserId: string,
+    profileUserId: string,
+    page: number = 1,
+    limit: number = 10
+  ) {
+    const skip = (page - 1) * limit;
+
+    const currentUserObjectId = new mongoose.Types.ObjectId(currentUserId);
+    const profileUserObjectId = new mongoose.Types.ObjectId(profileUserId);
+
+    const currentUser = await User.findById(currentUserObjectId).select("blockedUsers");
+    const blockedIds = currentUser?.blockedUsers || [];
+
+    if (blockedIds.some((id: any) => id.toString() === profileUserId)) {
+      return { tweets: [], total: 0, page, limit };
+    }
+
+    const total = await Tweet.countDocuments({
+      author: profileUserObjectId,
+      deleted: false,
+      isHidden: false,
+    });
+
+    const tweets = await Tweet.aggregate([
+      {
+        $match: {
+          author: profileUserObjectId,
+          deleted: false,
+          isHidden: false,
+        },
+      },
+      { $sort: { createdAt: -1 } },
+      { $skip: skip },
+      { $limit: limit },
+
+      {
+        $lookup: {
+          from: "users",
+          localField: "author",
+          foreignField: "_id",
+          as: "author",
+          pipeline: [
+            {
+              $project: {
+                username: 1,
+                atUsername: 1,
+                avatar: 1,
+                isVerified: 1,
+                badges: 1,
+                verificationType: 1,
+                activeCustomization: {
+                  badges: 1,
+                  verificationType: 1,
+                },
+                blockedUsers: 1,
+              },
+            },
+          ],
+        },
+      },
+      { $unwind: "$author" },
+
+      {
+        $match: {
+          "author.blockedUsers": { $ne: currentUserObjectId },
+        },
+      },
+
+      {
+        $addFields: {
+          "author.displayBadges": {
+            $cond: [
+              {
+                $gt: [
+                  { $size: { $ifNull: ["$author.activeCustomization.badges", []] } },
+                  0,
+                ],
+              },
+              "$author.activeCustomization.badges",
+              { $ifNull: ["$author.badges", []] },
+            ],
+          },
+          "author.displayVerificationType": {
+            $ifNull: [
+              "$author.activeCustomization.verificationType",
+              "$author.verificationType",
+            ],
+          },
+        },
+      },
+
+      {
+        $lookup: {
+          from: "follows",
+          let: { authorId: "$author._id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$follower", currentUserObjectId] },
+                    { $eq: ["$following", "$$authorId"] },
+                  ],
+                },
+              },
+            },
+          ],
+          as: "followRelation",
+        },
+      },
+
+      {
+        $addFields: {
+          "author.isFollowing": {
+            $gt: [{ $size: "$followRelation" }, 0],
+          },
+        },
+      },
+
+      {
+        $lookup: {
+          from: "likes",
+          let: { tweetId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$tweet", "$$tweetId"] },
+                    { $eq: ["$user", currentUserObjectId] },
+                  ],
+                },
+              },
+            },
+          ],
+          as: "liked",
+        },
+      },
+      {
+        $addFields: {
+          isLiked: { $gt: [{ $size: "$liked" }, 0] },
+        },
+      },
+
+      {
+        $lookup: {
+          from: "retweets",
+          let: { tweetId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$tweet", "$$tweetId"] },
+                    { $eq: ["$user", currentUserObjectId] },
+                  ],
+                },
+              },
+            },
+          ],
+          as: "retweeted",
+        },
+      },
+      {
+        $addFields: {
+          isRetweeted: { $gt: [{ $size: "$retweeted" }, 0] },
+        },
+      },
+
+      {
+        $lookup: {
+          from: "bookmarks",
+          let: { tweetId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$tweet", "$$tweetId"] },
+                    { $eq: ["$user", currentUserObjectId] },
+                  ],
+                },
+              },
+            },
+          ],
+          as: "bookmarked",
+        },
+      },
+      {
+        $addFields: {
+          isBookmarked: { $gt: [{ $size: "$bookmarked" }, 0] },
+        },
+      },
+
+      {
+        $project: {
+          followRelation: 0,
+          liked: 0,
+          retweeted: 0,
+          bookmarked: 0,
+          "author.blockedUsers": 0,
+        },
+      },
+    ]);
+
+    return {
+      tweets,
+      total,
+      page,
+      limit,
+      hasMore: skip + tweets.length < total,
+    };
+  }
+  async replyToComment(userId: string, commentId: string, content: string) {
+    const parentComment = await Comment.findOne({
+      _id: commentId,
+      isHidden: false,
+    });
+
+    if (!parentComment) throw new Error("Comment not found");
+
+    const cleanContent = content.trim();
+    if (!cleanContent) throw new Error("Reply content is required");
+
+ const senderUser = await User.findById(userId).select("username atUsername");
+const senderName = this.getNotifyName(senderUser);
+
+    const mentionedUsernames = extractMentions(cleanContent);
+
+    const mentionedUsers = await this.findMentionedUsers(mentionedUsernames);
+
+    const reply = await Comment.create({
+      tweet: parentComment.tweet,
+      user: userId,
+      content: cleanContent,
+      parentComment: parentComment._id,
+      mentions: mentionedUsers.map((u) => u._id),
+    });
+
+    await Comment.updateOne(
+      { _id: parentComment._id },
+      { $inc: { repliesCount: 1 } }
+    );
+
+    if (parentComment.user.toString() !== userId) {
+      try {
+        await notificationService.create({
+          recipient: parentComment.user,
+          sender: userId,
+          type: "comment_reply",
+          relatedTweet: parentComment.tweet,
+          relatedMessage: reply._id,
+          body: `${senderName} replied to your comment`,
+        });
+      } catch (error) {
+        console.log("❌ comment reply notification error:", error);
+      }
+    }
+
+    for (const user of mentionedUsers) {
+      if (
+        user._id.toString() !== userId &&
+        user._id.toString() !== parentComment.user.toString()
+      ) {
+        try {
+          await notificationService.create({
+            recipient: user._id,
+            sender: userId,
+            type: "mention",
+            relatedTweet: parentComment.tweet,
+            relatedMessage: reply._id,
+            body: `${senderName} mentioned you in a comment`,
+          });
+        } catch (error) {
+          console.log("❌ mention in comment reply notification error:", error);
+        }
+      }
+    }
+
+    const populatedReply = await Comment.findById(reply._id)
+      .populate(
+        "user",
+        "username atUsername avatar isVerified badges verificationType activeCustomization customEmojiBadge"
+      )
+      .lean();
+
+    if (!populatedReply) {
+      throw new Error("Reply created but not found");
+    }
+
+    const replyUser: any = populatedReply.user;
+
+    return {
+      ...populatedReply,
+
+      user: {
+        ...replyUser,
+
+        displayBadges:
+          Array.isArray(replyUser?.activeCustomization?.badges) &&
+            replyUser.activeCustomization.badges.length > 0
+            ? replyUser.activeCustomization.badges
+            : replyUser?.badges || [],
+
+        displayVerificationType:
+          replyUser?.activeCustomization?.verificationType ||
+          replyUser?.verificationType ||
+          "none",
+      },
+
+      likesCount: populatedReply.likesCount ?? 0,
+      repliesCount: populatedReply.repliesCount ?? 0,
+      isLiked: false,
+    };
+  }
   /* ======================================================
      TOGGLE BOOKMARK
   ====================================================== */
@@ -998,30 +1038,30 @@ async replyToComment(userId: string, commentId: string, content: string) {
      DELETE TWEET (Soft Delete)
   ====================================================== */
 
-async deleteTweet(userId: string, tweetId: string) {
-  const [tweet, actor] = await Promise.all([
-    Tweet.findById(tweetId),
-    User.findById(userId).select("role isBot botType"),
-  ]);
+  async deleteTweet(userId: string, tweetId: string) {
+    const [tweet, actor] = await Promise.all([
+      Tweet.findById(tweetId),
+      User.findById(userId).select("role isBot botType"),
+    ]);
 
-  if (!tweet) throw new Error("Tweet not found");
-  if (!actor) throw new Error("User not found");
+    if (!tweet) throw new Error("Tweet not found");
+    if (!actor) throw new Error("User not found");
 
-  const isOwner = tweet.author.toString() === userId;
-  const isAdmin = actor.role === "admin";
+    const isOwner = tweet.author.toString() === userId;
+    const isAdmin = actor.role === "admin";
 
-  if (!isOwner && !isAdmin) {
-    throw new Error("Unauthorized");
+    if (!isOwner && !isAdmin) {
+      throw new Error("Unauthorized");
+    }
+
+    tweet.deleted = true;
+    await tweet.save();
+
+    return {
+      success: true,
+      deletedBy: isAdmin && !isOwner ? "admin" : "owner",
+    };
   }
-
-  tweet.deleted = true;
-  await tweet.save();
-
-  return {
-    success: true,
-    deletedBy: isAdmin && !isOwner ? "admin" : "owner",
-  };
-}
 
   /* ======================================================
      GET TWEET COMMENTS
@@ -1045,1037 +1085,1037 @@ async deleteTweet(userId: string, tweetId: string) {
      SHARED FEED PIPELINE
   ====================================================== */
 
-//   private async buildFeedPipeline(
-//     authorIds: mongoose.Types.ObjectId[] | null,
-//     userObjectId: mongoose.Types.ObjectId,
-//     skip: number,
-//     limit: number
-//   ) {
-//     const currentUser = await User.findById(userObjectId).select("blockedUsers");
-//     const blockedIds = currentUser?.blockedUsers || [];
+  //   private async buildFeedPipeline(
+  //     authorIds: mongoose.Types.ObjectId[] | null,
+  //     userObjectId: mongoose.Types.ObjectId,
+  //     skip: number,
+  //     limit: number
+  //   ) {
+  //     const currentUser = await User.findById(userObjectId).select("blockedUsers");
+  //     const blockedIds = currentUser?.blockedUsers || [];
 
-//     const matchStage: any = {
-//       deleted: false,
-//       isHidden: false,
-//       author: { $nin: blockedIds }
-//     };
+  //     const matchStage: any = {
+  //       deleted: false,
+  //       isHidden: false,
+  //       author: { $nin: blockedIds }
+  //     };
 
-//     if (authorIds && authorIds.length > 0) {
-//       matchStage.author = {
-//         $in: authorIds,
-//         $nin: blockedIds
-//       };
-//     }
+  //     if (authorIds && authorIds.length > 0) {
+  //       matchStage.author = {
+  //         $in: authorIds,
+  //         $nin: blockedIds
+  //       };
+  //     }
 
-//     if (authorIds && authorIds.length === 0) {
-//       return [];
-//     }
+  //     if (authorIds && authorIds.length === 0) {
+  //       return [];
+  //     }
 
-//     const tweets = await Tweet.aggregate([
-//       { $match: matchStage },
-//       { $sort: { createdAt: -1 } },
-//       { $skip: skip },
-//       { $limit: limit },
+  //     const tweets = await Tweet.aggregate([
+  //       { $match: matchStage },
+  //       { $sort: { createdAt: -1 } },
+  //       { $skip: skip },
+  //       { $limit: limit },
 
-//       // {
-//       //   $lookup: {
-//       //     from: "users",
-//       //     localField: "author",
-//       //     foreignField: "_id",
-//       //     as: "author",
-//       //     pipeline: [
-//       //       {
-//       //         $project: {
-//       //           username: 1,
-//       //           atUsername: 1,
-//       //           avatar: 1,
-//       //           isVerified: 1,
-//       //           badges: 1,
-//       //           verificationType: 1,
-//       //           activeCustomization: {
-//       //             badges: 1,
-//       //             verificationType: 1
-//       //           }
-//       //         }
-//       //       }
-//       //     ]
-//       //   }
-//       // },
-// {
-//   $lookup: {
-//     from: "users",
-//     localField: "author",
-//     foreignField: "_id",
-//     as: "author",
-//     pipeline: [
-//       {
-//         $lookup: {
-//           from: "userinventories",
-//           localField: "_id",
-//           foreignField: "user",
-//           as: "inventory",
-//           pipeline: [
-//             {
-//               $lookup: {
-//                 from: "storeitems",
-//                 localField: "item",
-//                 foreignField: "_id",
-//                 as: "item"
-//               }
-//             },
-//             {
-//               $unwind: {
-//                 path: "$item",
-//                 preserveNullAndEmptyArrays: true
-//               }
-//             }
-//           ]
-//         }
-//       },
-//       {
-//         $project: {
-//           username: 1,
-//           atUsername: 1,
-//           avatar: 1,
-//           isVerified: 1,
-//           badges: 1,
-//           verificationType: 1,
-//           customEmojiBadge: 1,
-//           activeCustomization: {
-//             badges: 1,
-//             verificationType: 1
-//           },
-//           inventory: 1
-//         }
-//       }
-//     ]
-//   }
-// },
-//       { $unwind: "$author" },
-// {
-//   $addFields: {
-//     "author.displayBadges": {
-//       $cond: [
-//         {
-//           $gt: [
-//             { $size: { $ifNull: ["$author.activeCustomization.badges", []] } },
-//             0
-//           ]
-//         },
-//         "$author.activeCustomization.badges",
-//         { $ifNull: ["$author.badges", []] }
-//       ]
-//     },
-//     "author.displayVerificationType": {
-//       $ifNull: [
-//         "$author.activeCustomization.verificationType",
-//         "$author.verificationType"
-//       ]
-//     }
-//   }
-// },
-// {
-//   $addFields: {
-//     "author.displayBadgesDetailed": {
-//       $map: {
-//         input: { $ifNull: ["$author.displayBadges", []] },
-//         as: "badgeKey",
-//         in: {
-//           $let: {
-//             vars: {
-//               matchedInventory: {
-//                 $first: {
-//                   $filter: {
-//                     input: { $ifNull: ["$author.inventory", []] },
-//                     as: "inv",
-//                     cond: {
-//                       $and: [
-//                         { $eq: ["$$inv.itemType", "badge"] },
-//                         { $eq: ["$$inv.itemKey", "$$badgeKey"] }
-//                       ]
-//                     }
-//                   }
-//                 }
-//               }
-//             },
-//             in: {
-//               key: "$$badgeKey",
-//               name: "$$matchedInventory.item.name",
-//               iconUrl: {
-//                 $ifNull: [
-//                   "$$matchedInventory.item.iconUrl",
-//                   {
-//                     $ifNull: [
-//                       "$$matchedInventory.item.coverUrl",
-//                       "$$matchedInventory.item.previewUrl"
-//                     ]
-//                   }
-//                 ]
-//               },
-//               lottieUrl: "$$matchedInventory.item.meta.lottieUrl",
-//               emoji: "$$matchedInventory.item.meta.emoji"
-//             }
-//           }
-//         }
-//       }
-//     }
-//   }
-// },
-//       // {
-//       //   $addFields: {
-//       //     "author.displayBadges": {
-//       //       $cond: [
-//       //         {
-//       //           $gt: [
-//       //             { $size: { $ifNull: ["$author.activeCustomization.badges", []] } },
-//       //             0
-//       //           ]
-//       //         },
-//       //         "$author.activeCustomization.badges",
-//       //         { $ifNull: ["$author.badges", []] }
-//       //       ]
-//       //     },
-//       //     "author.displayVerificationType": {
-//       //       $ifNull: [
-//       //         "$author.activeCustomization.verificationType",
-//       //         "$author.verificationType"
-//       //       ]
-//       //     }
-//       //   }
-//       // },
+  //       // {
+  //       //   $lookup: {
+  //       //     from: "users",
+  //       //     localField: "author",
+  //       //     foreignField: "_id",
+  //       //     as: "author",
+  //       //     pipeline: [
+  //       //       {
+  //       //         $project: {
+  //       //           username: 1,
+  //       //           atUsername: 1,
+  //       //           avatar: 1,
+  //       //           isVerified: 1,
+  //       //           badges: 1,
+  //       //           verificationType: 1,
+  //       //           activeCustomization: {
+  //       //             badges: 1,
+  //       //             verificationType: 1
+  //       //           }
+  //       //         }
+  //       //       }
+  //       //     ]
+  //       //   }
+  //       // },
+  // {
+  //   $lookup: {
+  //     from: "users",
+  //     localField: "author",
+  //     foreignField: "_id",
+  //     as: "author",
+  //     pipeline: [
+  //       {
+  //         $lookup: {
+  //           from: "userinventories",
+  //           localField: "_id",
+  //           foreignField: "user",
+  //           as: "inventory",
+  //           pipeline: [
+  //             {
+  //               $lookup: {
+  //                 from: "storeitems",
+  //                 localField: "item",
+  //                 foreignField: "_id",
+  //                 as: "item"
+  //               }
+  //             },
+  //             {
+  //               $unwind: {
+  //                 path: "$item",
+  //                 preserveNullAndEmptyArrays: true
+  //               }
+  //             }
+  //           ]
+  //         }
+  //       },
+  //       {
+  //         $project: {
+  //           username: 1,
+  //           atUsername: 1,
+  //           avatar: 1,
+  //           isVerified: 1,
+  //           badges: 1,
+  //           verificationType: 1,
+  //           customEmojiBadge: 1,
+  //           activeCustomization: {
+  //             badges: 1,
+  //             verificationType: 1
+  //           },
+  //           inventory: 1
+  //         }
+  //       }
+  //     ]
+  //   }
+  // },
+  //       { $unwind: "$author" },
+  // {
+  //   $addFields: {
+  //     "author.displayBadges": {
+  //       $cond: [
+  //         {
+  //           $gt: [
+  //             { $size: { $ifNull: ["$author.activeCustomization.badges", []] } },
+  //             0
+  //           ]
+  //         },
+  //         "$author.activeCustomization.badges",
+  //         { $ifNull: ["$author.badges", []] }
+  //       ]
+  //     },
+  //     "author.displayVerificationType": {
+  //       $ifNull: [
+  //         "$author.activeCustomization.verificationType",
+  //         "$author.verificationType"
+  //       ]
+  //     }
+  //   }
+  // },
+  // {
+  //   $addFields: {
+  //     "author.displayBadgesDetailed": {
+  //       $map: {
+  //         input: { $ifNull: ["$author.displayBadges", []] },
+  //         as: "badgeKey",
+  //         in: {
+  //           $let: {
+  //             vars: {
+  //               matchedInventory: {
+  //                 $first: {
+  //                   $filter: {
+  //                     input: { $ifNull: ["$author.inventory", []] },
+  //                     as: "inv",
+  //                     cond: {
+  //                       $and: [
+  //                         { $eq: ["$$inv.itemType", "badge"] },
+  //                         { $eq: ["$$inv.itemKey", "$$badgeKey"] }
+  //                       ]
+  //                     }
+  //                   }
+  //                 }
+  //               }
+  //             },
+  //             in: {
+  //               key: "$$badgeKey",
+  //               name: "$$matchedInventory.item.name",
+  //               iconUrl: {
+  //                 $ifNull: [
+  //                   "$$matchedInventory.item.iconUrl",
+  //                   {
+  //                     $ifNull: [
+  //                       "$$matchedInventory.item.coverUrl",
+  //                       "$$matchedInventory.item.previewUrl"
+  //                     ]
+  //                   }
+  //                 ]
+  //               },
+  //               lottieUrl: "$$matchedInventory.item.meta.lottieUrl",
+  //               emoji: "$$matchedInventory.item.meta.emoji"
+  //             }
+  //           }
+  //         }
+  //       }
+  //     }
+  //   }
+  // },
+  //       // {
+  //       //   $addFields: {
+  //       //     "author.displayBadges": {
+  //       //       $cond: [
+  //       //         {
+  //       //           $gt: [
+  //       //             { $size: { $ifNull: ["$author.activeCustomization.badges", []] } },
+  //       //             0
+  //       //           ]
+  //       //         },
+  //       //         "$author.activeCustomization.badges",
+  //       //         { $ifNull: ["$author.badges", []] }
+  //       //       ]
+  //       //     },
+  //       //     "author.displayVerificationType": {
+  //       //       $ifNull: [
+  //       //         "$author.activeCustomization.verificationType",
+  //       //         "$author.verificationType"
+  //       //       ]
+  //       //     }
+  //       //   }
+  //       // },
 
-//       {
-//         $lookup: {
-//           from: "users",
-//           let: { authorId: "$author._id" },
-//           pipeline: [
-//             {
-//               $match: {
-//                 $expr: {
-//                   $and: [
-//                     { $eq: ["$_id", "$$authorId"] },
-//                     { $in: [userObjectId, "$blockedUsers"] }
-//                   ]
-//                 }
-//               }
-//             }
-//           ],
-//           as: "blockedByAuthor"
-//         }
-//       },
+  //       {
+  //         $lookup: {
+  //           from: "users",
+  //           let: { authorId: "$author._id" },
+  //           pipeline: [
+  //             {
+  //               $match: {
+  //                 $expr: {
+  //                   $and: [
+  //                     { $eq: ["$_id", "$$authorId"] },
+  //                     { $in: [userObjectId, "$blockedUsers"] }
+  //                   ]
+  //                 }
+  //               }
+  //             }
+  //           ],
+  //           as: "blockedByAuthor"
+  //         }
+  //       },
 
-//       {
-//         $match: {
-//           blockedByAuthor: { $size: 0 }
-//         }
-//       },
+  //       {
+  //         $match: {
+  //           blockedByAuthor: { $size: 0 }
+  //         }
+  //       },
 
-//       {
-//         $lookup: {
-//           from: "follows",
-//           let: { authorId: "$author._id" },
-//           pipeline: [
-//             {
-//               $match: {
-//                 $expr: {
-//                   $and: [
-//                     { $eq: ["$follower", userObjectId] },
-//                     { $eq: ["$following", "$$authorId"] }
-//                   ]
-//                 }
-//               }
-//             }
-//           ],
-//           as: "followRelation"
-//         }
-//       },
+  //       {
+  //         $lookup: {
+  //           from: "follows",
+  //           let: { authorId: "$author._id" },
+  //           pipeline: [
+  //             {
+  //               $match: {
+  //                 $expr: {
+  //                   $and: [
+  //                     { $eq: ["$follower", userObjectId] },
+  //                     { $eq: ["$following", "$$authorId"] }
+  //                   ]
+  //                 }
+  //               }
+  //             }
+  //           ],
+  //           as: "followRelation"
+  //         }
+  //       },
 
-//       {
-//         $addFields: {
-//           "author.isFollowing": {
-//             $gt: [{ $size: "$followRelation" }, 0]
-//           }
-//         }
-//       },
+  //       {
+  //         $addFields: {
+  //           "author.isFollowing": {
+  //             $gt: [{ $size: "$followRelation" }, 0]
+  //           }
+  //         }
+  //       },
 
-//       {
-//         $lookup: {
-//           from: "likes",
-//           let: { tweetId: "$_id" },
-//           pipeline: [
-//             {
-//               $match: {
-//                 $expr: {
-//                   $and: [
-//                     { $eq: ["$tweet", "$$tweetId"] },
-//                     { $eq: ["$user", userObjectId] }
-//                   ]
-//                 }
-//               }
-//             }
-//           ],
-//           as: "liked"
-//         }
-//       },
+  //       {
+  //         $lookup: {
+  //           from: "likes",
+  //           let: { tweetId: "$_id" },
+  //           pipeline: [
+  //             {
+  //               $match: {
+  //                 $expr: {
+  //                   $and: [
+  //                     { $eq: ["$tweet", "$$tweetId"] },
+  //                     { $eq: ["$user", userObjectId] }
+  //                   ]
+  //                 }
+  //               }
+  //             }
+  //           ],
+  //           as: "liked"
+  //         }
+  //       },
 
-//       {
-//         $addFields: {
-//           isLiked: { $gt: [{ $size: "$liked" }, 0] }
-//         }
-//       },
+  //       {
+  //         $addFields: {
+  //           isLiked: { $gt: [{ $size: "$liked" }, 0] }
+  //         }
+  //       },
 
-//       {
-//         $project: {
-//           followRelation: 0,
-//           liked: 0,
-//           blockedByAuthor: 0
-//         }
-//       }
-//     ]);
+  //       {
+  //         $project: {
+  //           followRelation: 0,
+  //           liked: 0,
+  //           blockedByAuthor: 0
+  //         }
+  //       }
+  //     ]);
 
-//     return tweets;
-//   }
+  //     return tweets;
+  //   }
 
-private async buildFeedPipeline(
-  authorIds: mongoose.Types.ObjectId[] | null,
-  userObjectId: mongoose.Types.ObjectId,
-  skip: number,
-  limit: number
-) {
-  const currentUser = await User.findById(userObjectId).select("blockedUsers");
-  const blockedIds = currentUser?.blockedUsers || [];
+  private async buildFeedPipeline(
+    authorIds: mongoose.Types.ObjectId[] | null,
+    userObjectId: mongoose.Types.ObjectId,
+    skip: number,
+    limit: number
+  ) {
+    const currentUser = await User.findById(userObjectId).select("blockedUsers");
+    const blockedIds = currentUser?.blockedUsers || [];
 
-  if (authorIds && authorIds.length === 0) {
-    return [];
-  }
+    if (authorIds && authorIds.length === 0) {
+      return [];
+    }
 
-  const tweetMatchStage: any = {
-    deleted: false,
-    isHidden: false,
-    author: { $nin: blockedIds },
-  };
-
-  const retweetMatchStage: any = {};
-
-  if (authorIds && authorIds.length > 0) {
-    tweetMatchStage.author = {
-      $in: authorIds,
-      $nin: blockedIds,
+    const tweetMatchStage: any = {
+      deleted: false,
+      isHidden: false,
+      author: { $nin: blockedIds },
     };
 
-    retweetMatchStage.user = {
-      $in: authorIds,
-      $nin: blockedIds,
-    };
-  } else {
-    retweetMatchStage.user = {
-      $nin: blockedIds,
-    };
-  }
+    const retweetMatchStage: any = {};
 
-  const commonUserProject = {
-    username: 1,
-    atUsername: 1,
-    avatar: 1,
-    isVerified: 1,
-    badges: 1,
-    verificationType: 1,
-    customEmojiBadge: 1,
-    activeCustomization: {
+    if (authorIds && authorIds.length > 0) {
+      tweetMatchStage.author = {
+        $in: authorIds,
+        $nin: blockedIds,
+      };
+
+      retweetMatchStage.user = {
+        $in: authorIds,
+        $nin: blockedIds,
+      };
+    } else {
+      retweetMatchStage.user = {
+        $nin: blockedIds,
+      };
+    }
+
+    const commonUserProject = {
+      username: 1,
+      atUsername: 1,
+      avatar: 1,
+      isVerified: 1,
       badges: 1,
       verificationType: 1,
-    },
-    blockedUsers: 1,
-  };
-
-  const tweets = await Tweet.aggregate([
-    {
-      $match: tweetMatchStage,
-    },
-
-    {
-      $addFields: {
-        feedType: "tweet",
-        feedCreatedAt: "$createdAt",
-        tweet: "$$ROOT",
-        retweetedBy: null,
-        originalAuthor: null,
+      customEmojiBadge: 1,
+      activeCustomization: {
+        badges: 1,
+        verificationType: 1,
       },
-    },
+      blockedUsers: 1,
+    };
 
-    {
-      $replaceRoot: {
-        newRoot: {
-          $mergeObjects: [
-            "$tweet",
-            {
-              feedType: "$feedType",
-              feedCreatedAt: "$feedCreatedAt",
-              retweetedBy: "$retweetedBy",
-              originalAuthor: "$originalAuthor",
-            },
-          ],
+    const tweets = await Tweet.aggregate([
+      {
+        $match: tweetMatchStage,
+      },
+
+      {
+        $addFields: {
+          feedType: "tweet",
+          feedCreatedAt: "$createdAt",
+          tweet: "$$ROOT",
+          retweetedBy: null,
+          originalAuthor: null,
         },
       },
-    },
 
-    {
-      $lookup: {
-        from: "users",
-        localField: "author",
-        foreignField: "_id",
-        as: "author",
-        pipeline: [
-          {
-            $lookup: {
-              from: "userinventories",
-              localField: "_id",
-              foreignField: "user",
-              as: "inventory",
-              pipeline: [
-                {
-                  $lookup: {
-                    from: "storeitems",
-                    localField: "item",
-                    foreignField: "_id",
-                    as: "item",
-                  },
-                },
-                {
-                  $unwind: {
-                    path: "$item",
-                    preserveNullAndEmptyArrays: true,
-                  },
-                },
-              ],
-            },
+      {
+        $replaceRoot: {
+          newRoot: {
+            $mergeObjects: [
+              "$tweet",
+              {
+                feedType: "$feedType",
+                feedCreatedAt: "$feedCreatedAt",
+                retweetedBy: "$retweetedBy",
+                originalAuthor: "$originalAuthor",
+              },
+            ],
           },
-          {
-            $project: {
-              ...commonUserProject,
-              inventory: 1,
-            },
-          },
-        ],
+        },
       },
-    },
 
-    { $unwind: "$author" },
-
-    {
-      $lookup: {
-        from: "users",
-        let: { authorId: "$author._id" },
-        pipeline: [
-          {
-            $match: {
-              $expr: {
-                $and: [
-                  { $eq: ["$_id", "$$authorId"] },
-                  { $in: [userObjectId, "$blockedUsers"] },
+      {
+        $lookup: {
+          from: "users",
+          localField: "author",
+          foreignField: "_id",
+          as: "author",
+          pipeline: [
+            {
+              $lookup: {
+                from: "userinventories",
+                localField: "_id",
+                foreignField: "user",
+                as: "inventory",
+                pipeline: [
+                  {
+                    $lookup: {
+                      from: "storeitems",
+                      localField: "item",
+                      foreignField: "_id",
+                      as: "item",
+                    },
+                  },
+                  {
+                    $unwind: {
+                      path: "$item",
+                      preserveNullAndEmptyArrays: true,
+                    },
+                  },
                 ],
               },
             },
-          },
-        ],
-        as: "blockedByAuthor",
-      },
-    },
-
-    {
-      $match: {
-        blockedByAuthor: { $size: 0 },
-      },
-    },
-
-    {
-      $addFields: {
-        "author.displayBadges": {
-          $cond: [
             {
-              $gt: [
-                {
-                  $size: {
-                    $ifNull: ["$author.activeCustomization.badges", []],
-                  },
-                },
-                0,
-              ],
+              $project: {
+                ...commonUserProject,
+                inventory: 1,
+              },
             },
-            "$author.activeCustomization.badges",
-            { $ifNull: ["$author.badges", []] },
-          ],
-        },
-
-        "author.displayVerificationType": {
-          $ifNull: [
-            "$author.activeCustomization.verificationType",
-            "$author.verificationType",
           ],
         },
       },
-    },
 
-    {
-      $addFields: {
-        "author.displayBadgesDetailed": {
-          $map: {
-            input: { $ifNull: ["$author.displayBadges", []] },
-            as: "badgeKey",
-            in: {
-              $let: {
-                vars: {
-                  matchedInventory: {
-                    $first: {
-                      $filter: {
-                        input: { $ifNull: ["$author.inventory", []] },
-                        as: "inv",
-                        cond: {
-                          $and: [
-                            { $eq: ["$$inv.itemType", "badge"] },
-                            { $eq: ["$$inv.itemKey", "$$badgeKey"] },
-                          ],
+      { $unwind: "$author" },
+
+      {
+        $lookup: {
+          from: "users",
+          let: { authorId: "$author._id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$_id", "$$authorId"] },
+                    { $in: [userObjectId, "$blockedUsers"] },
+                  ],
+                },
+              },
+            },
+          ],
+          as: "blockedByAuthor",
+        },
+      },
+
+      {
+        $match: {
+          blockedByAuthor: { $size: 0 },
+        },
+      },
+
+      {
+        $addFields: {
+          "author.displayBadges": {
+            $cond: [
+              {
+                $gt: [
+                  {
+                    $size: {
+                      $ifNull: ["$author.activeCustomization.badges", []],
+                    },
+                  },
+                  0,
+                ],
+              },
+              "$author.activeCustomization.badges",
+              { $ifNull: ["$author.badges", []] },
+            ],
+          },
+
+          "author.displayVerificationType": {
+            $ifNull: [
+              "$author.activeCustomization.verificationType",
+              "$author.verificationType",
+            ],
+          },
+        },
+      },
+
+      {
+        $addFields: {
+          "author.displayBadgesDetailed": {
+            $map: {
+              input: { $ifNull: ["$author.displayBadges", []] },
+              as: "badgeKey",
+              in: {
+                $let: {
+                  vars: {
+                    matchedInventory: {
+                      $first: {
+                        $filter: {
+                          input: { $ifNull: ["$author.inventory", []] },
+                          as: "inv",
+                          cond: {
+                            $and: [
+                              { $eq: ["$$inv.itemType", "badge"] },
+                              { $eq: ["$$inv.itemKey", "$$badgeKey"] },
+                            ],
+                          },
                         },
                       },
                     },
                   },
-                },
-                in: {
-                  key: "$$badgeKey",
-                  name: "$$matchedInventory.item.name",
-                  iconUrl: {
-                    $ifNull: [
-                      "$$matchedInventory.item.iconUrl",
-                      {
-                        $ifNull: [
-                          "$$matchedInventory.item.coverUrl",
-                          "$$matchedInventory.item.previewUrl",
-                        ],
-                      },
-                    ],
-                  },
-                  lottieUrl: "$$matchedInventory.item.meta.lottieUrl",
-                  emoji: "$$matchedInventory.item.meta.emoji",
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-
-    {
-      $lookup: {
-        from: "follows",
-        let: { authorId: "$author._id" },
-        pipeline: [
-          {
-            $match: {
-              $expr: {
-                $and: [
-                  { $eq: ["$follower", userObjectId] },
-                  { $eq: ["$following", "$$authorId"] },
-                ],
-              },
-            },
-          },
-        ],
-        as: "followRelation",
-      },
-    },
-
-    {
-      $addFields: {
-        "author.isFollowing": {
-          $gt: [{ $size: "$followRelation" }, 0],
-        },
-      },
-    },
-
-    {
-      $lookup: {
-        from: "likes",
-        let: { tweetId: "$_id" },
-        pipeline: [
-          {
-            $match: {
-              $expr: {
-                $and: [
-                  { $eq: ["$tweet", "$$tweetId"] },
-                  { $eq: ["$user", userObjectId] },
-                ],
-              },
-            },
-          },
-        ],
-        as: "liked",
-      },
-    },
-
-    {
-      $addFields: {
-        isLiked: { $gt: [{ $size: "$liked" }, 0] },
-      },
-    },
-
-    {
-      $lookup: {
-        from: "retweets",
-        let: { tweetId: "$_id" },
-        pipeline: [
-          {
-            $match: {
-              $expr: {
-                $and: [
-                  { $eq: ["$tweet", "$$tweetId"] },
-                  { $eq: ["$user", userObjectId] },
-                ],
-              },
-            },
-          },
-        ],
-        as: "retweeted",
-      },
-    },
-
-    {
-      $addFields: {
-        isRetweeted: { $gt: [{ $size: "$retweeted" }, 0] },
-      },
-    },
-
-    {
-      $lookup: {
-        from: "bookmarks",
-        let: { tweetId: "$_id" },
-        pipeline: [
-          {
-            $match: {
-              $expr: {
-                $and: [
-                  { $eq: ["$tweet", "$$tweetId"] },
-                  { $eq: ["$user", userObjectId] },
-                ],
-              },
-            },
-          },
-        ],
-        as: "bookmarked",
-      },
-    },
-
-    {
-      $addFields: {
-        isBookmarked: { $gt: [{ $size: "$bookmarked" }, 0] },
-      },
-    },
-
-    {
-      $project: {
-        followRelation: 0,
-        liked: 0,
-        retweeted: 0,
-        bookmarked: 0,
-        blockedByAuthor: 0,
-        "author.blockedUsers": 0,
-        "author.inventory": 0,
-      },
-    },
-  ]);
-
-  const retweets = await Retweet.aggregate([
-    {
-      $match: retweetMatchStage,
-    },
-
-    {
-      $sort: {
-        createdAt: -1,
-      },
-    },
-
-    {
-      $lookup: {
-        from: "tweets",
-        localField: "tweet",
-        foreignField: "_id",
-        as: "tweet",
-      },
-    },
-
-    {
-      $unwind: "$tweet",
-    },
-
-    {
-      $match: {
-        "tweet.deleted": false,
-        "tweet.isHidden": false,
-        "tweet.author": { $nin: blockedIds },
-      },
-    },
-
-    {
-      $lookup: {
-        from: "users",
-        localField: "user",
-        foreignField: "_id",
-        as: "retweetedBy",
-        pipeline: [
-          {
-            $project: commonUserProject,
-          },
-        ],
-      },
-    },
-
-    {
-      $unwind: "$retweetedBy",
-    },
-
-    {
-      $lookup: {
-        from: "users",
-        localField: "tweet.author",
-        foreignField: "_id",
-        as: "author",
-        pipeline: [
-          {
-            $lookup: {
-              from: "userinventories",
-              localField: "_id",
-              foreignField: "user",
-              as: "inventory",
-              pipeline: [
-                {
-                  $lookup: {
-                    from: "storeitems",
-                    localField: "item",
-                    foreignField: "_id",
-                    as: "item",
-                  },
-                },
-                {
-                  $unwind: {
-                    path: "$item",
-                    preserveNullAndEmptyArrays: true,
-                  },
-                },
-              ],
-            },
-          },
-          {
-            $project: {
-              ...commonUserProject,
-              inventory: 1,
-            },
-          },
-        ],
-      },
-    },
-
-    {
-      $unwind: "$author",
-    },
-
-    {
-      $lookup: {
-        from: "users",
-        let: { authorId: "$author._id" },
-        pipeline: [
-          {
-            $match: {
-              $expr: {
-                $and: [
-                  { $eq: ["$_id", "$$authorId"] },
-                  { $in: [userObjectId, "$blockedUsers"] },
-                ],
-              },
-            },
-          },
-        ],
-        as: "blockedByOriginalAuthor",
-      },
-    },
-
-    {
-      $lookup: {
-        from: "users",
-        let: { retweeterId: "$retweetedBy._id" },
-        pipeline: [
-          {
-            $match: {
-              $expr: {
-                $and: [
-                  { $eq: ["$_id", "$$retweeterId"] },
-                  { $in: [userObjectId, "$blockedUsers"] },
-                ],
-              },
-            },
-          },
-        ],
-        as: "blockedByRetweeter",
-      },
-    },
-
-    {
-      $match: {
-        blockedByOriginalAuthor: { $size: 0 },
-        blockedByRetweeter: { $size: 0 },
-      },
-    },
-
-    {
-      $replaceRoot: {
-        newRoot: {
-          $mergeObjects: [
-            "$tweet",
-            {
-              feedType: "retweet",
-              feedCreatedAt: "$createdAt",
-              retweetId: "$_id",
-              retweetedAt: "$createdAt",
-              retweetedBy: "$retweetedBy",
-              originalAuthor: "$author",
-              author: "$author",
-            },
-          ],
-        },
-      },
-    },
-
-    {
-      $addFields: {
-        "author.displayBadges": {
-          $cond: [
-            {
-              $gt: [
-                {
-                  $size: {
-                    $ifNull: ["$author.activeCustomization.badges", []],
-                  },
-                },
-                0,
-              ],
-            },
-            "$author.activeCustomization.badges",
-            { $ifNull: ["$author.badges", []] },
-          ],
-        },
-
-        "author.displayVerificationType": {
-          $ifNull: [
-            "$author.activeCustomization.verificationType",
-            "$author.verificationType",
-          ],
-        },
-
-        "retweetedBy.displayBadges": {
-          $cond: [
-            {
-              $gt: [
-                {
-                  $size: {
-                    $ifNull: ["$retweetedBy.activeCustomization.badges", []],
-                  },
-                },
-                0,
-              ],
-            },
-            "$retweetedBy.activeCustomization.badges",
-            { $ifNull: ["$retweetedBy.badges", []] },
-          ],
-        },
-
-        "retweetedBy.displayVerificationType": {
-          $ifNull: [
-            "$retweetedBy.activeCustomization.verificationType",
-            "$retweetedBy.verificationType",
-          ],
-        },
-      },
-    },
-
-    {
-      $addFields: {
-        "author.displayBadgesDetailed": {
-          $map: {
-            input: { $ifNull: ["$author.displayBadges", []] },
-            as: "badgeKey",
-            in: {
-              $let: {
-                vars: {
-                  matchedInventory: {
-                    $first: {
-                      $filter: {
-                        input: { $ifNull: ["$author.inventory", []] },
-                        as: "inv",
-                        cond: {
-                          $and: [
-                            { $eq: ["$$inv.itemType", "badge"] },
-                            { $eq: ["$$inv.itemKey", "$$badgeKey"] },
+                  in: {
+                    key: "$$badgeKey",
+                    name: "$$matchedInventory.item.name",
+                    iconUrl: {
+                      $ifNull: [
+                        "$$matchedInventory.item.iconUrl",
+                        {
+                          $ifNull: [
+                            "$$matchedInventory.item.coverUrl",
+                            "$$matchedInventory.item.previewUrl",
                           ],
+                        },
+                      ],
+                    },
+                    lottieUrl: "$$matchedInventory.item.meta.lottieUrl",
+                    emoji: "$$matchedInventory.item.meta.emoji",
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+
+      {
+        $lookup: {
+          from: "follows",
+          let: { authorId: "$author._id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$follower", userObjectId] },
+                    { $eq: ["$following", "$$authorId"] },
+                  ],
+                },
+              },
+            },
+          ],
+          as: "followRelation",
+        },
+      },
+
+      {
+        $addFields: {
+          "author.isFollowing": {
+            $gt: [{ $size: "$followRelation" }, 0],
+          },
+        },
+      },
+
+      {
+        $lookup: {
+          from: "likes",
+          let: { tweetId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$tweet", "$$tweetId"] },
+                    { $eq: ["$user", userObjectId] },
+                  ],
+                },
+              },
+            },
+          ],
+          as: "liked",
+        },
+      },
+
+      {
+        $addFields: {
+          isLiked: { $gt: [{ $size: "$liked" }, 0] },
+        },
+      },
+
+      {
+        $lookup: {
+          from: "retweets",
+          let: { tweetId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$tweet", "$$tweetId"] },
+                    { $eq: ["$user", userObjectId] },
+                  ],
+                },
+              },
+            },
+          ],
+          as: "retweeted",
+        },
+      },
+
+      {
+        $addFields: {
+          isRetweeted: { $gt: [{ $size: "$retweeted" }, 0] },
+        },
+      },
+
+      {
+        $lookup: {
+          from: "bookmarks",
+          let: { tweetId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$tweet", "$$tweetId"] },
+                    { $eq: ["$user", userObjectId] },
+                  ],
+                },
+              },
+            },
+          ],
+          as: "bookmarked",
+        },
+      },
+
+      {
+        $addFields: {
+          isBookmarked: { $gt: [{ $size: "$bookmarked" }, 0] },
+        },
+      },
+
+      {
+        $project: {
+          followRelation: 0,
+          liked: 0,
+          retweeted: 0,
+          bookmarked: 0,
+          blockedByAuthor: 0,
+          "author.blockedUsers": 0,
+          "author.inventory": 0,
+        },
+      },
+    ]);
+
+    const retweets = await Retweet.aggregate([
+      {
+        $match: retweetMatchStage,
+      },
+
+      {
+        $sort: {
+          createdAt: -1,
+        },
+      },
+
+      {
+        $lookup: {
+          from: "tweets",
+          localField: "tweet",
+          foreignField: "_id",
+          as: "tweet",
+        },
+      },
+
+      {
+        $unwind: "$tweet",
+      },
+
+      {
+        $match: {
+          "tweet.deleted": false,
+          "tweet.isHidden": false,
+          "tweet.author": { $nin: blockedIds },
+        },
+      },
+
+      {
+        $lookup: {
+          from: "users",
+          localField: "user",
+          foreignField: "_id",
+          as: "retweetedBy",
+          pipeline: [
+            {
+              $project: commonUserProject,
+            },
+          ],
+        },
+      },
+
+      {
+        $unwind: "$retweetedBy",
+      },
+
+      {
+        $lookup: {
+          from: "users",
+          localField: "tweet.author",
+          foreignField: "_id",
+          as: "author",
+          pipeline: [
+            {
+              $lookup: {
+                from: "userinventories",
+                localField: "_id",
+                foreignField: "user",
+                as: "inventory",
+                pipeline: [
+                  {
+                    $lookup: {
+                      from: "storeitems",
+                      localField: "item",
+                      foreignField: "_id",
+                      as: "item",
+                    },
+                  },
+                  {
+                    $unwind: {
+                      path: "$item",
+                      preserveNullAndEmptyArrays: true,
+                    },
+                  },
+                ],
+              },
+            },
+            {
+              $project: {
+                ...commonUserProject,
+                inventory: 1,
+              },
+            },
+          ],
+        },
+      },
+
+      {
+        $unwind: "$author",
+      },
+
+      {
+        $lookup: {
+          from: "users",
+          let: { authorId: "$author._id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$_id", "$$authorId"] },
+                    { $in: [userObjectId, "$blockedUsers"] },
+                  ],
+                },
+              },
+            },
+          ],
+          as: "blockedByOriginalAuthor",
+        },
+      },
+
+      {
+        $lookup: {
+          from: "users",
+          let: { retweeterId: "$retweetedBy._id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$_id", "$$retweeterId"] },
+                    { $in: [userObjectId, "$blockedUsers"] },
+                  ],
+                },
+              },
+            },
+          ],
+          as: "blockedByRetweeter",
+        },
+      },
+
+      {
+        $match: {
+          blockedByOriginalAuthor: { $size: 0 },
+          blockedByRetweeter: { $size: 0 },
+        },
+      },
+
+      {
+        $replaceRoot: {
+          newRoot: {
+            $mergeObjects: [
+              "$tweet",
+              {
+                feedType: "retweet",
+                feedCreatedAt: "$createdAt",
+                retweetId: "$_id",
+                retweetedAt: "$createdAt",
+                retweetedBy: "$retweetedBy",
+                originalAuthor: "$author",
+                author: "$author",
+              },
+            ],
+          },
+        },
+      },
+
+      {
+        $addFields: {
+          "author.displayBadges": {
+            $cond: [
+              {
+                $gt: [
+                  {
+                    $size: {
+                      $ifNull: ["$author.activeCustomization.badges", []],
+                    },
+                  },
+                  0,
+                ],
+              },
+              "$author.activeCustomization.badges",
+              { $ifNull: ["$author.badges", []] },
+            ],
+          },
+
+          "author.displayVerificationType": {
+            $ifNull: [
+              "$author.activeCustomization.verificationType",
+              "$author.verificationType",
+            ],
+          },
+
+          "retweetedBy.displayBadges": {
+            $cond: [
+              {
+                $gt: [
+                  {
+                    $size: {
+                      $ifNull: ["$retweetedBy.activeCustomization.badges", []],
+                    },
+                  },
+                  0,
+                ],
+              },
+              "$retweetedBy.activeCustomization.badges",
+              { $ifNull: ["$retweetedBy.badges", []] },
+            ],
+          },
+
+          "retweetedBy.displayVerificationType": {
+            $ifNull: [
+              "$retweetedBy.activeCustomization.verificationType",
+              "$retweetedBy.verificationType",
+            ],
+          },
+        },
+      },
+
+      {
+        $addFields: {
+          "author.displayBadgesDetailed": {
+            $map: {
+              input: { $ifNull: ["$author.displayBadges", []] },
+              as: "badgeKey",
+              in: {
+                $let: {
+                  vars: {
+                    matchedInventory: {
+                      $first: {
+                        $filter: {
+                          input: { $ifNull: ["$author.inventory", []] },
+                          as: "inv",
+                          cond: {
+                            $and: [
+                              { $eq: ["$$inv.itemType", "badge"] },
+                              { $eq: ["$$inv.itemKey", "$$badgeKey"] },
+                            ],
+                          },
                         },
                       },
                     },
                   },
-                },
-                in: {
-                  key: "$$badgeKey",
-                  name: "$$matchedInventory.item.name",
-                  iconUrl: {
-                    $ifNull: [
-                      "$$matchedInventory.item.iconUrl",
-                      {
-                        $ifNull: [
-                          "$$matchedInventory.item.coverUrl",
-                          "$$matchedInventory.item.previewUrl",
-                        ],
-                      },
-                    ],
+                  in: {
+                    key: "$$badgeKey",
+                    name: "$$matchedInventory.item.name",
+                    iconUrl: {
+                      $ifNull: [
+                        "$$matchedInventory.item.iconUrl",
+                        {
+                          $ifNull: [
+                            "$$matchedInventory.item.coverUrl",
+                            "$$matchedInventory.item.previewUrl",
+                          ],
+                        },
+                      ],
+                    },
+                    lottieUrl: "$$matchedInventory.item.meta.lottieUrl",
+                    emoji: "$$matchedInventory.item.meta.emoji",
                   },
-                  lottieUrl: "$$matchedInventory.item.meta.lottieUrl",
-                  emoji: "$$matchedInventory.item.meta.emoji",
                 },
               },
             },
           },
         },
       },
-    },
 
-    {
-      $lookup: {
-        from: "follows",
-        let: { authorId: "$author._id" },
-        pipeline: [
-          {
-            $match: {
-              $expr: {
-                $and: [
-                  { $eq: ["$follower", userObjectId] },
-                  { $eq: ["$following", "$$authorId"] },
-                ],
+      {
+        $lookup: {
+          from: "follows",
+          let: { authorId: "$author._id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$follower", userObjectId] },
+                    { $eq: ["$following", "$$authorId"] },
+                  ],
+                },
               },
             },
-          },
-        ],
-        as: "followRelation",
-      },
-    },
-
-    {
-      $addFields: {
-        "author.isFollowing": {
-          $gt: [{ $size: "$followRelation" }, 0],
+          ],
+          as: "followRelation",
         },
       },
-    },
 
-    {
-      $lookup: {
-        from: "likes",
-        let: { tweetId: "$_id" },
-        pipeline: [
-          {
-            $match: {
-              $expr: {
-                $and: [
-                  { $eq: ["$tweet", "$$tweetId"] },
-                  { $eq: ["$user", userObjectId] },
-                ],
+      {
+        $addFields: {
+          "author.isFollowing": {
+            $gt: [{ $size: "$followRelation" }, 0],
+          },
+        },
+      },
+
+      {
+        $lookup: {
+          from: "likes",
+          let: { tweetId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$tweet", "$$tweetId"] },
+                    { $eq: ["$user", userObjectId] },
+                  ],
+                },
               },
             },
-          },
-        ],
-        as: "liked",
+          ],
+          as: "liked",
+        },
       },
-    },
 
-    {
-      $addFields: {
-        isLiked: { $gt: [{ $size: "$liked" }, 0] },
+      {
+        $addFields: {
+          isLiked: { $gt: [{ $size: "$liked" }, 0] },
+        },
       },
-    },
 
-    {
-      $lookup: {
-        from: "retweets",
-        let: { tweetId: "$_id" },
-        pipeline: [
-          {
-            $match: {
-              $expr: {
-                $and: [
-                  { $eq: ["$tweet", "$$tweetId"] },
-                  { $eq: ["$user", userObjectId] },
-                ],
+      {
+        $lookup: {
+          from: "retweets",
+          let: { tweetId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$tweet", "$$tweetId"] },
+                    { $eq: ["$user", userObjectId] },
+                  ],
+                },
               },
             },
-          },
-        ],
-        as: "retweeted",
+          ],
+          as: "retweeted",
+        },
       },
-    },
 
-    {
-      $addFields: {
-        isRetweeted: { $gt: [{ $size: "$retweeted" }, 0] },
+      {
+        $addFields: {
+          isRetweeted: { $gt: [{ $size: "$retweeted" }, 0] },
+        },
       },
-    },
 
-    {
-      $lookup: {
-        from: "bookmarks",
-        let: { tweetId: "$_id" },
-        pipeline: [
-          {
-            $match: {
-              $expr: {
-                $and: [
-                  { $eq: ["$tweet", "$$tweetId"] },
-                  { $eq: ["$user", userObjectId] },
-                ],
+      {
+        $lookup: {
+          from: "bookmarks",
+          let: { tweetId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$tweet", "$$tweetId"] },
+                    { $eq: ["$user", userObjectId] },
+                  ],
+                },
               },
             },
-          },
-        ],
-        as: "bookmarked",
+          ],
+          as: "bookmarked",
+        },
       },
-    },
 
-    {
-      $addFields: {
-        isBookmarked: { $gt: [{ $size: "$bookmarked" }, 0] },
+      {
+        $addFields: {
+          isBookmarked: { $gt: [{ $size: "$bookmarked" }, 0] },
+        },
       },
-    },
 
-    {
-      $project: {
-        followRelation: 0,
-        liked: 0,
-        retweeted: 0,
-        bookmarked: 0,
-        blockedByOriginalAuthor: 0,
-        blockedByRetweeter: 0,
-        "author.blockedUsers": 0,
-        "author.inventory": 0,
-        "retweetedBy.blockedUsers": 0,
+      {
+        $project: {
+          followRelation: 0,
+          liked: 0,
+          retweeted: 0,
+          bookmarked: 0,
+          blockedByOriginalAuthor: 0,
+          blockedByRetweeter: 0,
+          "author.blockedUsers": 0,
+          "author.inventory": 0,
+          "retweetedBy.blockedUsers": 0,
+        },
       },
-    },
-  ]);
+    ]);
 
-  const feed = [...tweets, ...retweets]
-    .sort((a: any, b: any) => {
-      return (
-        new Date(b.feedCreatedAt).getTime() -
-        new Date(a.feedCreatedAt).getTime()
-      );
-    })
-    .slice(skip, skip + limit);
+    const feed = [...tweets, ...retweets]
+      .sort((a: any, b: any) => {
+        return (
+          new Date(b.feedCreatedAt).getTime() -
+          new Date(a.feedCreatedAt).getTime()
+        );
+      })
+      .slice(skip, skip + limit);
 
-  return feed;
-}
+    return feed;
+  }
   /* ======================================================
      FOLLOWING FEED
   ====================================================== */
