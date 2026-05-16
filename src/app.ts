@@ -28,6 +28,7 @@ import { enforceMinVersion } from "./middlewares/enforceMinVersion.middleware";
 import reportRoutes from "./routes/report.routes";
 import blockRoutes from "./routes/block.routes";
 import favoriteRoomRoutes from "./routes/favoriteRoom.routes";
+import uploadRoutes from "./routes/upload.routes";
 
 const app = express();
 
@@ -101,6 +102,7 @@ app.use("/api/stories", storyRoutes);
 app.use("/api/chats", chatRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/rooms", roomRoutes);
+app.use("/api/upload", uploadRoutes);
 app.use("/api/contact-us", contactUsRoutes);
 app.use("/api/blocks", blockRoutes);
 app.use("/api/payments/paymob", paymobRoutes);

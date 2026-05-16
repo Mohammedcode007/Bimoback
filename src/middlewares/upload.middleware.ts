@@ -1,40 +1,49 @@
-// upload.middleware.ts
+// src/middlewares/upload.middleware.ts
+
 import multer from "multer";
-import path from "path";
+import type { Request } from "express";
 
-const storage = multer.diskStorage({
-  destination(req, file, cb) {
-    cb(null, "uploads/");
-  },
-  filename(req, file, cb) {
-    cb(
-      null,
-      `${file.fieldname}-${Date.now()}${path.extname(file.originalname)}`
-    );
-  }
-});
+const storage = multer.memoryStorage();
 
-const fileFilter = (
-  req: any,
+const allowedMimeTypes = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "video/mp4",
+  "video/webm",
+  "audio/mpeg",
+  "audio/mp3",
+  "audio/wav",
+  "audio/webm",
+  "application/pdf",
+];
+
+function fileFilter(
+  req: Request,
   file: Express.Multer.File,
   cb: multer.FileFilterCallback
-) => {
-  const allowedTypes = /jpg|jpeg|png|mp4|mp3|pdf/;
-
-  const extname = allowedTypes.test(
-    path.extname(file.originalname).toLowerCase()
-  );
-
-  const mimetype = allowedTypes.test(file.mimetype);
-
-  if (extname && mimetype) {
-    cb(null, true);
-  } else {
-    cb(new Error("Invalid file type"));
+) {
+  if (!allowedMimeTypes.includes(file.mimetype)) {
+    return cb(new Error("Unsupported file type"));
   }
-};
 
-export const upload = multer({
+  cb(null, true);
+}
+
+export const uploadSingleFile = multer({
   storage,
-  fileFilter
-});
+  fileFilter,
+  limits: {
+    fileSize: 25 * 1024 * 1024, // 25MB
+  },
+}).single("file");
+
+export const uploadMultipleFiles = multer({
+  storage,
+  fileFilter,
+  limits: {
+    fileSize: 25 * 1024 * 1024,
+    files: 10,
+  },
+}).array("files", 10);
