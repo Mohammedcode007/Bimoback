@@ -20,7 +20,6 @@ r.patch("/:id/control/slowmode", RoomControlController.setSlowMode);
 r.patch("/:id/control/welcome", RoomControlController.updateWelcome);
 r.patch("/:id/control/voice-seats", RoomControlController.setMaxVoiceSeats);
 
-r.patch("/:id/control/boost", RoomControlController.boost);
 
 r.post("/:id/control/poll/start", RoomControlController.startPoll);
 r.post("/:id/control/poll/vote", RoomControlController.votePoll);

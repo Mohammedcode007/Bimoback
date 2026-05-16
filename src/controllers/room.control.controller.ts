@@ -458,44 +458,7 @@ export default class RoomControlController {
     }
   }
 
-  /** PATCH /rooms/:id/control/boost */
-  static async boost(req: AuthedReq, res: Response) {
-    const session = await mongoose.startSession();
-    try {
-      const userId = getUserId(req);
-      const roomId = String(req.params.id || "");
-      if (!isValidObjectId(roomId)) return res.status(400).json({ message: "Invalid room id" });
 
-      let out: any = null;
-
-      await session.withTransaction(async () => {
-        const room = await Room.findById(roomId).select(SAFE_SELECT).session(session);
-        if (!room) throw new Error("Room not found");
-
-        // requireRole(room, userId, ["creator", "owner"]);
-
-        // ✅ خصم
-        await chargeCoinZ(userId, COINZ_PRICES.BOOST, session);
-
-        const level = clampInt(req.body?.level, 0, 10, room.boostLevel || 0);
-        const hours = clampInt(req.body?.hours, 1, 720, 1);
-
-        room.boostLevel = level;
-        room.boostExpiresAt = new Date(Date.now() + hours * 3600_000);
-
-        await room.save({ session });
-
-        out = { boostLevel: room.boostLevel, boostExpiresAt: room.boostExpiresAt };
-      });
-
-      return res.json(out);
-    } catch (e: any) {
-      const { code, msg } = mapErrorToStatus(e);
-      return res.status(code).json({ message: msg });
-    } finally {
-      session.endSession();
-    }
-  }
 /** PATCH /rooms/:id/control/welcome */
 static async updateWelcome(req: AuthedReq, res: Response) {
   const session = await mongoose.startSession();

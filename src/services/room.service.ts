@@ -4114,23 +4114,7 @@ try {
       room,
     };
   }
-  // async boost(roomId: string, userId: string, level: number, hours: number) {
-  //   const room = await Room.findById(roomId);
-  //   if (!room) throw new Error("Room not found");
-  //   this.require(room, userId, ["creator", "owner"]);
-
-  //   room.boostLevel = Math.max(0, Math.min(10, Number(level) || 0));
-  //   room.boostExpiresAt = new Date(Date.now() + Math.max(1, Math.min(720, Number(hours) || 0)) * 3600000);
-  //   await room.save();
-
-  //   this.io().to(`room:${roomId}`).emit("room:boost:update", {
-  //     boostLevel: room.boostLevel,
-  //     boostExpiresAt: room.boostExpiresAt
-  //   });
-
-  //   await this.system(roomId, "Room boosted", "announcement");
-  //   return room;
-  // }
+ 
 
   /* =====================================================
      ROLES MANAGEMENT (Promote / Demote / Membership)
