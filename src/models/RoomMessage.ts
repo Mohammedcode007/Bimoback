@@ -41,10 +41,9 @@ export type RoomGameType =
   | "xo"
   | "cards"
   | "luck"
-  |"duel"
-  |"bomb"
-      "shot"
-
+  | "duel"
+  | "bomb"
+  | "shot";
 
 /* =====================================================
    MESSAGE LENGTH LIMITS
@@ -124,14 +123,28 @@ export interface IRoomMessage extends Document {
     username: string;
     atUsername?: string;
     avatar?: string;
+avatarGif?: string;
+coverImage?: string;
+usernameColor?: string;
+messageTextColor?: string;
 
-    activeCustomization?: {
-      avatarFrame?: string;
-      messageEffect?: string;
-      profileEntryAnimation?: string;
-      badges: string[];
-      verificationType: "none" | "blue" | "gold" | "business";
-    };
+activeBadgesResolved?: {
+  key?: string;
+  name?: string;
+  iconUrl?: string;
+  lottieUrl?: string;
+  isAnimated?: boolean;
+}[];
+activeCustomization?: {
+  avatarFrame?: string;
+  avatarGif?: string;
+  usernameColor?: string;
+  messageTextColor?: string;
+  messageEffect?: string;
+  profileEntryAnimation?: string;
+  badges: string[];
+  verificationType: "none" | "blue" | "gold" | "business";
+};
 
     customEmojiBadge?: {
       emoji?: string;
@@ -382,18 +395,38 @@ const RoomMessageSchema = new Schema<IRoomMessage>(
 
     senderSnapshot: {
       type: {
-        _id: { type: String, default: "" },
-        username: { type: String, default: "", trim: true },
-        atUsername: { type: String, default: "", trim: true },
-        avatar: { type: String, default: "", trim: true },
+    _id: { type: String, default: "" },
+username: { type: String, default: "", trim: true },
+atUsername: { type: String, default: "", trim: true },
+avatar: { type: String, default: "", trim: true },
+avatarGif: { type: String, default: "", trim: true },
+coverImage: { type: String, default: "", trim: true },
+usernameColor: { type: String, default: "", trim: true },
+messageTextColor: { type: String, default: "", trim: true },
 
-        activeCustomization: {
-          avatarFrame: { type: String, default: "" },
-          messageEffect: { type: String, default: "" },
-          profileEntryAnimation: { type: String, default: "" },
-          badges: { type: [String], default: [] },
-          verificationType: { type: String, default: "none" }
-        },
+activeCustomization: {
+  avatarFrame: { type: String, default: "" },
+  avatarGif: { type: String, default: "" },
+  usernameColor: { type: String, default: "" },
+  messageTextColor: { type: String, default: "" },
+  messageEffect: { type: String, default: "" },
+  profileEntryAnimation: { type: String, default: "" },
+  badges: { type: [String], default: [] },
+  verificationType: { type: String, default: "none" }
+},
+
+activeBadgesResolved: {
+  type: [
+    {
+      key: { type: String, default: "", trim: true },
+      name: { type: String, default: "", trim: true },
+      iconUrl: { type: String, default: "", trim: true },
+      lottieUrl: { type: String, default: "", trim: true },
+      isAnimated: { type: Boolean, default: false },
+    },
+  ],
+  default: [],
+},
 
         customEmojiBadge: {
           emoji: { type: String, default: "" },

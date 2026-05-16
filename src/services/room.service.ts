@@ -22,6 +22,7 @@ import { executeAnaTitleGame } from "./roomGames/anaTitleGame.service";
 import { executeLookalikeGame } from "./roomGames/lookalikeGame.service";
 import { executeShotGameCommand } from "./roomGames/shotGame.service";
 import { executeFakePointsRankCommand } from "./roomGames/fakePointsRankCommand.service";
+import StoreItem from "../models/StoreItem";
 /**
  * ملاحظة مهمة جدًا:
  * - في RoomMessageSchema عندك يوجد Hook يقوم بزيادة messagesCount تلقائيًا عند إنشاء الرسالة.
@@ -187,11 +188,13 @@ class RoomService {
   private io() {
     return getIO();
   }
-  private logCustomBadge(tag: string, data: any) {
-    try {
-    } catch {
-    }
+private logCustomBadge(tag: string, data: any) {
+  try {
+    console.log(`🏷️ [BADGE_DEBUG][${tag}]`, JSON.stringify(data, null, 2));
+  } catch (e: any) {
+    console.log(`🏷️ [BADGE_DEBUG][${tag}]`, data);
   }
+}
   private isValidObjectId(id: string) {
     return Types.ObjectId.isValid(id);
   }
@@ -472,169 +475,402 @@ class RoomService {
 
     return lastPinned?._id ? String(lastPinned._id) : null;
   }
-  private async getUserPublicSnapshot(userId: string) {
-    const User = mongoose.model("User");
+private async resolveActiveBadgesFromUser(user: any) {
+  const userId = String(user?._id || "");
+  const username = String(user?.username || "");
 
-    const u = await User.findById(userId)
-      .select(USER_PUBLIC_FIELDS)
-      .populate({
-        path: "inventory.item",
-        select: "name iconUrl coverUrl previewUrl meta"
-      })
-      .lean();
+  const activeBadgeKeys = Array.isArray(user?.activeCustomization?.badges)
+    ? user.activeCustomization.badges.map((x: any) => String(x).trim()).filter(Boolean)
+    : [];
 
-    this.logCustomBadge("getUserPublicSnapshot:RAW_USER", {
+  const inventory = Array.isArray(user?.inventory) ? user.inventory : [];
+
+  console.log("🏷️ [BADGE_DEBUG][resolveActiveBadgesFromUser:START]", {
+    userId,
+    username,
+    activeBadgeKeys,
+    inventoryCount: inventory.length,
+    inventorySample: inventory.slice(0, 5).map((inv: any) => ({
+      invId: String(inv?._id || ""),
+      itemKey: String(inv?.itemKey || inv?.key || ""),
+      itemId: String(inv?.item?._id || ""),
+      itemKeyFromItem: String(inv?.item?.key || ""),
+      itemName: String(inv?.item?.name || ""),
+      iconUrl: String(inv?.item?.iconUrl || ""),
+      previewUrl: String(inv?.item?.previewUrl || ""),
+      coverUrl: String(inv?.item?.coverUrl || ""),
+      meta: inv?.item?.meta || null,
+    })),
+  });
+
+  if (!activeBadgeKeys.length) {
+    console.log("🏷️ [BADGE_DEBUG][resolveActiveBadgesFromUser:NO_ACTIVE_KEYS]", {
       userId,
-      found: !!u,
-      username: (u as any)?.username,
-      customEmojiBadge: (u as any)?.customEmojiBadge || null,
-      activeCustomization: (u as any)?.activeCustomization || null,
-      badges: (u as any)?.badges || [],
-      inventory: Array.isArray((u as any)?.inventory) ? (u as any).inventory : []
+      username,
     });
 
-    const base = {
-      _id: String(userId),
-      username: "مستخدم",
-      atUsername: "",
-      avatar: "",
-      coverImage: "",
+    return [];
+  }
+
+  /**
+   * أولًا: حاول من inventory لو موجود.
+   */
+  const resolvedFromInventory = activeBadgeKeys
+    .map((badgeKey: string) => {
+      const inv = inventory.find((x: any) => {
+        const item = x?.item || {};
+
+        return (
+          String(x?.itemKey || x?.key || item?.key || "").trim() === badgeKey ||
+          String(item?._id || "").trim() === badgeKey ||
+          String(x?._id || "").trim() === badgeKey
+        );
+      });
+
+      const item = inv?.item || {};
+
+      const iconUrl = String(
+        item?.iconUrl ||
+          item?.previewUrl ||
+          item?.coverUrl ||
+          item?.meta?.iconUrl ||
+          item?.meta?.previewUrl ||
+          item?.meta?.imageUrl ||
+          ""
+      ).trim();
+
+      const lottieUrl = String(
+        item?.meta?.lottieUrl ||
+          item?.meta?.animationUrl ||
+          item?.meta?.jsonUrl ||
+          item?.meta?.lottie ||
+          ""
+      ).trim();
+
+      const badge = {
+        key: badgeKey,
+        name: String(item?.name || inv?.name || badgeKey),
+        iconUrl,
+        lottieUrl,
+        isAnimated: Boolean(
+          lottieUrl ||
+            item?.meta?.isAnimated ||
+            item?.meta?.type === "lottie"
+        ),
+      };
+
+      console.log("🏷️ [BADGE_DEBUG][resolveActiveBadgesFromUser:FROM_INVENTORY_ONE]", {
+        userId,
+        username,
+        badgeKey,
+        foundInventory: Boolean(inv),
+        itemId: String(item?._id || ""),
+        itemKey: String(item?.key || ""),
+        itemName: String(item?.name || ""),
+        meta: item?.meta || null,
+        resolvedBadge: badge,
+      });
+
+      return badge;
+    })
+    .filter((b: any) => b.key && (b.iconUrl || b.lottieUrl));
+
+  if (resolvedFromInventory.length > 0) {
+    console.log("🏷️ [BADGE_DEBUG][resolveActiveBadgesFromUser:DONE_FROM_INVENTORY]", {
+      userId,
+      username,
+      resolvedCount: resolvedFromInventory.length,
+      resolved: resolvedFromInventory,
+    });
+
+    return resolvedFromInventory;
+  }
+
+  /**
+   * ثانيًا: fallback من StoreItem مباشرة.
+   * هذا هو المهم عندك لأن inventory داخل User راجع فارغ.
+   */
+  const storeItems = await StoreItem.find({
+    type: "badge",
+    key: { $in: activeBadgeKeys },
+  })
+    .select("name type key iconUrl coverUrl previewUrl meta")
+    .lean();
+
+  console.log("🏷️ [BADGE_DEBUG][resolveActiveBadgesFromUser:STORE_ITEMS]", {
+    userId,
+    username,
+    activeBadgeKeys,
+    foundCount: storeItems.length,
+    items: storeItems.map((item: any) => ({
+      id: String(item?._id || ""),
+      key: String(item?.key || ""),
+      name: String(item?.name || ""),
+      iconUrl: String(item?.iconUrl || ""),
+      previewUrl: String(item?.previewUrl || ""),
+      coverUrl: String(item?.coverUrl || ""),
+      meta: item?.meta || null,
+    })),
+  });
+
+  const itemByKey = new Map(
+    storeItems.map((item: any) => [String(item?.key || "").trim(), item])
+  );
+
+  const resolvedFromStore = activeBadgeKeys
+    .map((badgeKey: string) => {
+      const item: any = itemByKey.get(badgeKey);
+
+      if (!item) {
+        console.log("🏷️ [BADGE_DEBUG][resolveActiveBadgesFromUser:STORE_ITEM_NOT_FOUND]", {
+          userId,
+          username,
+          badgeKey,
+        });
+
+        return null;
+      }
+
+      const iconUrl = String(
+        item?.iconUrl ||
+          item?.previewUrl ||
+          item?.coverUrl ||
+          item?.meta?.iconUrl ||
+          item?.meta?.previewUrl ||
+          item?.meta?.imageUrl ||
+          ""
+      ).trim();
+
+      const lottieUrl = String(
+        item?.meta?.lottieUrl ||
+          item?.meta?.animationUrl ||
+          item?.meta?.jsonUrl ||
+          item?.meta?.lottie ||
+          ""
+      ).trim();
+
+      const badge = {
+        key: badgeKey,
+        name: String(item?.name || badgeKey),
+        iconUrl,
+        lottieUrl,
+        isAnimated: Boolean(
+          lottieUrl ||
+            item?.meta?.isAnimated ||
+            item?.meta?.type === "lottie"
+        ),
+      };
+
+      console.log("🏷️ [BADGE_DEBUG][resolveActiveBadgesFromUser:FROM_STORE_ONE]", {
+        userId,
+        username,
+        badgeKey,
+        itemId: String(item?._id || ""),
+        itemKey: String(item?.key || ""),
+        itemName: String(item?.name || ""),
+        meta: item?.meta || null,
+        resolvedBadge: badge,
+      });
+
+      return badge;
+    })
+    .filter((b: any) => b && b.key && (b.iconUrl || b.lottieUrl));
+
+  console.log("🏷️ [BADGE_DEBUG][resolveActiveBadgesFromUser:DONE]", {
+    userId,
+    username,
+    resolvedCount: resolvedFromStore.length,
+    resolved: resolvedFromStore,
+  });
+
+  return resolvedFromStore;
+}
+private async getUserPublicSnapshot(userId: string) {
+  const User = mongoose.model("User");
+
+  const u = await User.findById(userId)
+    .select(USER_PUBLIC_FIELDS)
+    .populate({
+      path: "inventory.item",
+      select: "name type key iconUrl coverUrl previewUrl meta"
+    })
+    .lean();
+
+  this.logCustomBadge("getUserPublicSnapshot:RAW_USER", {
+    userId,
+    found: !!u,
+    username: (u as any)?.username,
+    customEmojiBadge: (u as any)?.customEmojiBadge || null,
+    activeCustomization: (u as any)?.activeCustomization || null,
+    badges: (u as any)?.badges || [],
+    inventory: Array.isArray((u as any)?.inventory) ? (u as any).inventory : []
+  });
+
+  const base = {
+    _id: String(userId),
+    username: "مستخدم",
+    atUsername: "",
+    avatar: "",
+    coverImage: "",
+    avatarGif: "",
+    usernameColor: "",
+    messageTextColor: "",
+    isOnline: false,
+    lastSeen: null as any,
+    role: "user",
+
+    activeCustomization: {
+      avatarFrame: "",
       avatarGif: "",
       usernameColor: "",
       messageTextColor: "",
-      isOnline: false,
-      lastSeen: null as any,
-      role: "user",
-
-      activeCustomization: {
-        avatarFrame: "",
-        avatarGif: "",
-        usernameColor: "",
-        messageTextColor: "",
-        messageEffect: "",
-        profileEntryAnimation: "",
-        badges: [],
-        verificationType: "none"
-      },
-      verificationType: "none",
-      avatarFrame: "",
-      badges: [] as string[],
-      ownedMessageEffects: [] as string[],
-      ownedGifts: [] as string[],
+      messageEffect: "",
       profileEntryAnimation: "",
+      badges: [],
+      verificationType: "none"
+    },
 
-      customEmojiBadge: {
-        emoji: "",
-        isActive: false,
-        purchasedAt: null as any,
-        expiresAt: null as any
-      },
+    activeBadgesResolved: [] as any[],
 
-      inventory: [] as any[],
+    verificationType: "none",
+    avatarFrame: "",
+    badges: [] as string[],
+    ownedMessageEffects: [] as string[],
+    ownedGifts: [] as string[],
+    profileEntryAnimation: "",
 
-      followersCount: 0,
-      followingCount: 0,
-      totalLikesReceived: 0,
-      totalRetweetsReceived: 0,
-      profileViews: 0
-    };
+    customEmojiBadge: {
+      emoji: "",
+      isActive: false,
+      purchasedAt: null as any,
+      expiresAt: null as any
+    },
 
-    if (!u) {
-      this.logCustomBadge("getUserPublicSnapshot:RETURN_BASE", {
-        userId,
-        snapshot: base
-      });
-      return base;
-    }
+    inventory: [] as any[],
 
-    const snapshot = {
-      ...base,
-      _id: String((u as any)._id),
+    followersCount: 0,
+    followingCount: 0,
+    totalLikesReceived: 0,
+    totalRetweetsReceived: 0,
+    profileViews: 0
+  };
 
-      username: (u as any).username || base.username,
-      atUsername: (u as any).atUsername || base.atUsername,
-      avatar: (u as any).avatar || base.avatar,
-      coverImage: (u as any).coverImage || base.coverImage,
-      avatarGif: (u as any).avatarGif || base.avatarGif,
-      usernameColor: (u as any).usernameColor || base.usernameColor,
-      messageTextColor: (u as any).messageTextColor || base.messageTextColor,
-      isOnline: Boolean((u as any).isOnline),
-      lastSeen: (u as any).lastSeen || null,
-      role: (u as any).role || base.role,
-      activeCustomization: {
-        avatarFrame:
-          (u as any)?.activeCustomization?.avatarFrame || base.activeCustomization.avatarFrame,
-        avatarGif:
-          (u as any)?.activeCustomization?.avatarGif ||
-          (u as any)?.avatarGif ||
-          base.activeCustomization.avatarGif,
-        usernameColor:
-          (u as any)?.activeCustomization?.usernameColor ||
-          (u as any)?.usernameColor ||
-          base.activeCustomization.usernameColor,
-        messageTextColor:
-          (u as any)?.activeCustomization?.messageTextColor ||
-          (u as any)?.messageTextColor ||
-          base.activeCustomization.messageTextColor,
-        messageEffect:
-          (u as any)?.activeCustomization?.messageEffect || base.activeCustomization.messageEffect,
-        profileEntryAnimation:
-          (u as any)?.activeCustomization?.profileEntryAnimation ||
-          (u as any)?.profileEntryAnimation ||
-          base.activeCustomization.profileEntryAnimation,
-        badges: Array.isArray((u as any)?.activeCustomization?.badges)
-          ? (u as any).activeCustomization.badges
-          : base.activeCustomization.badges,
-        verificationType:
-          (u as any)?.activeCustomization?.verificationType ||
-          (u as any)?.verificationType ||
-          base.activeCustomization.verificationType,
-      },
-      // activeCustomization: (u as any).activeCustomization || base.activeCustomization,
+  if (!u) {
+    this.logCustomBadge("getUserPublicSnapshot:RETURN_BASE", {
+      userId,
+      snapshot: base
+    });
 
-      verificationType: (u as any).verificationType || base.verificationType,
-      avatarFrame: (u as any).avatarFrame || base.avatarFrame,
-      badges: Array.isArray((u as any).badges) ? (u as any).badges : base.badges,
-      ownedMessageEffects: Array.isArray((u as any).ownedMessageEffects)
-        ? (u as any).ownedMessageEffects
-        : base.ownedMessageEffects,
-      ownedGifts: Array.isArray((u as any).ownedGifts)
-        ? (u as any).ownedGifts
-        : base.ownedGifts,
-      profileEntryAnimation: (u as any).profileEntryAnimation || base.profileEntryAnimation,
+    return base;
+  }
+const activeBadgesResolved = await this.resolveActiveBadgesFromUser(u);
+  const snapshot = {
+    ...base,
+    _id: String((u as any)._id),
 
-      customEmojiBadge:
-        (u as any).customEmojiBadge && typeof (u as any).customEmojiBadge === "object"
-          ? {
+    username: (u as any).username || base.username,
+    atUsername: (u as any).atUsername || base.atUsername,
+    avatar: (u as any).avatar || base.avatar,
+    coverImage: (u as any).coverImage || base.coverImage,
+    avatarGif: (u as any).avatarGif || base.avatarGif,
+    usernameColor: (u as any).usernameColor || base.usernameColor,
+    messageTextColor: (u as any).messageTextColor || base.messageTextColor,
+    isOnline: Boolean((u as any).isOnline),
+    lastSeen: (u as any).lastSeen || null,
+    role: (u as any).role || base.role,
+
+    activeCustomization: {
+      avatarFrame:
+        (u as any)?.activeCustomization?.avatarFrame ||
+        base.activeCustomization.avatarFrame,
+
+      avatarGif:
+        (u as any)?.activeCustomization?.avatarGif ||
+        (u as any)?.avatarGif ||
+        base.activeCustomization.avatarGif,
+
+      usernameColor:
+        (u as any)?.activeCustomization?.usernameColor ||
+        (u as any)?.usernameColor ||
+        base.activeCustomization.usernameColor,
+
+      messageTextColor:
+        (u as any)?.activeCustomization?.messageTextColor ||
+        (u as any)?.messageTextColor ||
+        base.activeCustomization.messageTextColor,
+
+      messageEffect:
+        (u as any)?.activeCustomization?.messageEffect ||
+        base.activeCustomization.messageEffect,
+
+      profileEntryAnimation:
+        (u as any)?.activeCustomization?.profileEntryAnimation ||
+        (u as any)?.profileEntryAnimation ||
+        base.activeCustomization.profileEntryAnimation,
+
+      badges: Array.isArray((u as any)?.activeCustomization?.badges)
+        ? (u as any).activeCustomization.badges.map((x: any) => String(x))
+        : base.activeCustomization.badges,
+
+      verificationType:
+        (u as any)?.activeCustomization?.verificationType ||
+        (u as any)?.verificationType ||
+        base.activeCustomization.verificationType,
+    },
+
+    verificationType: (u as any).verificationType || base.verificationType,
+    avatarFrame: (u as any).avatarFrame || base.avatarFrame,
+
+    badges: Array.isArray((u as any).badges)
+      ? (u as any).badges.map((x: any) => String(x))
+      : base.badges,
+
+    ownedMessageEffects: Array.isArray((u as any).ownedMessageEffects)
+      ? (u as any).ownedMessageEffects
+      : base.ownedMessageEffects,
+
+    ownedGifts: Array.isArray((u as any).ownedGifts)
+      ? (u as any).ownedGifts
+      : base.ownedGifts,
+
+    profileEntryAnimation:
+      (u as any).profileEntryAnimation || base.profileEntryAnimation,
+
+    customEmojiBadge:
+      (u as any).customEmojiBadge &&
+      typeof (u as any).customEmojiBadge === "object"
+        ? {
             emoji: String((u as any).customEmojiBadge.emoji || ""),
             isActive: Boolean((u as any).customEmojiBadge.isActive),
             purchasedAt: (u as any).customEmojiBadge.purchasedAt || null,
             expiresAt: (u as any).customEmojiBadge.expiresAt || null
           }
-          : base.customEmojiBadge,
+        : base.customEmojiBadge,
 
-      inventory: Array.isArray((u as any).inventory)
-        ? (u as any).inventory
-        : base.inventory,
+    inventory: Array.isArray((u as any).inventory)
+      ? (u as any).inventory
+      : base.inventory,
 
-      followersCount: Number((u as any).followersCount || 0),
-      followingCount: Number((u as any).followingCount || 0),
-      totalLikesReceived: Number((u as any).totalLikesReceived || 0),
-      totalRetweetsReceived: Number((u as any).totalRetweetsReceived || 0),
-      profileViews: Number((u as any).profileViews || 0)
-    };
+activeBadgesResolved,
+    followersCount: Number((u as any).followersCount || 0),
+    followingCount: Number((u as any).followingCount || 0),
+    totalLikesReceived: Number((u as any).totalLikesReceived || 0),
+    totalRetweetsReceived: Number((u as any).totalRetweetsReceived || 0),
+    profileViews: Number((u as any).profileViews || 0)
+  };
 
-    this.logCustomBadge("getUserPublicSnapshot:RETURN_SNAPSHOT", {
-      userId,
-      username: snapshot.username,
-      customEmojiBadge: snapshot.customEmojiBadge,
-      activeCustomization: snapshot.activeCustomization,
-      badges: snapshot.badges,
-      inventory: snapshot.inventory
-    });
+  this.logCustomBadge("getUserPublicSnapshot:RETURN_SNAPSHOT", {
+    userId,
+    username: snapshot.username,
+    customEmojiBadge: snapshot.customEmojiBadge,
+    activeCustomization: snapshot.activeCustomization,
+    badges: snapshot.badges,
+    inventory: snapshot.inventory,
+    activeBadgesResolved: snapshot.activeBadgesResolved,
+  });
 
-    return snapshot;
-  }
+  return snapshot;
+}
 
   async getUserState(roomId: string, userId: string): Promise<RoomUserStateLean> {
     const state = await RoomUserState.findOne({ room: roomId, user: userId }).lean();
@@ -1453,6 +1689,19 @@ class RoomService {
       payload.senderSnapshot = await this.getUserPublicSnapshot(payload.sender);
 
     }
+    console.log("🏷️ [BADGE_DEBUG][system:senderSnapshot]", {
+  roomId,
+  type,
+  content,
+  sender: String(payload.sender || ""),
+  senderUsername: String(payload.senderSnapshot?.username || ""),
+  activeCustomizationBadges:
+    payload.senderSnapshot?.activeCustomization?.badges || [],
+  inventoryCount: Array.isArray(payload.senderSnapshot?.inventory)
+    ? payload.senderSnapshot.inventory.length
+    : 0,
+  activeBadgesResolved: payload.senderSnapshot?.activeBadgesResolved || [],
+});
 
     const msg = await RoomMessage.create(payload);
 
@@ -1685,16 +1934,28 @@ class RoomService {
 
 
     if (!joined) {
-
       return { success: true };
     }
 
+    /**
+     * مهم جدًا:
+     * اجعل بداية الرسائل من لحظة دخول المستخدم فقط.
+     * أي رسائل قبل joinAt لن تظهر له عند جلب رسائل الغرفة.
+     */
     const keepPinnedId = await this.getLastPinnedBefore(roomId, joinAt);
 
-    this.io().to(`room:${roomId}`).emit("room:user:joined", { roomId, userId });
+    await this.setClearedAt(roomId, uid, joinAt, keepPinnedId);
+
+    this.io().to(`room:${roomId}`).emit("room:user:joined", {
+      roomId,
+      userId: uid,
+    });
 
     // لو لا تريد رسالة "دخل" علقها
-    await this.system(roomId, "دخل", "join", { sender: userId, mentions: [userId] });
+    await this.system(roomId, "دخل", "join", {
+      sender: uid,
+      mentions: [uid],
+    });
 
     if (roomBotEnabled && welcomeEnabled) {
 
@@ -2594,14 +2855,19 @@ class RoomService {
     }
 
     const senderSnapshot = await this.getUserPublicSnapshot(senderId);
-    this.logCustomBadge("sendMessage:SENDER_SNAPSHOT", {
-      roomId,
-      senderId,
-      username: senderSnapshot?.username,
-      customEmojiBadge: senderSnapshot?.customEmojiBadge || null,
-      activeCustomization: senderSnapshot?.activeCustomization || null,
-      badges: senderSnapshot?.badges || []
-    });
+ console.log("🏷️ [BADGE_DEBUG][sendMessage:senderSnapshot]", {
+  roomId,
+  senderId,
+  type,
+  content,
+  username: senderSnapshot?.username,
+  activeCustomizationBadges:
+    senderSnapshot?.activeCustomization?.badges || [],
+  inventoryCount: Array.isArray(senderSnapshot?.inventory)
+    ? senderSnapshot.inventory.length
+    : 0,
+  activeBadgesResolved: senderSnapshot?.activeBadgesResolved || [],
+});
     try {
       let replyToId: Types.ObjectId | undefined = undefined;
 
@@ -2670,6 +2936,7 @@ class RoomService {
         senderSnapshot: message.senderSnapshot || null,
         customEmojiBadge: (message.senderSnapshot as any)?.customEmojiBadge || null
       });
+
       // ✅ بث مرة واحدة فقط بعد إنشاء فعلي
       this.io().to(`room:${roomId}`).emit("room:message:new", message);
 
@@ -2719,45 +2986,45 @@ class RoomService {
   .top
   .nx
 ===================================================== */
-try {
-  const text = String(content || "").trim();
+      try {
+        const text = String(content || "").trim();
 
-  if (type === "text" && text) {
-    const senderName =
-      String(
-        (message as any)?.senderSnapshot?.username ||
-          (senderSnapshot as any)?.username ||
-          (message as any)?.senderSnapshot?.atUsername ||
-          (senderSnapshot as any)?.atUsername ||
-          ""
-      ).trim() || "مستخدم";
+        if (type === "text" && text) {
+          const senderName =
+            String(
+              (message as any)?.senderSnapshot?.username ||
+              (senderSnapshot as any)?.username ||
+              (message as any)?.senderSnapshot?.atUsername ||
+              (senderSnapshot as any)?.atUsername ||
+              ""
+            ).trim() || "مستخدم";
 
-    const fakePointsRankResult = await executeFakePointsRankCommand({
-      roomId: String(roomId),
-      userId: String(senderId),
-      username: senderName,
-      content: text,
-    });
+          const fakePointsRankResult = await executeFakePointsRankCommand({
+            roomId: String(roomId),
+            userId: String(senderId),
+            username: senderName,
+            content: text,
+          });
 
-    if (fakePointsRankResult?.handled) {
-      await this.system(
-        roomId,
-        fakePointsRankResult.text || "No result.",
-        "system",
-        {
-          systemType: "fake_points_rank",
-          sender: senderId,
-          mentions: [senderId],
-          meta: fakePointsRankResult.meta || {},
+          if (fakePointsRankResult?.handled) {
+            await this.system(
+              roomId,
+              fakePointsRankResult.text || "No result.",
+              "system",
+              {
+                systemType: "fake_points_rank",
+                sender: senderId,
+                mentions: [senderId],
+                meta: fakePointsRankResult.meta || {},
+              }
+            );
+
+            return message;
+          }
         }
-      );
-
-      return message;
-    }
-  }
-} catch (error) {
-  console.log("❌ fake points rank command error:", error);
-}
+      } catch (error) {
+        console.log("❌ fake points rank command error:", error);
+      }
       /* =====================================================
    ROOM BOOST COMMANDS
    top    => أكثر 10 غرف Boost هذا الشهر
@@ -4114,7 +4381,7 @@ try {
       room,
     };
   }
- 
+
 
   /* =====================================================
      ROLES MANAGEMENT (Promote / Demote / Membership)
@@ -5107,131 +5374,206 @@ try {
   /* =====================================================
      ROOM USERS (WITH ROLES & STATUS)
   ===================================================== */
-  async getRoomUsers(roomId: string) {
-    const room = await Room.findById(roomId)
-      .populate({
-        path: "creator",
-        select: USER_PUBLIC_FIELDS,
-        populate: {
-          path: "inventory.item",
-          select: "name iconUrl coverUrl previewUrl meta"
-        }
-      })
-      .populate({
-        path: "owners",
-        select: USER_PUBLIC_FIELDS,
-        populate: {
-          path: "inventory.item",
-          select: "name iconUrl coverUrl previewUrl meta"
-        }
-      })
-      .populate({
-        path: "admins",
-        select: USER_PUBLIC_FIELDS,
-        populate: {
-          path: "inventory.item",
-          select: "name iconUrl coverUrl previewUrl meta"
-        }
-      })
-      .populate({
-        path: "members",
-        select: USER_PUBLIC_FIELDS,
-        populate: {
-          path: "inventory.item",
-          select: "name iconUrl coverUrl previewUrl meta"
-        }
-      });
-
-    if (!room) throw new Error("Room not found");
-    this.ensureArrays(room);
-
-    const now = new Date();
-
-    const formatUser = (user: any, role: Role) => {
-      const vip = (room.vipUsers || []).find((v: any) => v.user.toString() === user._id.toString());
-      const muted = (room.mutedUsers || []).find((m: any) => m.user.toString() === user._id.toString());
-
-      const isActive = (room.activeUsers || []).some(
-        (u: any) => u?.toString?.() === user._id.toString()
-      );
-
-      return {
-        _id: user._id,
-        username: user.username,
-        avatar: user.avatar,
-        role,
-        isActive,
-
-        activeCustomization: user.activeCustomization || {
-          avatarFrame: "",
-          messageEffect: "",
-          profileEntryAnimation: "",
-          badges: [],
-          verificationType: "none"
-        },
-
-        customEmojiBadge:
-          user?.customEmojiBadge && typeof user.customEmojiBadge === "object"
-            ? {
-              emoji: String(user.customEmojiBadge.emoji || ""),
-              isActive: Boolean(user.customEmojiBadge.isActive),
-              expiresAt: user.customEmojiBadge.expiresAt || null
-            }
-            : null,
-
-        inventory: Array.isArray(user?.inventory) ? user.inventory : [],
-
-        isVip: !!vip,
-        vipExpiresAt: vip?.expiresAt || null,
-        isMuted: !!muted && muted.until > now,
-        mutedUntil: muted?.until || null
-      };
-    };
-
-    const rank: Record<Role, number> = {
-      none: 0,
-      member: 1,
-      admin: 2,
-      owner: 3,
-      creator: 4
-    };
-
-    const byId = new Map<string, any>();
-
-    const upsert = (user: any, role: Role) => {
-      if (!user?._id) return;
-      const id = user._id.toString();
-
-      const existing = byId.get(id);
-      if (!existing) {
-        byId.set(id, formatUser(user, role));
-        return;
-      }
-
-      if (rank[role] > rank[existing.role as Role]) {
-        const merged = formatUser(user, role);
-        byId.set(id, { ...existing, ...merged, role });
-      } else {
-        const refreshed = formatUser(user, existing.role as Role);
-        byId.set(id, { ...existing, ...refreshed });
-      }
-    };
-
-    upsert(room.creator, "creator");
-    for (const u of room.owners || []) upsert(u, "owner");
-    for (const u of room.admins || []) upsert(u, "admin");
-    for (const u of room.members || []) upsert(u, "member");
-
-    let users = Array.from(byId.values()).sort((a, b) => {
-      const diff = rank[b.role as Role] - rank[a.role as Role];
-      if (diff !== 0) return diff;
-      return String(a.username || "").localeCompare(String(b.username || ""));
+ async getRoomUsers(roomId: string) {
+  const room = await Room.findById(roomId)
+    .populate({
+      path: "creator",
+      select: USER_PUBLIC_FIELDS,
+      populate: {
+        path: "inventory.item",
+        select: "name type key iconUrl coverUrl previewUrl meta",
+      },
+    })
+    .populate({
+      path: "owners",
+      select: USER_PUBLIC_FIELDS,
+      populate: {
+        path: "inventory.item",
+        select: "name type key iconUrl coverUrl previewUrl meta",
+      },
+    })
+    .populate({
+      path: "admins",
+      select: USER_PUBLIC_FIELDS,
+      populate: {
+        path: "inventory.item",
+        select: "name type key iconUrl coverUrl previewUrl meta",
+      },
+    })
+    .populate({
+      path: "members",
+      select: USER_PUBLIC_FIELDS,
+      populate: {
+        path: "inventory.item",
+        select: "name type key iconUrl coverUrl previewUrl meta",
+      },
     });
 
-    users = users.filter((u) => u.isActive);
+  if (!room) throw new Error("Room not found");
 
-    return { total: users.length, users };
+  this.ensureArrays(room);
+
+  const now = new Date();
+
+  const formatUser = async (user: any, role: Role) => {
+    const vip = (room.vipUsers || []).find(
+      (v: any) => v.user.toString() === user._id.toString()
+    );
+
+    const muted = (room.mutedUsers || []).find(
+      (m: any) => m.user.toString() === user._id.toString()
+    );
+
+    const isActive = (room.activeUsers || []).some(
+      (u: any) => u?.toString?.() === user._id.toString()
+    );
+
+    const activeBadgesResolved = await this.resolveActiveBadgesFromUser(user);
+
+    return {
+      _id: user._id,
+      username: user.username,
+      avatar: user.avatar || "",
+
+      avatarGif:
+        user?.activeCustomization?.avatarGif ||
+        user?.avatarGif ||
+        "",
+
+      usernameColor:
+        user?.activeCustomization?.usernameColor ||
+        user?.usernameColor ||
+        "",
+
+      messageTextColor:
+        user?.activeCustomization?.messageTextColor ||
+        user?.messageTextColor ||
+        "",
+
+      role,
+      isActive,
+
+      activeCustomization: {
+        avatarFrame: user?.activeCustomization?.avatarFrame || "",
+
+        avatarGif:
+          user?.activeCustomization?.avatarGif ||
+          user?.avatarGif ||
+          "",
+
+        usernameColor:
+          user?.activeCustomization?.usernameColor ||
+          user?.usernameColor ||
+          "",
+
+        messageTextColor:
+          user?.activeCustomization?.messageTextColor ||
+          user?.messageTextColor ||
+          "",
+
+        messageEffect: user?.activeCustomization?.messageEffect || "",
+
+        profileEntryAnimation:
+          user?.activeCustomization?.profileEntryAnimation ||
+          user?.profileEntryAnimation ||
+          "",
+
+        badges: Array.isArray(user?.activeCustomization?.badges)
+          ? user.activeCustomization.badges.map((x: any) => String(x))
+          : [],
+
+        verificationType:
+          user?.activeCustomization?.verificationType ||
+          user?.verificationType ||
+          "none",
+      },
+
+      verificationType:
+        user?.activeCustomization?.verificationType ||
+        user?.verificationType ||
+        "none",
+
+      customEmojiBadge:
+        user?.customEmojiBadge && typeof user.customEmojiBadge === "object"
+          ? {
+              emoji: String(user.customEmojiBadge.emoji || ""),
+              isActive: Boolean(user.customEmojiBadge.isActive),
+              purchasedAt: user.customEmojiBadge.purchasedAt || null,
+              expiresAt: user.customEmojiBadge.expiresAt || null,
+            }
+          : null,
+
+      inventory: Array.isArray(user?.inventory) ? user.inventory : [],
+
+      activeBadgesResolved,
+
+      isVip: !!vip,
+      vipExpiresAt: vip?.expiresAt || null,
+      isMuted: !!muted && muted.until > now,
+      mutedUntil: muted?.until || null,
+    };
+  };
+
+  const rank: Record<Role, number> = {
+    none: 0,
+    member: 1,
+    admin: 2,
+    owner: 3,
+    creator: 4,
+  };
+
+  const byId = new Map<string, any>();
+
+  const upsert = async (user: any, role: Role) => {
+    if (!user?._id) return;
+
+    const id = user._id.toString();
+    const existing = byId.get(id);
+
+    if (!existing) {
+      byId.set(id, await formatUser(user, role));
+      return;
+    }
+
+    if (rank[role] > rank[existing.role as Role]) {
+      const merged = await formatUser(user, role);
+      byId.set(id, { ...existing, ...merged, role });
+    } else {
+      const refreshed = await formatUser(user, existing.role as Role);
+      byId.set(id, { ...existing, ...refreshed });
+    }
+  };
+
+  await upsert(room.creator, "creator");
+
+  for (const u of room.owners || []) {
+    await upsert(u, "owner");
   }
+
+  for (const u of room.admins || []) {
+    await upsert(u, "admin");
+  }
+
+  for (const u of room.members || []) {
+    await upsert(u, "member");
+  }
+
+  let users = Array.from(byId.values()).sort((a, b) => {
+    const diff = rank[b.role as Role] - rank[a.role as Role];
+    if (diff !== 0) return diff;
+
+    return String(a.username || "").localeCompare(
+      String(b.username || "")
+    );
+  });
+
+  users = users.filter((u) => u.isActive);
+
+  return {
+    total: users.length,
+    users,
+  };
+}
 
   /* =====================================================
      INCREASE MAX USERS LIMIT
