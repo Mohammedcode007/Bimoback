@@ -24,9 +24,13 @@ function bufferToStream(buffer: Buffer) {
 }
 
 export function getResourceType(mimeType: string): "image" | "video" | "raw" {
-  if (mimeType.startsWith("image/")) return "image";
-  if (mimeType.startsWith("video/")) return "video";
-  if (mimeType.startsWith("audio/")) return "video";
+  const mime = String(mimeType || "").toLowerCase();
+
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("video/")) return "video";
+
+  // Cloudinary يتعامل مع الصوت كـ video resource
+  if (mime.startsWith("audio/")) return "video";
 
   return "raw";
 }
@@ -36,7 +40,8 @@ export function uploadBufferToCloudinary(
   options: UploadApiOptions = {}
 ): Promise<CloudinaryUploadResult> {
   return new Promise((resolve, reject) => {
-    const resourceType = getResourceType(file.mimetype);
+    const mimetype = String(file.mimetype || "").toLowerCase();
+    const resourceType = getResourceType(mimetype);
 
     const uploadOptions: UploadApiOptions = {
       resource_type: resourceType,
@@ -47,16 +52,33 @@ export function uploadBufferToCloudinary(
       ...options,
     };
 
+    console.log("[cloudinaryUpload] start:", {
+      originalname: file.originalname,
+      mimetype,
+      size: file.size,
+      resourceType: uploadOptions.resource_type,
+      folder: uploadOptions.folder,
+    });
+
     const uploadStream = cloudinary.uploader.upload_stream(
       uploadOptions,
       (error, result?: UploadApiResponse) => {
         if (error) {
+          console.error("[cloudinaryUpload] error:", error);
           return reject(error);
         }
 
         if (!result) {
           return reject(new Error("Cloudinary upload failed"));
         }
+
+        console.log("[cloudinaryUpload] success:", {
+          publicId: result.public_id,
+          resourceType: result.resource_type,
+          format: result.format,
+          bytes: result.bytes,
+          duration: result.duration,
+        });
 
         resolve({
           url: result.url,
