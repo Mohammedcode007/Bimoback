@@ -2727,47 +2727,7 @@ activeBadgesResolved,
       messageId: String(message._id)
     };
   }
-  // async getRoomsByType(
-  //   type: RoomType,
-  //   pagination: { limit?: number; page?: number } = {}
-  // ) {
-  //   const t: RoomType = Object.values(RoomType).includes(type)
-  //     ? type
-  //     : RoomType.PUBLIC;
 
-  //   const limit = Math.max(1, Math.min(100, Number(pagination.limit) || 30));
-  //   const page = Math.max(1, Number(pagination.page) || 1);
-  //   const skip = (page - 1) * limit;
-
-  //   const filter: any = {};
-
-  //   // ✅ لو Public → اعرض Public + Protected فقط
-  //   if (t === RoomType.PUBLIC) {
-  //     filter.type = { $in: [RoomType.PUBLIC, RoomType.PROTECTED] };
-  //   } else {
-  //     // ✅ باقي الأنواع كما هي
-  //     filter.type = t;
-  //   }
-
-  //   const [items, total] = await Promise.all([
-  //     Room.find(filter)
-  //       .select("-password")
-  //       .sort({ boostPoints: -1, usersCount: -1, createdAt: -1 })
-  //       .skip(skip)
-  //       .limit(limit)
-  //       .lean(),
-  //     Room.countDocuments(filter),
-  //   ]);
-
-  //   return {
-  //     type: t,
-  //     page,
-  //     limit,
-  //     total,
-  //     pages: Math.ceil(total / limit),
-  //     items,
-  //   };
-  // }
 
   async searchRooms(query: string, viewerId?: string, type?: RoomType, limit = 30) {
     const q = String(query || "").trim();

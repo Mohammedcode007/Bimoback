@@ -42,8 +42,7 @@ app.use(
   })
 );
 
-app.use(express.json({ limit: "1mb" }));
-
+app.use(express.json({ limit: "10mb" }));
 /* =========================
    Static Pages
 ========================= */
@@ -102,6 +101,19 @@ app.use("/api/stories", storyRoutes);
 app.use("/api/chats", chatRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/rooms", roomRoutes);
+app.use("/api/upload", (req, _res, next) => {
+  console.log("📥 [UPLOAD REQUEST ENTERED]", {
+    method: req.method,
+    url: req.originalUrl,
+    contentType: req.headers["content-type"],
+    contentLength: req.headers["content-length"],
+    platform: req.headers["x-platform"],
+    appVersion: req.headers["x-app-version"],
+  });
+
+  next();
+});
+
 app.use("/api/upload", uploadRoutes);
 app.use("/api/contact-us", contactUsRoutes);
 app.use("/api/blocks", blockRoutes);
@@ -117,6 +129,45 @@ app.use((req, res) => {
   });
 });
 
+
+/* =========================
+   Error Handler
+========================= */
+/* =========================
+   Error Logger
+========================= */
+app.use((error: any, req: any, res: any, next: any) => {
+  console.log("🔥🔥🔥 [BACKEND ERROR]", {
+    method: req.method,
+    url: req.originalUrl,
+    path: req.path,
+    code: error?.code,
+    name: error?.name,
+    message: error?.message,
+    stack: error?.stack,
+    contentType: req.headers["content-type"],
+    contentLength: req.headers["content-length"],
+  });
+
+  if (error?.code === "LIMIT_FILE_SIZE") {
+    return res.status(413).json({
+      success: false,
+      code: "FILE_TOO_LARGE",
+      message: "File is too large",
+      maxSize: "100MB",
+    });
+  }
+
+  if (String(error?.message || "").includes("Unsupported file type")) {
+    return res.status(400).json({
+      success: false,
+      code: "UNSUPPORTED_FILE_TYPE",
+      message: error.message,
+    });
+  }
+
+  return next(error);
+});
 
 /* =========================
    Error Handler
