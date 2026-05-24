@@ -14,7 +14,12 @@ export type CustomEmojiBadge = {
   purchasedAt?: Date | null;
   expiresAt?: Date | null;
 };
-
+export type CustomImageBadge = {
+  url: string;
+  isActive: boolean;
+  purchasedAt?: Date | null;
+  expiresAt?: Date | null;
+};
 export type UserStory = {
   _id?: mongoose.Types.ObjectId;
 
@@ -72,7 +77,7 @@ export interface IUser extends Document {
   email?: string | null;
   googleUid?: string | null;
   provider?: "local" | "google";
-gender?: "male" | "female";
+  gender?: "male" | "female";
   isBot?: boolean;
   isOfficial?: boolean;
   botType?: BotType | null;
@@ -108,8 +113,14 @@ gender?: "male" | "female";
   country?: string;
   bio?: string;
   avatar?: string;
+  avatarPublicId?: string;
+
   avatarGif?: string;
+  avatarGifPublicId?: string;
+
   coverImage?: string;
+  cover?: string;
+  coverImagePublicId?: string;
 
   usernameColor?: string;
   messageTextColor?: string;
@@ -126,13 +137,13 @@ gender?: "male" | "female";
 
   activeCustomization: ActiveCustomization;
   customEmojiBadge?: CustomEmojiBadge;
-
+customImageBadge?: CustomImageBadge;
   followersCount: number;
-    giftsSentCount: number;
-    profileViewTimestamps?: {
-  viewer: mongoose.Types.ObjectId;
-  viewedAt: Date;
-}[];
+  giftsSentCount: number;
+  profileViewTimestamps?: {
+    viewer: mongoose.Types.ObjectId;
+    viewedAt: Date;
+  }[];
   giftsReceivedCount: number;
   followingCount: number;
   totalLikesReceived: number;
@@ -153,7 +164,7 @@ gender?: "male" | "female";
 
   displayName?: string;
   city?: string;
-age?: number;
+  age?: number;
   privacy?: PrivacySettings;
   notifications?: NotificationSettings;
   partnerPreferences?: PartnerPreferences;
@@ -278,12 +289,12 @@ const UserSchema = new Schema<IUser>(
       trim: true,
       maxlength: 50,
     },
-gender: {
-  type: String,
-  enum: ["male", "female"],
-  default: null,
-  index: true,
-},
+    gender: {
+      type: String,
+      enum: ["male", "female"],
+      default: null,
+      index: true,
+    },
     bio: {
       type: String,
       maxlength: 2000,
@@ -295,13 +306,37 @@ gender: {
       default: "",
     },
 
+    avatarPublicId: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
     avatarGif: {
       type: String,
       trim: true,
       default: "",
     },
 
+    avatarGifPublicId: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
     coverImage: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    cover: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    coverImagePublicId: {
       type: String,
       trim: true,
       default: "",
@@ -380,11 +415,11 @@ gender: {
     },
     CoinzBalance: {
       type: Number,
-      default: 100000,
+      default: 10000,
       min: 0,
     },
 
-    followingCount: {
+    followingCount: { 
       type: Number,
       default: 0,
     },
@@ -477,7 +512,12 @@ gender: {
       purchasedAt: { type: Date, default: null },
       expiresAt: { type: Date, default: null },
     },
-
+customImageBadge: {
+  url: { type: String, trim: true, default: "" },
+  isActive: { type: Boolean, default: false },
+  purchasedAt: { type: Date, default: null },
+  expiresAt: { type: Date, default: null },
+},
     notificationSound: {
       type: Boolean,
       default: true,
@@ -587,7 +627,7 @@ gender: {
       default: "",
       index: true,
     },
-        age: {
+    age: {
       type: Number,
       min: 1,
       max: 120,

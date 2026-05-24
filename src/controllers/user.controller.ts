@@ -365,23 +365,35 @@ export const unblockUser = async (req: Request, res: Response) => {
 /* ======================================================
    8️⃣ UPDATE PROFILE (Dynamic + Password + Unique atUsername)
 ====================================================== */
-
 export const updateProfile = async (req: Request, res: Response) => {
   try {
-
     const userId = req.user.id;
-    const updates = req.body;
+    const updates = req.body || {};
+
+
 
     const allowedFields = [
       "username",
       "atUsername",
       "email",
+
+      // الصور العادية
       "avatar",
+      "avatarPublicId",
+
+      // صورة GIF
+      "avatarGif",
+      "avatarGifPublicId",
+
+      // الغلاف
       "coverImage",
+      "cover",
+      "coverImagePublicId",
+
       "bio",
-      "country",              // ✅ تمت إضافته
+      "country",
       "notificationSound",
-      "readReceiptsEnabled"
+      "readReceiptsEnabled",
     ];
 
     const updateData: any = {};
@@ -392,20 +404,73 @@ export const updateProfile = async (req: Request, res: Response) => {
       }
     }
 
+    /**
+     * ✅ مهم جدًا للـ GIF:
+     * الفرونت يعرض غالبًا:
+     * currentUser?.activeCustomization?.avatarGif || currentUser?.avatar
+     *
+     * لذلك يجب حفظ avatarGif داخل activeCustomization أيضًا.
+     */
+    if (
+      updates.activeCustomization &&
+      typeof updates.activeCustomization === "object"
+    ) {
+      if (typeof updates.activeCustomization.avatarGif === "string") {
+        updateData["activeCustomization.avatarGif"] =
+          updates.activeCustomization.avatarGif;
+      }
+
+      if (typeof updates.activeCustomization.avatarFrame === "string") {
+        updateData["activeCustomization.avatarFrame"] =
+          updates.activeCustomization.avatarFrame;
+      }
+
+      if (typeof updates.activeCustomization.usernameColor === "string") {
+        updateData["activeCustomization.usernameColor"] =
+          updates.activeCustomization.usernameColor;
+      }
+
+      if (typeof updates.activeCustomization.messageTextColor === "string") {
+        updateData["activeCustomization.messageTextColor"] =
+          updates.activeCustomization.messageTextColor;
+      }
+
+      if (typeof updates.activeCustomization.messageEffect === "string") {
+        updateData["activeCustomization.messageEffect"] =
+          updates.activeCustomization.messageEffect;
+      }
+
+      if (typeof updates.activeCustomization.profileEntryAnimation === "string") {
+        updateData["activeCustomization.profileEntryAnimation"] =
+          updates.activeCustomization.profileEntryAnimation;
+      }
+
+      if (typeof updates.activeCustomization.verificationType === "string") {
+        updateData["activeCustomization.verificationType"] =
+          updates.activeCustomization.verificationType;
+      }
+
+      if (Array.isArray(updates.activeCustomization.badges)) {
+        updateData["activeCustomization.badges"] =
+          updates.activeCustomization.badges.map(String);
+      }
+    }
+
+
+
     /* ===== UNIQUE atUsername ===== */
 
     if (updateData.atUsername) {
-
       updateData.atUsername = updateData.atUsername.toLowerCase();
 
       const exists = await User.findOne({
         atUsername: updateData.atUsername,
-        _id: { $ne: userId }
+        _id: { $ne: userId },
       });
 
       if (exists) {
         return res.status(400).json({
-          message: "atUsername already taken"
+          message: "atUsername already taken",
         });
       }
     }
@@ -413,17 +478,16 @@ export const updateProfile = async (req: Request, res: Response) => {
     /* ===== PASSWORD CHANGE ===== */
 
     if (updates.newPassword) {
-
       if (!updates.oldPassword) {
         return res.status(400).json({
-          message: "Old password required"
+          message: "Old password required",
         });
       }
 
       const user = await User.findById(userId);
       if (!user) {
         return res.status(404).json({
-          message: "User not found"
+          message: "User not found",
         });
       }
 
@@ -436,11 +500,11 @@ export const updateProfile = async (req: Request, res: Response) => {
 
       if (!isMatch) {
         return res.status(400).json({
-          message: "Old password incorrect"
+          message: "Old password incorrect",
         });
       }
 
-      user.password = updates.newPassword; // سيتم تشفيرها عبر pre-save
+      user.password = updates.newPassword;
       await user.save();
 
       delete updateData.password;
@@ -451,16 +515,118 @@ export const updateProfile = async (req: Request, res: Response) => {
     const updatedUser = await User.findByIdAndUpdate(
       userId,
       { $set: updateData },
-      { new: true }
+      {
+        new: true,
+        runValidators: true,
+      }
     ).select("-password");
 
-    res.json(updatedUser);
 
-  } catch (error) {
-    console.error("UPDATE PROFILE ERROR:", error);
-    res.status(500).json({ message: "Failed to update profile" });
+
+    return res.json(updatedUser);
+  } catch (error: any) {
+
+
+    return res.status(500).json({
+      message: "Failed to update profile",
+    });
   }
 };
+// export const updateProfile = async (req: Request, res: Response) => {
+//   try {
+
+//     const userId = req.user.id;
+//     const updates = req.body;
+
+//     const allowedFields = [
+//       "username",
+//       "atUsername",
+//       "email",
+//       "avatar",
+//       "coverImage",
+//       "bio",
+//       "country",              // ✅ تمت إضافته
+//       "notificationSound",
+//       "readReceiptsEnabled"
+//     ];
+
+//     const updateData: any = {};
+
+//     for (const field of allowedFields) {
+//       if (updates[field] !== undefined) {
+//         updateData[field] = updates[field];
+//       }
+//     }
+
+//     /* ===== UNIQUE atUsername ===== */
+
+//     if (updateData.atUsername) {
+
+//       updateData.atUsername = updateData.atUsername.toLowerCase();
+
+//       const exists = await User.findOne({
+//         atUsername: updateData.atUsername,
+//         _id: { $ne: userId }
+//       });
+
+//       if (exists) {
+//         return res.status(400).json({
+//           message: "atUsername already taken"
+//         });
+//       }
+//     }
+
+//     /* ===== PASSWORD CHANGE ===== */
+
+//     if (updates.newPassword) {
+
+//       if (!updates.oldPassword) {
+//         return res.status(400).json({
+//           message: "Old password required"
+//         });
+//       }
+
+//       const user = await User.findById(userId);
+//       if (!user) {
+//         return res.status(404).json({
+//           message: "User not found"
+//         });
+//       }
+
+//       const bcrypt = require("bcrypt");
+
+//       const isMatch = await bcrypt.compare(
+//         updates.oldPassword,
+//         user.password
+//       );
+
+//       if (!isMatch) {
+//         return res.status(400).json({
+//           message: "Old password incorrect"
+//         });
+//       }
+
+//       user.password = updates.newPassword; // سيتم تشفيرها عبر pre-save
+//       await user.save();
+
+//       delete updateData.password;
+//     }
+
+//     /* ===== UPDATE OTHER FIELDS ===== */
+
+//     const updatedUser = await User.findByIdAndUpdate(
+//       userId,
+//       { $set: updateData },
+//       { new: true }
+//     ).select("-password");
+
+//     res.json(updatedUser);
+
+//   } catch (error) {
+//     console.error("UPDATE PROFILE ERROR:", error);
+//     res.status(500).json({ message: "Failed to update profile" });
+//   }
+// };
 
 
 /* ======================================================

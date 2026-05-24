@@ -190,9 +190,7 @@ class RoomService {
   }
 private logCustomBadge(tag: string, data: any) {
   try {
-    console.log(`🏷️ [BADGE_DEBUG][${tag}]`, JSON.stringify(data, null, 2));
   } catch (e: any) {
-    console.log(`🏷️ [BADGE_DEBUG][${tag}]`, data);
   }
 }
   private isValidObjectId(id: string) {
@@ -485,29 +483,10 @@ private async resolveActiveBadgesFromUser(user: any) {
 
   const inventory = Array.isArray(user?.inventory) ? user.inventory : [];
 
-  console.log("🏷️ [BADGE_DEBUG][resolveActiveBadgesFromUser:START]", {
-    userId,
-    username,
-    activeBadgeKeys,
-    inventoryCount: inventory.length,
-    inventorySample: inventory.slice(0, 5).map((inv: any) => ({
-      invId: String(inv?._id || ""),
-      itemKey: String(inv?.itemKey || inv?.key || ""),
-      itemId: String(inv?.item?._id || ""),
-      itemKeyFromItem: String(inv?.item?.key || ""),
-      itemName: String(inv?.item?.name || ""),
-      iconUrl: String(inv?.item?.iconUrl || ""),
-      previewUrl: String(inv?.item?.previewUrl || ""),
-      coverUrl: String(inv?.item?.coverUrl || ""),
-      meta: inv?.item?.meta || null,
-    })),
-  });
+
 
   if (!activeBadgeKeys.length) {
-    console.log("🏷️ [BADGE_DEBUG][resolveActiveBadgesFromUser:NO_ACTIVE_KEYS]", {
-      userId,
-      username,
-    });
+
 
     return [];
   }
@@ -559,29 +538,14 @@ private async resolveActiveBadgesFromUser(user: any) {
         ),
       };
 
-      console.log("🏷️ [BADGE_DEBUG][resolveActiveBadgesFromUser:FROM_INVENTORY_ONE]", {
-        userId,
-        username,
-        badgeKey,
-        foundInventory: Boolean(inv),
-        itemId: String(item?._id || ""),
-        itemKey: String(item?.key || ""),
-        itemName: String(item?.name || ""),
-        meta: item?.meta || null,
-        resolvedBadge: badge,
-      });
+
 
       return badge;
     })
     .filter((b: any) => b.key && (b.iconUrl || b.lottieUrl));
 
   if (resolvedFromInventory.length > 0) {
-    console.log("🏷️ [BADGE_DEBUG][resolveActiveBadgesFromUser:DONE_FROM_INVENTORY]", {
-      userId,
-      username,
-      resolvedCount: resolvedFromInventory.length,
-      resolved: resolvedFromInventory,
-    });
+
 
     return resolvedFromInventory;
   }
@@ -597,21 +561,7 @@ private async resolveActiveBadgesFromUser(user: any) {
     .select("name type key iconUrl coverUrl previewUrl meta")
     .lean();
 
-  console.log("🏷️ [BADGE_DEBUG][resolveActiveBadgesFromUser:STORE_ITEMS]", {
-    userId,
-    username,
-    activeBadgeKeys,
-    foundCount: storeItems.length,
-    items: storeItems.map((item: any) => ({
-      id: String(item?._id || ""),
-      key: String(item?.key || ""),
-      name: String(item?.name || ""),
-      iconUrl: String(item?.iconUrl || ""),
-      previewUrl: String(item?.previewUrl || ""),
-      coverUrl: String(item?.coverUrl || ""),
-      meta: item?.meta || null,
-    })),
-  });
+
 
   const itemByKey = new Map(
     storeItems.map((item: any) => [String(item?.key || "").trim(), item])
@@ -622,11 +572,7 @@ private async resolveActiveBadgesFromUser(user: any) {
       const item: any = itemByKey.get(badgeKey);
 
       if (!item) {
-        console.log("🏷️ [BADGE_DEBUG][resolveActiveBadgesFromUser:STORE_ITEM_NOT_FOUND]", {
-          userId,
-          username,
-          badgeKey,
-        });
+
 
         return null;
       }
@@ -661,27 +607,12 @@ private async resolveActiveBadgesFromUser(user: any) {
         ),
       };
 
-      console.log("🏷️ [BADGE_DEBUG][resolveActiveBadgesFromUser:FROM_STORE_ONE]", {
-        userId,
-        username,
-        badgeKey,
-        itemId: String(item?._id || ""),
-        itemKey: String(item?.key || ""),
-        itemName: String(item?.name || ""),
-        meta: item?.meta || null,
-        resolvedBadge: badge,
-      });
+
 
       return badge;
     })
     .filter((b: any) => b && b.key && (b.iconUrl || b.lottieUrl));
 
-  console.log("🏷️ [BADGE_DEBUG][resolveActiveBadgesFromUser:DONE]", {
-    userId,
-    username,
-    resolvedCount: resolvedFromStore.length,
-    resolved: resolvedFromStore,
-  });
 
   return resolvedFromStore;
 }
@@ -1689,19 +1620,7 @@ activeBadgesResolved,
       payload.senderSnapshot = await this.getUserPublicSnapshot(payload.sender);
 
     }
-    console.log("🏷️ [BADGE_DEBUG][system:senderSnapshot]", {
-  roomId,
-  type,
-  content,
-  sender: String(payload.sender || ""),
-  senderUsername: String(payload.senderSnapshot?.username || ""),
-  activeCustomizationBadges:
-    payload.senderSnapshot?.activeCustomization?.badges || [],
-  inventoryCount: Array.isArray(payload.senderSnapshot?.inventory)
-    ? payload.senderSnapshot.inventory.length
-    : 0,
-  activeBadgesResolved: payload.senderSnapshot?.activeBadgesResolved || [],
-});
+
 
     const msg = await RoomMessage.create(payload);
 
@@ -2815,19 +2734,7 @@ activeBadgesResolved,
     }
 
     const senderSnapshot = await this.getUserPublicSnapshot(senderId);
- console.log("🏷️ [BADGE_DEBUG][sendMessage:senderSnapshot]", {
-  roomId,
-  senderId,
-  type,
-  content,
-  username: senderSnapshot?.username,
-  activeCustomizationBadges:
-    senderSnapshot?.activeCustomization?.badges || [],
-  inventoryCount: Array.isArray(senderSnapshot?.inventory)
-    ? senderSnapshot.inventory.length
-    : 0,
-  activeBadgesResolved: senderSnapshot?.activeBadgesResolved || [],
-});
+
     try {
       let replyToId: Types.ObjectId | undefined = undefined;
 

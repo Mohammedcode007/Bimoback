@@ -61,13 +61,12 @@ function parseCommand(content: string): {
     };
   }
 
-  if (/^(\.top|top|توب|الترتيب|ترتيب)$/i.test(text)) {
-    return {
-      matched: true,
-      type: "top",
-    };
-  }
-
+if (/^(\.top|ترتيب_النقاط|نقاط_توب)$/i.test(text)) {
+  return {
+    matched: true,
+    type: "top",
+  };
+}
   if (/^(\.nx|nx|next|التالي)$/i.test(text)) {
     return {
       matched: true,

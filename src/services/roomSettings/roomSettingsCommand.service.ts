@@ -165,6 +165,8 @@ const ignoredGameKeys = [
   "بوكس",
   "ضرب",
   "كف",
+  "top",
+  "توب"
 ];
 if (ignoredGameKeys.includes(key)) {
   return null;
