@@ -66,6 +66,7 @@ import {
   toggleRoomFavorite,
   getFavoriteRooms
 } from "../controllers/room.controller";
+import roomService from "../services/room.service";
 
 const router = Router();
 
@@ -190,5 +191,23 @@ router.post("/:roomId/invite", inviteToRoom);
 ===================================================== */
 
 router.delete("/:roomId", deleteRoom);
+router.post("/:roomId/enter", async (req, res, next) => {
+  try {
+    const userId = String((req as any).user?._id || (req as any).user?.id || "");
+    const roomId = String(req.params.roomId || "");
+
+    const data = await roomService.enterRoomFast(roomId, userId, {
+      password: req.body?.password,
+      limit: req.body?.limit,
+    });
+
+    res.json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 export default router;

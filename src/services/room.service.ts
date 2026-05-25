@@ -40,35 +40,6 @@ const USER_PUBLIC_FIELDS =
   "activeCustomization verificationType avatarFrame badges ownedMessageEffects ownedGifts profileEntryAnimation " +
   "customEmojiBadge inventory " +
   "followersCount followingCount totalLikesReceived totalRetweetsReceived profileViews";
-// type SendMessageInput = {
-//   roomId: string;
-//   senderId: string;
-//   clientId?: string;
-
-//   content?: string;
-//   type?: string;
-//   replyTo?: string;
-//   mentions?: string[];
-//   media?: {
-//     url: string;
-//     fileName?: string;
-//     fileSize?: number;
-//     mimeType?: string;
-//   };
-//   gift?: {
-//     key?: string;
-//     icon?: string;
-//     count?: number;
-
-//     targetId?: string;
-//     targetName?: string;
-
-//     // للتوافق القديم إن وُجد
-//     name?: string;
-//     value?: number;
-//     animation?: string;
-//   };
-// };
 
 type SendMessageInput = {
   roomId: string;
@@ -306,43 +277,7 @@ private logCustomBadge(tag: string, data: any) {
 
     return { kind: "text", labelAr: "رسالة", preview };
   }
-  // private buildMessagePreviewForNotification(message: any) {
-  //   const msgType = String(message?.type || "text");
-
-  //   // لو عندك media
-  //   const hasMedia = Boolean(message?.media?.url);
-
-  //   // حاول تمييز فيديو/صورة
-  //   const mime = String(message?.media?.mimeType || "").toLowerCase();
-  //   const url = String(message?.media?.url || "").toLowerCase();
-
-  //   const isVideo =
-  //     mime.startsWith("video/") ||
-  //     url.endsWith(".mp4") ||
-  //     url.endsWith(".mov") ||
-  //     url.endsWith(".mkv") ||
-  //     url.endsWith(".webm");
-
-  //   const isImage =
-  //     mime.startsWith("image/") ||
-  //     url.endsWith(".jpg") ||
-  //     url.endsWith(".jpeg") ||
-  //     url.endsWith(".png") ||
-  //     url.endsWith(".gif") ||
-  //     url.endsWith(".webp");
-
-  //   if (hasMedia || msgType === "image" || msgType === "video") {
-  //     if (isVideo || msgType === "video") return { kind: "video", labelAr: "فيديو", preview: "" };
-  //     return { kind: "image", labelAr: "صورة", preview: "" };
-  //   }
-
-  //   // رسالة نصية
-  //   const text = String(message?.content || "").trim();
-  //   const preview = text.length > 80 ? text.slice(0, 80) + "…" : text;
-
-  //   return { kind: "text", labelAr: "رسالة", preview };
-  // }
-  // ✅ إصلاح: المقارنة تكون دائمًا عبر toString()
+  
   private isInside(room: any, userId: string) {
     const uid = userId.toString();
     return (room.activeUsers || []).some((u: any) => u?.toString?.() === uid);
@@ -5704,7 +5639,347 @@ activeBadgesResolved,
       now,
     };
   }
+async enterRoomFast(
+  roomId: string,
+  userId: string,
+  options: { password?: string; limit?: number } = {}
+) {
+  if (!this.isValidObjectId(roomId)) {
+    throw new Error("Invalid room id");
+  }
 
+  if (!this.isValidObjectId(userId)) {
+    throw new Error("Invalid user id");
+  }
+
+  const limit = Math.max(1, Math.min(30, Number(options.limit) || 20));
+
+  const room = await Room.findById(roomId).select(
+    [
+      "_id",
+      "name",
+      "description",
+      "avatar",
+      "cover",
+      "type",
+      "password",
+      "creator",
+      "owners",
+      "admins",
+      "members",
+      "activeUsers",
+      "blockeds",
+      "usersCount",
+      "messagesCount",
+      "level",
+      "xp",
+
+      // مهم جدًا: لا تعتمد على boostPoints فقط
+      "boostPoints",
+      "roomBoosts",
+
+      "premiumLevel",
+      "isLocked",
+      "slowModeSeconds",
+      "antiSpamEnabled",
+      "maxMessagesPerMinute",
+      "maxVoiceSeats",
+      "tags",
+      "createdAt",
+      "updatedAt",
+    ].join(" ")
+  );
+
+  if (!room) {
+    throw new Error("Room not found");
+  }
+
+  this.ensureArrays(room);
+
+  const uid = String(userId);
+  const now = new Date();
+
+  /**
+   * ✅ البوست الحقيقي يُحسب من roomBoosts النشطة
+   * وليس من boostPoints المخزن فقط.
+   */
+  const activeRoomBoosts = Array.isArray((room as any).roomBoosts)
+    ? (room as any).roomBoosts.filter((boost: any) => {
+        const expiresAt = boost?.expiresAt ? new Date(boost.expiresAt) : null;
+
+        return (
+          expiresAt &&
+          !Number.isNaN(expiresAt.getTime()) &&
+          expiresAt.getTime() > now.getTime()
+        );
+      })
+    : [];
+
+  const realBoostPoints = activeRoomBoosts.length;
+
+  if (this.isBanned(room, uid)) {
+    throw new Error("You are banned from this room");
+  }
+
+  /**
+   * لو الغرفة protected افحص الباسورد هنا حسب طريقة التخزين عندك.
+   * لو عندك bcrypt/comparePassword استخدمها بدل المقارنة المباشرة.
+   */
+  if (room.type === "protected") {
+    const password = String(options.password || "").trim();
+
+    if (!password) {
+      throw new Error("Password required");
+    }
+
+    const roomPassword = String((room as any).password || "").trim();
+
+    if (roomPassword && roomPassword !== password) {
+      throw new Error("Invalid password");
+    }
+  }
+
+  const alreadyInside = Array.isArray((room as any).activeUsers)
+    ? (room as any).activeUsers.some((x: any) => String(x) === uid)
+    : false;
+
+  /**
+   * ✅ لا تستخدم room.save() هنا.
+   * لأن save على وثيقة room كاملة بعد تحميل جزئي ممكن يسبب مشاكل جانبية.
+   * استخدم updateOne لتحديث المطلوب فقط.
+   */
+  if (!alreadyInside) {
+    const updateResult = await Room.updateOne(
+      {
+        _id: roomId,
+        activeUsers: { $ne: userId },
+      },
+      {
+        $addToSet: {
+          activeUsers: userId,
+        },
+        $inc: {
+          usersCount: 1,
+        },
+        $set: {
+          boostPoints: realBoostPoints,
+          roomBoosts: activeRoomBoosts,
+        },
+      }
+    );
+
+    const modified =
+      Number((updateResult as any)?.modifiedCount || 0) > 0 ||
+      Number((updateResult as any)?.nModified || 0) > 0;
+
+    if (modified) {
+      if (!Array.isArray((room as any).activeUsers)) {
+        (room as any).activeUsers = [];
+      }
+
+      (room as any).activeUsers.push(userId as any);
+      (room as any).usersCount = Number((room as any).usersCount || 0) + 1;
+    }
+
+    (room as any).boostPoints = realBoostPoints;
+    (room as any).roomBoosts = activeRoomBoosts;
+
+    this.io().to(`room:${roomId}`).emit("room:user:joined", {
+      roomId,
+      userId,
+    });
+
+    await this.emitActiveCount(roomId);
+    this.emitUsersUpdate(roomId);
+  } else {
+    /**
+     * ✅ حتى لو المستخدم داخل بالفعل،
+     * حدّث boostPoints من roomBoosts حتى لا يرجع /enter بقيمة صفر.
+     */
+    await Room.updateOne(
+      { _id: roomId },
+      {
+        $set: {
+          boostPoints: realBoostPoints,
+          roomBoosts: activeRoomBoosts,
+        },
+      }
+    );
+
+    (room as any).boostPoints = realBoostPoints;
+    (room as any).roomBoosts = activeRoomBoosts;
+  }
+
+  const role = this.getRole(room, userId);
+  const state = await this.getUserState(roomId, userId);
+
+  const query: any = {
+    room: roomId,
+    deletedForEveryone: { $ne: true },
+  };
+
+  if (state?.clearedAt) {
+    query.createdAt = { $gt: state.clearedAt };
+  }
+
+  /**
+   * تحميل رسائل خفيف:
+   * لا populate sender
+   * لا populate reactions.user
+   * لا backfill
+   * نعتمد على senderSnapshot الموجود داخل الرسالة.
+   */
+  let messages: any[] = await RoomMessage.find(query)
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .select(
+      [
+        "_id",
+        "room",
+        "clientId",
+        "sender",
+        "senderSnapshot",
+        "type",
+        "content",
+        "media",
+        "gift",
+        "song",
+        "gameType",
+        "game",
+        "replyTo",
+        "mentions",
+        "actorName",
+        "targetName",
+        "role",
+        "isPinned",
+        "isHighlighted",
+        "reactionCount",
+        "deletedForEveryone",
+        "createdAt",
+        "updatedAt",
+      ].join(" ")
+    )
+    .lean();
+
+  messages = await this.applyGiftOncePolicy(
+    roomId,
+    userId,
+    state,
+    messages,
+    {}
+  );
+
+  const pinnedMessage = await RoomMessage.findOne({
+    room: roomId,
+    isPinned: true,
+    deletedForEveryone: { $ne: true },
+  })
+    .sort({ updatedAt: -1, createdAt: -1 })
+    .select(
+      [
+        "_id",
+        "room",
+        "sender",
+        "senderSnapshot",
+        "type",
+        "content",
+        "media",
+        "gift",
+        "song",
+        "gameType",
+        "game",
+        "isPinned",
+        "createdAt",
+        "updatedAt",
+      ].join(" ")
+    )
+    .lean();
+
+  const activeUserIds = Array.isArray((room as any).activeUsers)
+    ? (room as any).activeUsers.slice(0, 30).map((x: any) => String(x))
+    : [];
+
+  const activeUsersPreview = activeUserIds.length
+    ? await User.find({ _id: { $in: activeUserIds } })
+        .select(
+          [
+            "username",
+            "atUsername",
+            "avatar",
+            "avatarGif",
+            "usernameColor",
+            "messageTextColor",
+            "activeCustomization",
+            "verificationType",
+            "customEmojiBadge",
+          ].join(" ")
+        )
+        .lean()
+    : [];
+
+  return {
+    room: {
+      _id: String(room._id),
+      name: room.name || "",
+      description: room.description || "",
+      avatar: room.avatar || "",
+      cover: room.cover || "",
+      type: room.type,
+      premiumLevel: (room as any).premiumLevel || 0,
+
+      usersCount: Number((room as any).usersCount || 0),
+      messagesCount: Number((room as any).messagesCount || 0),
+
+      level: Number((room as any).level || 1),
+      xp: Number((room as any).xp || 0),
+
+      /**
+       * ✅ هنا التعديل الأهم
+       */
+      boostPoints: realBoostPoints,
+
+      isLocked: Boolean((room as any).isLocked),
+      slowModeSeconds: Number((room as any).slowModeSeconds || 0),
+      antiSpamEnabled: Boolean((room as any).antiSpamEnabled),
+      maxMessagesPerMinute: Number((room as any).maxMessagesPerMinute || 0),
+      maxVoiceSeats: Number((room as any).maxVoiceSeats || 0),
+      tags: Array.isArray((room as any).tags) ? (room as any).tags : [],
+
+      createdAt: (room as any).createdAt,
+      updatedAt: (room as any).updatedAt,
+    },
+
+    my: {
+      userId,
+      role,
+      isInside: true,
+      canManage: ["creator", "owner", "admin"].includes(role),
+    },
+
+    stats: {
+      roomId,
+      activeCount: Array.isArray((room as any).activeUsers)
+        ? (room as any).activeUsers.length
+        : 0,
+
+      totalUsersCount: Number((room as any).usersCount || 0),
+      messagesCount: Number((room as any).messagesCount || 0),
+      level: Number((room as any).level || 1),
+      xp: Number((room as any).xp || 0),
+
+      /**
+       * ✅ نفس الرقم هنا أيضًا
+       */
+      boostPoints: realBoostPoints,
+    },
+
+    activeUsersPreview,
+
+    messages,
+
+    pinnedMessage,
+  };
+}
   async getTopMonthlyBoostedRooms(limit = 10) {
     const { now, monthStart } = this.getCurrentMonthRange();
 
